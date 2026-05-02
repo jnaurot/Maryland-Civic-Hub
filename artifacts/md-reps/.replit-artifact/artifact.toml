@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Maryland Representatives"
+version = "1.0.0"
+id = "artifacts/md-reps"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18928
+
+[services.development]
+run = "pnpm --filter @workspace/md-reps run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/md-reps", "run", "build" ]
+publicDir = "artifacts/md-reps/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18928"
+BASE_PATH = "/"
