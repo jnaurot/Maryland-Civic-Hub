@@ -33,9 +33,10 @@ export function Home() {
   };
 
   const groupReps = (reps: Representative[] = []) => {
-    const federal = reps.filter((r) => r.level === "federal");
-    const state = reps.filter((r) => r.level === "state");
-    const local = reps.filter((r) => r.level === "local");
+    const safeReps = Array.isArray(reps) ? reps : [];
+    const federal = safeReps.filter((r) => r.level === "federal");
+    const state = safeReps.filter((r) => r.level === "state");
+    const local = safeReps.filter((r) => r.level === "local");
     return { federal, state, local };
   };
 
