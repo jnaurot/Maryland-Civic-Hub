@@ -32,7 +32,7 @@ export function Home() {
     return "bg-gray-200 text-gray-800";
   };
 
-  const groupReps = (reps: Representative[]) => {
+  const groupReps = (reps: Representative[] = []) => {
     const federal = reps.filter((r) => r.level === "federal");
     const state = reps.filter((r) => r.level === "state");
     const local = reps.filter((r) => r.level === "local");
