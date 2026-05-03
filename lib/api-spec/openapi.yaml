@@ -3,20 +3,27 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Maryland Representatives Civic App API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: representatives
+    description: Look up representatives by address
+  - name: federal
+    description: Federal congressional data
+  - name: state
+    description: Maryland state legislature data
+  - name: finance
+    description: Campaign finance data
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +31,344 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /representatives:
+    get:
+      operationId: getRepresentativesByAddress
+      tags: [representatives]
+      summary: Get all representatives for a given address
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Representatives found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepresentativesResponse"
+
+  /federal/members/{bioguideId}:
+    get:
+      operationId: getFederalMember
+      tags: [federal]
+      summary: Get a federal member's details
+      parameters:
+        - name: bioguideId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Member details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FederalMemberDetail"
+
+  /federal/members/{bioguideId}/bills:
+    get:
+      operationId: getFederalMemberBills
+      tags: [federal]
+      summary: Get bills sponsored or cosponsored by a federal member
+      parameters:
+        - name: bioguideId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [sponsored, cosponsored]
+            default: sponsored
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Bills list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillsListResponse"
+
+  /federal/members/{bioguideId}/votes:
+    get:
+      operationId: getFederalMemberVotes
+      tags: [federal]
+      summary: Get voting record for a federal member
+      parameters:
+        - name: bioguideId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Votes list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VotesListResponse"
+
+  /federal/members/{bioguideId}/committees:
+    get:
+      operationId: getFederalMemberCommittees
+      tags: [federal]
+      summary: Get committee memberships for a federal member
+      parameters:
+        - name: bioguideId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Committees list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommitteesListResponse"
+
+  /federal/bills:
+    get:
+      operationId: getFederalBills
+      tags: [federal]
+      summary: Get bills currently being considered in Congress
+      parameters:
+        - name: chamber
+          in: query
+          schema:
+            type: string
+            enum: [house, senate, both]
+            default: both
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Bills list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillsListResponse"
+
+  /federal/bills/{congress}/{billType}/{billNumber}:
+    get:
+      operationId: getFederalBillDetail
+      tags: [federal]
+      summary: Get detailed info about a specific federal bill
+      parameters:
+        - name: congress
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: billType
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: billNumber
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bill detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillDetail"
+
+  /state/members/{memberId}:
+    get:
+      operationId: getStateMember
+      tags: [state]
+      summary: Get a state legislator's details
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: State member details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateMemberDetail"
+
+  /state/members/{memberId}/bills:
+    get:
+      operationId: getStateMemberBills
+      tags: [state]
+      summary: Get bills sponsored or cosponsored by a state member
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [sponsored, cosponsored]
+            default: sponsored
+      responses:
+        "200":
+          description: State bills list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateBillsListResponse"
+
+  /state/members/{memberId}/votes:
+    get:
+      operationId: getStateMemberVotes
+      tags: [state]
+      summary: Get voting record for a state member
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: State votes list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateVotesListResponse"
+
+  /state/bills:
+    get:
+      operationId: getStateBills
+      tags: [state]
+      summary: Get bills being considered in the Maryland legislature
+      parameters:
+        - name: chamber
+          in: query
+          schema:
+            type: string
+            enum: [upper, lower]
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: State bills list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateBillsListResponse"
+
+  /state/bills/{billId}:
+    get:
+      operationId: getStateBillDetail
+      tags: [state]
+      summary: Get detailed info about a specific state bill
+      parameters:
+        - name: billId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: State bill detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateBillDetail"
+
+  /finance/{candidateId}:
+    get:
+      operationId: getCandidateFinance
+      tags: [finance]
+      summary: Get PAC and donor information for a candidate
+      parameters:
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cycle
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Finance data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceResponse"
+
+  /finance/search:
+    get:
+      operationId: searchCandidateFinance
+      tags: [finance]
+      summary: Search for a candidate's FEC finance data by name
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Finance search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceSearchResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +376,489 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Representative:
+      type: object
+      properties:
+        name:
+          type: string
+        office:
+          type: string
+        party:
+          type: string
+        phone:
+          type: string
+        photoUrl:
+          type: string
+        level:
+          type: string
+          enum: [federal, state, local]
+        chamber:
+          type: string
+        urls:
+          type: array
+          items:
+            type: string
+        emails:
+          type: array
+          items:
+            type: string
+        bioguideId:
+          type: string
+        openstatesId:
+          type: string
+        division:
+          type: string
+      required: [name, office, level]
+
+    RepresentativesResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        representatives:
+          type: array
+          items:
+            $ref: "#/components/schemas/Representative"
+        normalizedAddress:
+          type: string
+      required: [address, representatives]
+
+    Bill:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        number:
+          type: string
+        congress:
+          type: string
+        introducedDate:
+          type: string
+        latestAction:
+          type: string
+        latestActionDate:
+          type: string
+        sponsors:
+          type: array
+          items:
+            type: string
+        url:
+          type: string
+        status:
+          type: string
+        chamber:
+          type: string
+      required: [id, title]
+
+    BillDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        number:
+          type: string
+        congress:
+          type: string
+        introducedDate:
+          type: string
+        summary:
+          type: string
+        status:
+          type: string
+        latestAction:
+          type: string
+        latestActionDate:
+          type: string
+        sponsors:
+          type: array
+          items:
+            $ref: "#/components/schemas/SponsorInfo"
+        cosponsors:
+          type: array
+          items:
+            $ref: "#/components/schemas/SponsorInfo"
+        committees:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommitteeRef"
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillAction"
+        url:
+          type: string
+      required: [id, title]
+
+    SponsorInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        party:
+          type: string
+        state:
+          type: string
+        bioguideId:
+          type: string
+      required: [name]
+
+    CommitteeRef:
+      type: object
+      properties:
+        name:
+          type: string
+        chamber:
+          type: string
+        committeeCode:
+          type: string
+      required: [name]
+
+    BillAction:
+      type: object
+      properties:
+        date:
+          type: string
+        text:
+          type: string
+        type:
+          type: string
+      required: [date, text]
+
+    BillsListResponse:
+      type: object
+      properties:
+        bills:
+          type: array
+          items:
+            $ref: "#/components/schemas/Bill"
+        totalCount:
+          type: integer
+        offset:
+          type: integer
+      required: [bills]
+
+    VoteRecord:
+      type: object
+      properties:
+        billId:
+          type: string
+        billTitle:
+          type: string
+        billNumber:
+          type: string
+        date:
+          type: string
+        position:
+          type: string
+        question:
+          type: string
+        result:
+          type: string
+        description:
+          type: string
+      required: [billTitle, date, position]
+
+    VotesListResponse:
+      type: object
+      properties:
+        votes:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoteRecord"
+        totalCount:
+          type: integer
+        offset:
+          type: integer
+      required: [votes]
+
+    Committee:
+      type: object
+      properties:
+        name:
+          type: string
+        chamber:
+          type: string
+        committeeCode:
+          type: string
+        rank:
+          type: string
+        title:
+          type: string
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommitteeMember"
+      required: [name]
+
+    CommitteeMember:
+      type: object
+      properties:
+        name:
+          type: string
+        party:
+          type: string
+        state:
+          type: string
+        rank:
+          type: string
+        bioguideId:
+          type: string
+      required: [name]
+
+    CommitteesListResponse:
+      type: object
+      properties:
+        committees:
+          type: array
+          items:
+            $ref: "#/components/schemas/Committee"
+      required: [committees]
+
+    FederalMemberDetail:
+      type: object
+      properties:
+        bioguideId:
+          type: string
+        name:
+          type: string
+        party:
+          type: string
+        state:
+          type: string
+        chamber:
+          type: string
+        district:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+        photoUrl:
+          type: string
+        terms:
+          type: integer
+        inOffice:
+          type: boolean
+        nextElection:
+          type: string
+      required: [bioguideId, name]
+
+    StateMemberDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        party:
+          type: string
+        chamber:
+          type: string
+        district:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        photoUrl:
+          type: string
+        openstatesUrl:
+          type: string
+      required: [id, name]
+
+    StateBill:
+      type: object
+      properties:
+        id:
+          type: string
+        identifier:
+          type: string
+        title:
+          type: string
+        session:
+          type: string
+        chamber:
+          type: string
+        status:
+          type: string
+        introducedDate:
+          type: string
+        latestAction:
+          type: string
+        sponsors:
+          type: array
+          items:
+            type: string
+        url:
+          type: string
+      required: [id, title]
+
+    StateBillDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        identifier:
+          type: string
+        title:
+          type: string
+        session:
+          type: string
+        chamber:
+          type: string
+        status:
+          type: string
+        introducedDate:
+          type: string
+        summary:
+          type: string
+        sponsors:
+          type: array
+          items:
+            $ref: "#/components/schemas/SponsorInfo"
+        cosponsors:
+          type: array
+          items:
+            $ref: "#/components/schemas/SponsorInfo"
+        committees:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommitteeRef"
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillAction"
+        votes:
+          type: array
+          items:
+            $ref: "#/components/schemas/StateBillVote"
+        url:
+          type: string
+      required: [id, title]
+
+    StateBillVote:
+      type: object
+      properties:
+        date:
+          type: string
+        chamber:
+          type: string
+        result:
+          type: string
+        yesCount:
+          type: integer
+        noCount:
+          type: integer
+        absentCount:
+          type: integer
+      required: [date, result]
+
+    StateBillsListResponse:
+      type: object
+      properties:
+        bills:
+          type: array
+          items:
+            $ref: "#/components/schemas/StateBill"
+        totalCount:
+          type: integer
+        offset:
+          type: integer
+      required: [bills]
+
+    StateVoteRecord:
+      type: object
+      properties:
+        billId:
+          type: string
+        billTitle:
+          type: string
+        billIdentifier:
+          type: string
+        date:
+          type: string
+        position:
+          type: string
+        result:
+          type: string
+      required: [billTitle, date, position]
+
+    StateVotesListResponse:
+      type: object
+      properties:
+        votes:
+          type: array
+          items:
+            $ref: "#/components/schemas/StateVoteRecord"
+      required: [votes]
+
+    DonorEntry:
+      type: object
+      properties:
+        name:
+          type: string
+        total:
+          type: number
+        type:
+          type: string
+          enum: [pac, individual, other]
+        industry:
+          type: string
+      required: [name, total]
+
+    FinanceResponse:
+      type: object
+      properties:
+        candidateId:
+          type: string
+        candidateName:
+          type: string
+        cycle:
+          type: integer
+        totalRaised:
+          type: number
+        totalSpent:
+          type: number
+        cashOnHand:
+          type: number
+        topDonors:
+          type: array
+          items:
+            $ref: "#/components/schemas/DonorEntry"
+        topIndustries:
+          type: array
+          items:
+            $ref: "#/components/schemas/DonorEntry"
+      required: [candidateId, candidateName, topDonors]
+
+    FinanceCandidate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        party:
+          type: string
+        state:
+          type: string
+        office:
+          type: string
+        cycle:
+          type: integer
+      required: [id, name]
+
+    FinanceSearchResponse:
+      type: object
+      properties:
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/FinanceCandidate"
+      required: [candidates]
