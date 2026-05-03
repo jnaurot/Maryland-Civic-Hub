@@ -32,7 +32,7 @@ export function Home() {
     return "bg-gray-200 text-gray-800";
   };
 
-  const groupReps = (reps: Representative[] = []) => {
+  const groupReps = (reps?: Representative[]) => {
     const safeReps = Array.isArray(reps) ? reps : [];
     const federal = safeReps.filter((r) => r.level === "federal");
     const state = safeReps.filter((r) => r.level === "state");
@@ -139,7 +139,7 @@ export function Home() {
               )}
 
               {(() => {
-                const { federal, state, local } = groupReps(data.representatives);
+                const { federal, state, local } = groupReps(data.representatives ?? []);
                 return (
                   <>
                     {federal.length > 0 && (
