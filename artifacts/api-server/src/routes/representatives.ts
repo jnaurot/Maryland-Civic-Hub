@@ -32,7 +32,8 @@ async function geocodeAddress(address: string): Promise<{
   const lng = match.coordinates?.x;
   const geos = match.geographies ?? {};
 
-  const congressional = geos["119th Congressional Districts"]?.[0];
+  const congressionalKey = Object.keys(geos).find((k) => k.includes("Congressional Districts"));
+  const congressional = congressionalKey ? geos[congressionalKey]?.[0] : null;
   const district = congressional?.BASENAME ?? null;
 
   // Census returns year-prefixed keys like "2024 State Legislative Districts - Upper"
