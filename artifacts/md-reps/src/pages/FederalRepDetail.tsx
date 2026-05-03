@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, ChevronLeft, Users, FileText, Vote, DollarSign } from "lucide-react";
+import { RepNameLink } from "@/components/RepNameLink";
 
 function partyColor(party?: string) {
   if (!party) return "bg-gray-100 text-gray-700";
@@ -169,7 +170,7 @@ function CommitteesList({ bioguideId }: { bioguideId: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                 {c.members.map((m, j) => (
                   <div key={j} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
-                    <span className="font-medium">{m.name}</span>
+                    <RepNameLink name={m.name} bioguideId={m.bioguideId} />
                     <div className="flex gap-1">
                       {m.party && <Badge className={`text-xs ${partyColor(m.party)}`}>{m.party?.charAt(0)}</Badge>}
                       {m.state && <span className="text-muted-foreground text-xs">{m.state}</span>}
@@ -185,10 +186,10 @@ function CommitteesList({ bioguideId }: { bioguideId: string }) {
   );
 }
 
-function FinanceTab({ name }: { name: string }) {
+function FinanceTab({ name, state }: { name: string; state?: string }) {
   const searchName = name.split(",")[0].trim();
-  const { data: searchData, isLoading: searchLoading } = useSearchCandidateFinance({ name: searchName, state: "MD" }, {
-    query: { enabled: !!name, queryKey: getSearchCandidateFinanceQueryKey({ name: searchName, state: "MD" }) }
+  const { data: searchData, isLoading: searchLoading } = useSearchCandidateFinance({ name: searchName, state }, {
+    query: { enabled: !!name, queryKey: getSearchCandidateFinanceQueryKey({ name: searchName, state }) }
   });
 
   const candidateId = searchData?.candidates?.[0]?.id;
@@ -325,7 +326,7 @@ export function FederalRepDetail() {
               <TabsContent value="bills"><BillsList bioguideId={bioguideId} /></TabsContent>
               <TabsContent value="votes"><VotesList bioguideId={bioguideId} /></TabsContent>
               <TabsContent value="committees"><CommitteesList bioguideId={bioguideId} /></TabsContent>
-              <TabsContent value="finance"><FinanceTab name={member.name ?? ""} /></TabsContent>
+              <TabsContent value="finance"><FinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>
             </Tabs>
           </>
         ) : (

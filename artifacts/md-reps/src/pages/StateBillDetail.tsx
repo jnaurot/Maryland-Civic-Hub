@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft, ExternalLink, CheckCircle2, Circle } from "lucide-react";
+import { RepNameLink } from "@/components/RepNameLink";
 
 function StateBillProgressBar({ actions }: { actions?: { date: string; text: string; type?: string }[] }) {
   const stages = ["Introduced", "Committee", "Floor Vote", "Passed"];
@@ -56,12 +57,12 @@ function partyColor(party?: string) {
 
 export function StateBillDetail() {
   const { billId } = useParams<{ billId: string }>();
-  const decodedBillId = decodeURIComponent(billId);
+  const apiBillId = encodeURIComponent(billId);
 
-  const { data: bill, isLoading } = useGetStateBillDetail(decodedBillId, {
+  const { data: bill, isLoading } = useGetStateBillDetail(apiBillId, {
     query: {
-      enabled: !!decodedBillId,
-      queryKey: getGetStateBillDetailQueryKey(decodedBillId)
+      enabled: !!apiBillId,
+      queryKey: getGetStateBillDetailQueryKey(apiBillId)
     }
   });
 
@@ -130,7 +131,7 @@ export function StateBillDetail() {
                   <CardContent className="pt-0 space-y-2">
                     {bill.sponsors.map((s, i) => (
                       <div key={i} className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{s.name}</span>
+                        <RepNameLink name={s.name} openstatesId={s.openstatesId} />
                         {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
                       </div>
                     ))}
@@ -166,7 +167,7 @@ export function StateBillDetail() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                     {bill.cosponsors.map((s, i) => (
                       <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                        <span className="text-sm font-medium">{s.name}</span>
+                        <RepNameLink name={s.name} openstatesId={s.openstatesId} />
                         {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
                       </div>
                     ))}

@@ -10,20 +10,26 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, ChevronRight } from "lucide-react";
+import { useAppState } from "@/lib/app-state";
+import { US_STATES, getStateName } from "@/lib/states";
 
 type Chamber = "upper" | "lower" | "all";
 
 export function StateBills() {
+  const { selectedState, setSelectedState } = useAppState();
   const [chamber, setChamber] = useState<Chamber>("all");
   const [offset, setOffset] = useState(0);
   const limit = 20;
 
-  const params = chamber === "all"
-    ? { offset, limit }
-    : { chamber: chamber as "upper" | "lower", offset, limit };
+  const stateCode = selectedState;
+  const stateName = getStateName(stateCode);
 
-  const { data, isLoading } = useGetStateBills(params, {
-    query: { queryKey: getGetStateBillsQueryKey(params) }
+  const params = chamber === "all"
+    ? { offset, limit, jurisdiction: stateCode?.toLowerCase() ?? "md" }
+    : { chamber: chamber as "upper" | "lower", offset, limit, jurisdiction: stateCode?.toLowerCase() ?? "md" };
+
+  const { data, isLoading, error } = useGetStateBills(params, {
+    query: { queryKey: getGetStateBillsQueryKey(params), enabled: !!stateCode }
   });
 
   const handleChamberChange = (v: string) => {
@@ -31,12 +37,40 @@ export function StateBills() {
     setOffset(0);
   };
 
+  if (!stateCode) {
+    return (
+      <div className="min-h-screen bg-muted/20">
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
+          <div className="mb-8">
+            <h1 className="text-4xl font-black mb-2">State Bills</h1>
+            <p className="text-muted-foreground">Bills being considered in state legislatures across the country</p>
+          </div>
+
+          <div className="text-center py-20 text-muted-foreground">
+            <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
+            <p className="text-lg mb-4">Select a state to view state legislation.</p>
+            <Select value={selectedState ?? ""} onValueChange={(v) => setSelectedState(v || null)}>
+              <SelectTrigger className="w-56 mx-auto">
+                <SelectValue placeholder="Select a state" />
+              </SelectTrigger>
+              <SelectContent>
+                {US_STATES.map((s) => (
+                  <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-muted/20">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-8">
-          <h1 className="text-4xl font-black mb-2">Maryland State Bills</h1>
-          <p className="text-muted-foreground">Bills being considered in the Maryland General Assembly</p>
+          <h1 className="text-4xl font-black mb-2">{stateName} State Bills</h1>
+          <p className="text-muted-foreground">Bills being considered in the {stateName} legislature</p>
         </div>
 
         <div className="flex items-center gap-4 mb-6">
@@ -61,10 +95,10 @@ export function StateBills() {
           </div>
         )}
 
-        {!isLoading && data?.bills?.length === 0 && (
+        {!isLoading && (error || data?.bills?.length === 0) && (
           <div className="text-center py-20 text-muted-foreground">
             <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p>No bills found.</p>
+            <p>{error ? `State legislative data is not available for ${stateName}.` : "No bills found."}</p>
           </div>
         )}
 

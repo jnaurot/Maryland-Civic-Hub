@@ -1,7 +1,11 @@
 import { Link, useLocation } from "wouter";
+import { useAppState } from "@/lib/app-state";
+import { getStateName } from "@/lib/states";
 
 export function Navbar() {
   const [location] = useLocation();
+  const { selectedState } = useAppState();
+  const stateName = getStateName(selectedState);
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -14,9 +18,11 @@ export function Navbar() {
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-accent rounded-sm flex items-center justify-center text-accent-foreground font-bold text-xl">
-            MD
+            {selectedState ?? "US"}
           </div>
-          <span className="font-bold text-lg hidden sm:inline-block">Maryland Representatives</span>
+          <span className="font-bold text-lg hidden sm:inline-block">
+            {stateName ? `${stateName} Representatives` : "US Representatives"}
+          </span>
         </Link>
 
         <nav className="flex items-center gap-6">

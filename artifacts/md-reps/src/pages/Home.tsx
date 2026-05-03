@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useGetRepresentativesByAddress, getGetRepresentativesByAddressQueryKey } from "@workspace/api-client-react";
 import { Input } from "@/components/ui/input";
@@ -6,10 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search } from "lucide-react";
+import { useAppState } from "@/lib/app-state";
+import { US_STATES, getStateName, getStateFlagUrl } from "@/lib/states";
 import type { Representative } from "@workspace/api-client-react";
 
 export function Home() {
+  const { selectedState, setSelectedState } = useAppState();
+  const [homeDropdownState, setHomeDropdownState] = useState("");
   const [addressInput, setAddressInput] = useState("");
   const [searchAddress, setSearchAddress] = useState("");
 
@@ -23,12 +28,24 @@ export function Home() {
     },
   );
 
+  // When address search results arrive, update global selected state to match
+  useEffect(() => {
+    if (data?.stateCode) {
+      setSelectedState(data.stateCode.toUpperCase());
+    }
+  }, [data?.stateCode, setSelectedState]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (addressInput.trim()) {
       setSearchAddress(addressInput.trim());
+      setHomeDropdownState("");
     }
   };
+
+  const activeStateCode = data?.stateCode?.toUpperCase() ?? selectedState ?? null;
+  const activeStateName = getStateName(activeStateCode) ?? "your area";
+  const flagUrl = getStateFlagUrl(activeStateCode) ?? getStateFlagUrl("US");
 
   const getPartyColor = (party?: string) => {
     if (!party) return "bg-gray-100 text-gray-800";
@@ -47,13 +64,13 @@ export function Home() {
 
   const renderRepCard = (rep: Representative) => {
     const partyColor = getPartyColor(rep.party);
-    
+
     let linkHref = "#";
     if (rep.level === "federal" && rep.bioguideId) {
       linkHref = `/rep/federal/${rep.bioguideId}`;
     } else if (rep.level === "state" && (rep.openstatesId || rep.name)) {
       const slug = rep.openstatesId || rep.name.toLowerCase().replace(/\s+/g, '-');
-      linkHref = `/rep/state/${slug}`;
+      linkHref = `/rep/state/${encodeURIComponent(slug)}`;
     }
 
     return (
@@ -90,29 +107,57 @@ export function Home() {
     <div className="min-h-[100dvh] flex flex-col">
       {/* Hero Section */}
       <div className="bg-primary text-primary-foreground py-20 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10 bg-[url('https://upload.wikimedia.org/wikipedia/commons/a/a0/Flag_of_Maryland.svg')] bg-cover bg-center"></div>
+        {flagUrl && (
+          <div
+            className="absolute inset-0 opacity-10 bg-cover bg-center"
+            style={{ backgroundImage: `url('${flagUrl}')` }}
+          />
+        )}
         <div className="container mx-auto max-w-3xl relative z-10 text-center">
           <h1 className="text-4xl md:text-5xl font-black mb-6 tracking-tight">
             Know Your Representatives
           </h1>
           <p className="text-lg md:text-xl text-primary-foreground/80 mb-10 max-w-2xl mx-auto">
-            Discover who represents you in Maryland at the federal, state, and local levels. Track their bills, votes, and campaign finance.
+            Discover who represents you at the federal, state, and local levels. Track their bills, votes, and campaign finance.
           </p>
 
-          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
-            <div className="relative flex-grow">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Enter your Maryland address..."
-                className="pl-10 h-14 text-lg bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
-                value={addressInput}
-                onChange={(e) => setAddressInput(e.target.value)}
-              />
+          <form onSubmit={handleSearch} className="flex flex-col gap-4 max-w-xl mx-auto">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-grow">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Enter your address..."
+                  className="pl-10 h-14 text-lg bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
+                  value={addressInput}
+                  onChange={(e) => setAddressInput(e.target.value)}
+                />
+              </div>
+              <Button type="submit" size="lg" className="h-14 px-8 text-lg font-bold bg-accent text-accent-foreground hover:bg-accent/90 rounded-xl shadow-lg">
+                Search
+              </Button>
             </div>
-            <Button type="submit" size="lg" className="h-14 px-8 text-lg font-bold bg-accent text-accent-foreground hover:bg-accent/90 rounded-xl shadow-lg">
-              Search
-            </Button>
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-sm text-primary-foreground/70">Or select a state:</span>
+              <Select
+                value={homeDropdownState}
+                onValueChange={(v) => {
+                  setHomeDropdownState(v);
+                  setSelectedState(v || null);
+                  setAddressInput("");
+                  setSearchAddress("");
+                }}
+              >
+                <SelectTrigger className="w-56 bg-background text-foreground border-0 shadow-lg rounded-xl">
+                  <SelectValue placeholder="Select a state" />
+                </SelectTrigger>
+                <SelectContent>
+                  {US_STATES.map((s) => (
+                    <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </form>
         </div>
       </div>
@@ -130,16 +175,16 @@ export function Home() {
           {error && (
             <div className="bg-destructive/10 border border-destructive/20 text-destructive p-6 rounded-lg text-center max-w-2xl mx-auto">
               <h3 className="font-bold text-lg mb-2">Error finding representatives</h3>
-              <p>Please check your address and try again. Make sure it's a valid Maryland address.</p>
+              <p>Please check your address and try again. Make sure it&apos;s a valid US address.</p>
             </div>
           )}
 
           {!isLoading && !error && data && (
             <div className="space-y-16">
-              {data.normalizedAddress && (
+              {(data.normalizedAddress || data.stateName) && (
                 <div className="mb-8">
                   <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Showing results for</p>
-                  <h2 className="text-2xl font-semibold">{data.normalizedAddress}</h2>
+                  <h2 className="text-2xl font-semibold">{data.normalizedAddress ?? activeStateName}</h2>
                 </div>
               )}
 
@@ -185,7 +230,7 @@ export function Home() {
                 <Search className="h-10 w-10 opacity-50" />
               </div>
               <h2 className="text-2xl font-semibold mb-2">Ready to search</h2>
-              <p className="max-w-md mx-auto">Enter your full address above to find out who represents you in Congress, the State House, and locally.</p>
+              <p className="max-w-md mx-auto">Enter your full address above or select a state to find out who represents you in Congress, the State House, and locally.</p>
             </div>
           )}
         </div>

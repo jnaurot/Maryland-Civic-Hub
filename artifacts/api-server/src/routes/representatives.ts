@@ -10,6 +10,7 @@ async function geocodeAddress(address: string): Promise<{
   lat: number;
   lng: number;
   district: string | null;
+  stateCode: string | null;
   stateSenateDistrict: string | null;
   stateHouseDistrict: string | null;
   normalizedAddress: string | null;
@@ -36,28 +37,31 @@ async function geocodeAddress(address: string): Promise<{
   const congressional = congressionalKey ? geos[congressionalKey]?.[0] : null;
   const district = congressional?.BASENAME ?? null;
 
+  const addr = match.addressComponents;
+  const stateCode = addr?.state ?? null;
+
   // Census returns year-prefixed keys like "2024 State Legislative Districts - Upper"
-  // and district numbers with leading zeros like "046" — normalize to plain integer strings
   const upperKey = Object.keys(geos).find((k) => k.includes("State Legislative Districts - Upper"));
   const lowerKey = Object.keys(geos).find((k) => k.includes("State Legislative Districts - Lower"));
-  const upperRaw = upperKey ? (geos[upperKey]?.[0]?.SLDU ?? geos[upperKey]?.[0]?.BASENAME ?? null) : null;
-  const lowerRaw = lowerKey ? (geos[lowerKey]?.[0]?.SLDL ?? geos[lowerKey]?.[0]?.BASENAME ?? null) : null;
+  // BASENAME is the plain district number (e.g., "40"); SLDU/SLDL are Census codes (e.g., "040")
+  const upperRaw = upperKey ? (geos[upperKey]?.[0]?.BASENAME ?? geos[upperKey]?.[0]?.SLDU ?? null) : null;
+  const lowerRaw = lowerKey ? (geos[lowerKey]?.[0]?.BASENAME ?? geos[lowerKey]?.[0]?.SLDL ?? null) : null;
+  // Strip any remaining leading zeros
   const upperDistrict = upperRaw ? String(parseInt(upperRaw, 10)) : null;
   const lowerDistrict = lowerRaw ? String(parseInt(lowerRaw, 10)) : null;
 
-  const addr = match.addressComponents;
   const normalizedAddress = addr
     ? `${addr.fromAddress ?? ""} ${addr.preDirection ?? ""} ${addr.streetName ?? ""} ${addr.suffixType ?? ""}, ${addr.city ?? ""}, ${addr.state ?? ""} ${addr.zip ?? ""}`.replace(/\s+/g, " ").trim()
     : null;
 
-  return { lat, lng, district, stateSenateDistrict: upperDistrict, stateHouseDistrict: lowerDistrict, normalizedAddress };
+  return { lat, lng, district, stateCode, stateSenateDistrict: upperDistrict, stateHouseDistrict: lowerDistrict, normalizedAddress };
 }
 
-async function fetchCongressMDMembers(district: string): Promise<any[]> {
+async function fetchCongressMembers(stateCode: string, district: string): Promise<any[]> {
   if (!CONGRESS_API_KEY) return [];
   try {
     // Senators (statewide)
-    const senatorsUrl = new URL("https://api.congress.gov/v3/member/MD");
+    const senatorsUrl = new URL(`https://api.congress.gov/v3/member/${stateCode}`);
     senatorsUrl.searchParams.set("currentMember", "true");
     senatorsUrl.searchParams.set("limit", "20");
     senatorsUrl.searchParams.set("api_key", CONGRESS_API_KEY);
@@ -73,7 +77,7 @@ async function fetchCongressMDMembers(district: string): Promise<any[]> {
     let houseMember: any[] = [];
     if (district) {
       const districtNum = parseInt(district, 10);
-      const houseUrl = new URL(`https://api.congress.gov/v3/member/MD/${districtNum}`);
+      const houseUrl = new URL(`https://api.congress.gov/v3/member/${stateCode}/${districtNum}`);
       houseUrl.searchParams.set("currentMember", "true");
       houseUrl.searchParams.set("api_key", CONGRESS_API_KEY);
       houseUrl.searchParams.set("format", "json");
@@ -91,7 +95,7 @@ async function fetchCongressMDMembers(district: string): Promise<any[]> {
       const isSenate = chamber === "Senate";
       return {
         name: formatCongressName(m.name),
-        office: isSenate ? `U.S. Senator for Maryland` : `U.S. Representative, MD-${district}`,
+        office: isSenate ? `U.S. Senator for ${stateCode}` : `U.S. Representative, ${stateCode}-${district}`,
         party: m.partyName,
         photoUrl: m.depiction?.imageUrl,
         level: "federal" as const,
@@ -112,10 +116,10 @@ function formatCongressName(name: string): string {
   return name;
 }
 
-async function fetchOpenStatesPeople(district: string, orgClass: "upper" | "lower"): Promise<any[]> {
+async function fetchOpenStatesPeople(stateCode: string, district: string, orgClass: "upper" | "lower"): Promise<any[]> {
   if (!OPENSTATES_API_KEY) return [];
   const url = new URL("https://v3.openstates.org/people");
-  url.searchParams.set("jurisdiction", "md");
+  url.searchParams.set("jurisdiction", stateCode.toLowerCase());
   url.searchParams.set("district", district);
   url.searchParams.set("org_classification", orgClass);
   url.searchParams.set("per_page", "10");
@@ -123,6 +127,22 @@ async function fetchOpenStatesPeople(district: string, orgClass: "upper" | "lowe
   if (!res.ok) return [];
   const data = await res.json() as any;
   return data.results ?? [];
+}
+
+const STATE_NAMES: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado",
+  CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
+  IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana",
+  ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi",
+  MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma",
+  OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota",
+  TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", DC: "District of Columbia",
+};
+
+function getStateName(code: string): string | undefined {
+  return STATE_NAMES[code.toUpperCase()];
 }
 
 function mapOsPerson(person: any): any {
@@ -139,12 +159,12 @@ function mapOsPerson(person: any): any {
   };
 }
 
-async function fetchStateLegislators(stateSenateDistrict: string | null, stateHouseDistrict: string | null): Promise<any[]> {
+async function fetchStateLegislators(stateCode: string, stateSenateDistrict: string | null, stateHouseDistrict: string | null): Promise<any[]> {
   if (!OPENSTATES_API_KEY) return [];
   try {
     const queries: Promise<any[]>[] = [];
-    if (stateSenateDistrict) queries.push(fetchOpenStatesPeople(stateSenateDistrict, "upper"));
-    if (stateHouseDistrict) queries.push(fetchOpenStatesPeople(stateHouseDistrict, "lower"));
+    if (stateSenateDistrict) queries.push(fetchOpenStatesPeople(stateCode, stateSenateDistrict, "upper"));
+    if (stateHouseDistrict) queries.push(fetchOpenStatesPeople(stateCode, stateHouseDistrict, "lower"));
     const results = await Promise.all(queries);
     return results.flat().map(mapOsPerson);
   } catch (e) {
@@ -162,10 +182,11 @@ router.get("/representatives", async (req, res) => {
 
   try {
     const geo = await geocodeAddress(address);
+    const stateCode = geo.stateCode ?? "";
 
     const [federalReps, stateReps] = await Promise.all([
-      fetchCongressMDMembers(geo.district ?? ""),
-      fetchStateLegislators(geo.stateSenateDistrict, geo.stateHouseDistrict),
+      fetchCongressMembers(stateCode, geo.district ?? ""),
+      fetchStateLegislators(stateCode, geo.stateSenateDistrict, geo.stateHouseDistrict),
     ]);
 
     const representatives = [...federalReps, ...stateReps];
@@ -173,6 +194,10 @@ router.get("/representatives", async (req, res) => {
     return res.json({
       address,
       normalizedAddress: geo.normalizedAddress,
+      stateCode,
+      stateName: getStateName(stateCode) ?? stateCode,
+      stateSenateDistrict: geo.stateSenateDistrict,
+      stateHouseDistrict: geo.stateHouseDistrict,
       representatives,
     });
   } catch (err) {

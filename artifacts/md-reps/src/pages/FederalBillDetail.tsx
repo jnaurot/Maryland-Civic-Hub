@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft, ExternalLink, CheckCircle2, Circle } from "lucide-react";
+import { RepNameLink } from "@/components/RepNameLink";
 
 function BillProgressBar({ actions }: { actions?: { date: string; text: string; type?: string }[] }) {
   const stages = ["Introduced", "Committee", "Floor Vote", "Passed", "Signed"];
@@ -128,7 +129,7 @@ export function FederalBillDetail() {
                   <CardContent className="pt-0 space-y-2">
                     {bill.sponsors.map((s, i) => (
                       <div key={i} className="flex items-center justify-between">
-                        <Link href={s.bioguideId ? `/rep/federal/${s.bioguideId}` : "#"} className="text-sm font-medium hover:underline">{s.name}</Link>
+                        <RepNameLink name={s.name} bioguideId={s.bioguideId} />
                         <div className="flex gap-1">
                           {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
                           {s.state && <span className="text-xs text-muted-foreground">{s.state}</span>}
@@ -167,7 +168,7 @@ export function FederalBillDetail() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                     {bill.cosponsors.map((s, i) => (
                       <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                        <Link href={s.bioguideId ? `/rep/federal/${s.bioguideId}` : "#"} className="text-sm font-medium hover:underline">{s.name}</Link>
+                        <RepNameLink name={s.name} bioguideId={s.bioguideId} />
                         <div className="flex gap-1 items-center">
                           {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
                           {s.state && <span className="text-xs text-muted-foreground">{s.state}</span>}

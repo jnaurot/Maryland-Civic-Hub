@@ -87,6 +87,13 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       chamber: b.originChamber,
     }));
 
+    // Sort by latest action date descending
+    bills.sort((a: any, b: any) => {
+      const dateA = a.latestActionDate ? new Date(a.latestActionDate).getTime() : 0;
+      const dateB = b.latestActionDate ? new Date(b.latestActionDate).getTime() : 0;
+      return dateB - dateA;
+    });
+
     return res.json({
       bills,
       totalCount: data.pagination?.count,
@@ -191,10 +198,16 @@ router.get("/federal/bills", async (req, res) => {
   const { chamber, offset, limit } = parsed.data;
 
   try {
-    const params: Record<string, string | number> = { offset, limit, sort: "updateDate+desc" };
-    const endpoint = chamber === "both" ? "/bill" : `/bill?chamber=${chamber}`;
+    // Calculate current congress (1st Congress was 1789-1791)
+    const currentYear = new Date().getFullYear();
+    const currentCongress = Math.floor((currentYear - 1789) / 2) + 1;
 
-    const data = await congressFetch("/bill", { offset, limit, sort: "updateDate+desc" });
+    const params: Record<string, string | number> = { offset, limit, sort: "introducedDate desc" };
+    if (chamber && chamber !== "both") {
+      params.chamber = chamber.charAt(0).toUpperCase() + chamber.slice(1);
+    }
+
+    const data = await congressFetch(`/bill/${currentCongress}`, params);
     const bills = (data.bills ?? []).map((b: any) => ({
       id: `${b.congress}-${b.type}-${b.number}`,
       title: b.title ?? "Untitled",
@@ -208,6 +221,13 @@ router.get("/federal/bills", async (req, res) => {
       status: b.latestAction?.text,
       chamber: b.originChamber,
     }));
+
+    // Ensure most current first by latest action date
+    bills.sort((a: any, b: any) => {
+      const dateA = a.latestActionDate ? new Date(a.latestActionDate).getTime() : 0;
+      const dateB = b.latestActionDate ? new Date(b.latestActionDate).getTime() : 0;
+      return dateB - dateA;
+    });
 
     return res.json({ bills, totalCount: data.pagination?.count, offset });
   } catch (err) {

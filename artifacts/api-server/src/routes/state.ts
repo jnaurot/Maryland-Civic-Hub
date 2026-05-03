@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   GetStateMemberBillsQueryParams,
+  GetStateMemberVotesQueryParams,
   GetStateBillsQueryParams,
 } from "@workspace/api-zod";
 
@@ -36,6 +37,7 @@ function mapStateBill(b: any) {
     status: b.status ?? latestAction?.description,
     introducedDate: b.first_action_date ?? b.created_at?.split("T")[0],
     latestAction: latestAction?.description,
+    latestActionDate: latestAction?.date,
     sponsors: b.sponsorships?.map((s: any) => s.name ?? "") ?? [],
     url: b.openstates_url,
   };
@@ -51,6 +53,10 @@ router.get("/state/members/:memberId", async (req, res) => {
     const data = await openStatesFetch("/people", { id: memberId, per_page: 1 });
     const person = data.results?.[0];
     if (!person) return res.status(404).json({ error: "Member not found" });
+    const jurisdictionId = person.jurisdiction?.id ?? "";
+    const jurisdictionMatch = jurisdictionId.match(/state:([a-z]{2})/);
+    const jurisdiction = jurisdictionMatch ? jurisdictionMatch[1] : (person.jurisdiction?.name ?? "").toLowerCase().replace(/\s+/g, "");
+
     return res.json({
       id: person.id ?? memberId,
       name: person.name ?? "",
@@ -61,6 +67,8 @@ router.get("/state/members/:memberId", async (req, res) => {
       phone: person.links?.[0]?.url,
       photoUrl: person.image,
       openstatesUrl: person.openstates_url,
+      state: person.jurisdiction?.name ?? undefined,
+      jurisdiction,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching state member");
@@ -74,8 +82,9 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
   if (!memberId || !queryParsed.success) return res.status(400).json({ error: "Invalid params" });
 
   try {
+    const { jurisdiction } = queryParsed.data;
     const data = await openStatesFetch("/bills", {
-      jurisdiction: "md",
+      jurisdiction,
       per_page: 20,
       sponsor_id: memberId,
     });
@@ -89,14 +98,16 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
 
 router.get("/state/members/:memberId/votes", async (req, res) => {
   const memberId = decodeURIComponent(req.params.memberId);
-  if (!memberId) return res.status(400).json({ error: "memberId required" });
+  const queryParsed = GetStateMemberVotesQueryParams.safeParse(req.query);
+  if (!memberId || !queryParsed.success) return res.status(400).json({ error: "Invalid params" });
 
   try {
+    const { jurisdiction } = queryParsed.data;
     // OpenStates v3 has no standalone /votes endpoint — fetch bills the person sponsored
     // and include vote records, then extract their individual vote
     // include=votes must be passed as a repeated query param
     const billUrl = new URL(`${BASE}/bills`);
-    billUrl.searchParams.set("jurisdiction", "md");
+    billUrl.searchParams.set("jurisdiction", jurisdiction);
     billUrl.searchParams.set("sponsor_id", memberId);
     billUrl.searchParams.set("per_page", "20");
     billUrl.searchParams.append("include", "votes");
@@ -143,11 +154,11 @@ router.get("/state/bills", async (req, res) => {
   const parsed = GetStateBillsQueryParams.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
 
-  const { chamber, offset, limit } = parsed.data;
+  const { chamber, offset, limit, jurisdiction } = parsed.data;
 
   try {
     const params: Record<string, string | number> = {
-      jurisdiction: "md",
+      jurisdiction,
       per_page: limit,
       page: Math.floor(offset / limit) + 1,
     };
@@ -155,6 +166,13 @@ router.get("/state/bills", async (req, res) => {
 
     const data = await openStatesFetch("/bills", params);
     const bills = (data.results ?? []).map(mapStateBill);
+
+    // Sort by latest action date descending (most current first)
+    bills.sort((a: any, b: any) => {
+      const dateA = a.latestActionDate ? new Date(a.latestActionDate).getTime() : 0;
+      const dateB = b.latestActionDate ? new Date(b.latestActionDate).getTime() : 0;
+      return dateB - dateA;
+    });
 
     return res.json({ bills, totalCount: data.pagination?.total_items, offset });
   } catch (err) {
@@ -194,10 +212,10 @@ router.get("/state/bills/:billId", async (req, res) => {
       summary: data.abstract,
       sponsors: data.sponsorships
         ?.filter((s: any) => s.primary)
-        .map((s: any) => ({ name: s.name ?? "", party: s.party, state: "MD" })) ?? [],
+        .map((s: any) => ({ name: s.name ?? "", party: s.party, state: data.jurisdiction?.name ?? undefined, openstatesId: s.person?.id ?? s.id ?? undefined })) ?? [],
       cosponsors: data.sponsorships
         ?.filter((s: any) => !s.primary)
-        .map((s: any) => ({ name: s.name ?? "", party: s.party, state: "MD" })) ?? [],
+        .map((s: any) => ({ name: s.name ?? "", party: s.party, state: data.jurisdiction?.name ?? undefined, openstatesId: s.person?.id ?? s.id ?? undefined })) ?? [],
       committees: data.actions
         ?.filter((a: any) => a.organization)
         .map((a: any) => ({ name: a.organization.name ?? "", chamber: a.organization.classification }))

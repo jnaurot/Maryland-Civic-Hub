@@ -43,11 +43,11 @@ function formatMoney(n?: number) {
   return `$${n}`;
 }
 
-function StateBillsList({ memberId }: { memberId: string }) {
+function StateBillsList({ memberId, jurisdiction }: { memberId: string; jurisdiction?: string }) {
   const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
 
-  const { data, isLoading } = useGetStateMemberBills(memberId, { type }, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberBillsQueryKey(memberId, { type }) }
+  const { data, isLoading } = useGetStateMemberBills(memberId, { type, jurisdiction }, {
+    query: { enabled: !!memberId, queryKey: getGetStateMemberBillsQueryKey(memberId, { type, jurisdiction }) }
   });
 
   return (
@@ -86,9 +86,9 @@ function StateBillsList({ memberId }: { memberId: string }) {
   );
 }
 
-function StateVotesList({ memberId }: { memberId: string }) {
-  const { data, isLoading } = useGetStateMemberVotes(memberId, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberVotesQueryKey(memberId) }
+function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdiction?: string }) {
+  const { data, isLoading } = useGetStateMemberVotes(memberId, { jurisdiction }, {
+    query: { enabled: !!memberId, queryKey: getGetStateMemberVotesQueryKey(memberId, { jurisdiction }) }
   });
 
   if (isLoading) return <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>;
@@ -118,9 +118,9 @@ function StateVotesList({ memberId }: { memberId: string }) {
   );
 }
 
-function StateFinanceTab({ name }: { name: string }) {
-  const { data: searchData, isLoading: searchLoading } = useSearchCandidateFinance({ name, state: "MD" }, {
-    query: { enabled: !!name, queryKey: getSearchCandidateFinanceQueryKey({ name, state: "MD" }) }
+function StateFinanceTab({ name, state }: { name: string; state?: string }) {
+  const { data: searchData, isLoading: searchLoading } = useSearchCandidateFinance({ name, state }, {
+    query: { enabled: !!name, queryKey: getSearchCandidateFinanceQueryKey({ name, state }) }
   });
 
   const candidateId = searchData?.candidates?.[0]?.id;
@@ -197,29 +197,21 @@ function StateFinanceTab({ name }: { name: string }) {
   );
 }
 
-function CommitteesFromBills({ memberId }: { memberId: string }) {
-  const { data, isLoading } = useGetStateMemberBills(memberId, { type: "sponsored" }, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberBillsQueryKey(memberId, { type: "sponsored" }) }
-  });
-
-  if (isLoading) return <div className="space-y-4">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>;
-
+function CommitteesFromBills() {
   return (
     <div className="text-center py-10 text-muted-foreground">
       <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
-      <p>Committee memberships for state legislators are available through the Maryland General Assembly.</p>
-      <a href="https://mgaleg.maryland.gov" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-3">
-        View on MGA Website <ExternalLink className="h-3 w-3" />
-      </a>
+      <p>Committee memberships for state legislators are available through the state legislature website.</p>
     </div>
   );
 }
 
 export function StateRepDetail() {
   const { memberId } = useParams<{ memberId: string }>();
+  const apiMemberId = encodeURIComponent(memberId);
 
-  const { data: member, isLoading } = useGetStateMember(memberId, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberQueryKey(memberId) }
+  const { data: member, isLoading } = useGetStateMember(apiMemberId, {
+    query: { enabled: !!apiMemberId, queryKey: getGetStateMemberQueryKey(apiMemberId) }
   });
 
   return (
@@ -272,10 +264,10 @@ export function StateRepDetail() {
                 <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" />Finance</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="bills"><StateBillsList memberId={memberId} /></TabsContent>
-              <TabsContent value="votes"><StateVotesList memberId={memberId} /></TabsContent>
-              <TabsContent value="committees"><CommitteesFromBills memberId={memberId} /></TabsContent>
-              <TabsContent value="finance"><StateFinanceTab name={member.name ?? ""} /></TabsContent>
+              <TabsContent value="bills"><StateBillsList memberId={apiMemberId} jurisdiction={member.jurisdiction} /></TabsContent>
+              <TabsContent value="votes"><StateVotesList memberId={apiMemberId} jurisdiction={member.jurisdiction} /></TabsContent>
+              <TabsContent value="committees"><CommitteesFromBills /></TabsContent>
+              <TabsContent value="finance"><StateFinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>
             </Tabs>
           </>
         ) : (

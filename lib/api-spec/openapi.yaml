@@ -3,7 +3,7 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: Maryland Representatives Civic App API
+  description: Civic App API
 servers:
   - url: /api
     description: Base API path
@@ -15,7 +15,7 @@ tags:
   - name: federal
     description: Federal congressional data
   - name: state
-    description: Maryland state legislature data
+    description: State legislature data
   - name: finance
     description: Campaign finance data
 paths:
@@ -248,6 +248,11 @@ paths:
             type: string
             enum: [sponsored, cosponsored]
             default: sponsored
+        - name: jurisdiction
+          in: query
+          schema:
+            type: string
+            default: md
       responses:
         "200":
           description: State bills list
@@ -267,6 +272,11 @@ paths:
           required: true
           schema:
             type: string
+        - name: jurisdiction
+          in: query
+          schema:
+            type: string
+            default: md
       responses:
         "200":
           description: State votes list
@@ -279,7 +289,7 @@ paths:
     get:
       operationId: getStateBills
       tags: [state]
-      summary: Get bills being considered in the Maryland legislature
+      summary: Get bills being considered in a state legislature
       parameters:
         - name: chamber
           in: query
@@ -296,6 +306,11 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: jurisdiction
+          in: query
+          schema:
+            type: string
+            default: md
       responses:
         "200":
           description: State bills list
@@ -423,6 +438,10 @@ components:
             $ref: "#/components/schemas/Representative"
         normalizedAddress:
           type: string
+        stateCode:
+          type: string
+        stateName:
+          type: string
       required: [address, representatives]
 
     Bill:
@@ -505,6 +524,8 @@ components:
         state:
           type: string
         bioguideId:
+          type: string
+        openstatesId:
           type: string
       required: [name]
 
@@ -670,6 +691,10 @@ components:
           type: string
         openstatesUrl:
           type: string
+        state:
+          type: string
+        jurisdiction:
+          type: string
       required: [id, name]
 
     StateBill:
@@ -690,6 +715,8 @@ components:
         introducedDate:
           type: string
         latestAction:
+          type: string
+        latestActionDate:
           type: string
         sponsors:
           type: array
