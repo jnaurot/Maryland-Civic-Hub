@@ -15,7 +15,12 @@ export function Home() {
 
   const { data, isLoading, error } = useGetRepresentativesByAddress(
     { address: searchAddress },
-    { query: { enabled: !!searchAddress, queryKey: getGetRepresentativesByAddressQueryKey({ address: searchAddress }) } }
+    {
+      query: {
+        enabled: !!searchAddress,
+        queryKey: getGetRepresentativesByAddressQueryKey({ address: searchAddress }),
+      },
+    },
   );
 
   const handleSearch = (e: React.FormEvent) => {
