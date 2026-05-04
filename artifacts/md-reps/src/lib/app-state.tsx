@@ -3,16 +3,27 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 interface AppState {
   selectedState: string | null;
   setSelectedState: (code: string | null) => void;
+  lastSearchedAddress: string | null;
+  setLastSearchedAddress: (address: string | null) => void;
 }
 
 const AppStateContext = createContext<AppState | null>(null);
 
 const STORAGE_KEY = "civic-hub-state";
+const ADDRESS_KEY = "civic-hub-address";
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [selectedState, setSelectedStateRaw] = useState<string | null>(() => {
     try {
       return localStorage.getItem(STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  });
+
+  const [lastSearchedAddress, setLastSearchedAddressRaw] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(ADDRESS_KEY);
     } catch {
       return null;
     }
@@ -31,8 +42,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const setLastSearchedAddress = useCallback((address: string | null) => {
+    setLastSearchedAddressRaw(address);
+    try {
+      if (address) {
+        localStorage.setItem(ADDRESS_KEY, address);
+      } else {
+        localStorage.removeItem(ADDRESS_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   return (
-    <AppStateContext.Provider value={{ selectedState, setSelectedState }}>
+    <AppStateContext.Provider value={{ selectedState, setSelectedState, lastSearchedAddress, setLastSearchedAddress }}>
       {children}
     </AppStateContext.Provider>
   );

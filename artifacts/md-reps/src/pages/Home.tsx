@@ -13,10 +13,10 @@ import { US_STATES, getStateName, getStateFlagUrl } from "@/lib/states";
 import type { Representative } from "@workspace/api-client-react";
 
 export function Home() {
-  const { selectedState, setSelectedState } = useAppState();
+  const { selectedState, setSelectedState, lastSearchedAddress, setLastSearchedAddress } = useAppState();
   const [homeDropdownState, setHomeDropdownState] = useState("");
-  const [addressInput, setAddressInput] = useState("");
-  const [searchAddress, setSearchAddress] = useState("");
+  const [addressInput, setAddressInput] = useState(lastSearchedAddress ?? "");
+  const [searchAddress, setSearchAddress] = useState(lastSearchedAddress ?? "");
 
   const { data, isLoading, error } = useGetRepresentativesByAddress(
     { address: searchAddress },
@@ -37,9 +37,15 @@ export function Home() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (addressInput.trim()) {
-      setSearchAddress(addressInput.trim());
+    const trimmed = addressInput.trim();
+    if (trimmed) {
+      setSearchAddress(trimmed);
+      setLastSearchedAddress(trimmed);
       setHomeDropdownState("");
+      setSelectedState(null);
+    } else {
+      setSearchAddress("");
+      setLastSearchedAddress(null);
     }
   };
 
@@ -146,6 +152,7 @@ export function Home() {
                   setSelectedState(v || null);
                   setAddressInput("");
                   setSearchAddress("");
+                  setLastSearchedAddress(null);
                 }}
               >
                 <SelectTrigger className="w-56 bg-background text-foreground border-0 shadow-lg rounded-xl">
