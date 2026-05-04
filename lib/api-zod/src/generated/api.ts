@@ -174,6 +174,46 @@ export const GetFederalMemberHouseVotesResponse = zod.object({
 });
 
 /**
+ * @summary Get Senate roll call vote records for a federal member
+ */
+export const GetFederalMemberSenateVotesParams = zod.object({
+  bioguideId: zod.coerce.string(),
+});
+
+export const getFederalMemberSenateVotesQueryOffsetDefault = 0;
+export const getFederalMemberSenateVotesQueryLimitDefault = 20;
+export const getFederalMemberSenateVotesQueryFilterDefault = `all`;
+
+export const GetFederalMemberSenateVotesQueryParams = zod.object({
+  offset: zod.coerce
+    .number()
+    .default(getFederalMemberSenateVotesQueryOffsetDefault),
+  limit: zod.coerce
+    .number()
+    .default(getFederalMemberSenateVotesQueryLimitDefault),
+  filter: zod
+    .enum(["all", "yea", "nay", "present", "not-voting"])
+    .default(getFederalMemberSenateVotesQueryFilterDefault),
+});
+
+export const GetFederalMemberSenateVotesResponse = zod.object({
+  votes: zod.array(
+    zod.object({
+      rollCallNumber: zod.number(),
+      date: zod.string(),
+      documentType: zod.string().optional(),
+      documentNumber: zod.string().optional(),
+      voteQuestion: zod.string().optional(),
+      voteTitle: zod.string().optional(),
+      voteResult: zod.string().optional(),
+      voteCast: zod.enum(["Yea", "Nay", "Present", "Not Voting"]),
+    }),
+  ),
+  totalCount: zod.number().optional(),
+  offset: zod.number().optional(),
+});
+
+/**
  * @summary Get committee memberships for a federal member
  */
 export const GetFederalMemberCommitteesParams = zod.object({

@@ -25,6 +25,7 @@ import type {
   GetFederalBillsParams,
   GetFederalMemberBillsParams,
   GetFederalMemberHouseVotesParams,
+  GetFederalMemberSenateVotesParams,
   GetFederalStateMembersParams,
   GetRepresentativesByAddressParams,
   GetStateBillsParams,
@@ -34,6 +35,7 @@ import type {
   HouseVotesListResponse,
   RepresentativesResponse,
   SearchCandidateFinanceParams,
+  SenateVotesListResponse,
   StateBillDetail,
   StateBillsListResponse,
   StateMemberDetail,
@@ -655,6 +657,130 @@ export function useGetFederalMemberHouseVotes<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetFederalMemberHouseVotesQueryOptions(
+    bioguideId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get Senate roll call vote records for a federal member
+ */
+export const getGetFederalMemberSenateVotesUrl = (
+  bioguideId: string,
+  params?: GetFederalMemberSenateVotesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/federal/members/${bioguideId}/senate-votes?${stringifiedParams}`
+    : `/api/federal/members/${bioguideId}/senate-votes`;
+};
+
+export const getFederalMemberSenateVotes = async (
+  bioguideId: string,
+  params?: GetFederalMemberSenateVotesParams,
+  options?: RequestInit,
+): Promise<SenateVotesListResponse> => {
+  return customFetch<SenateVotesListResponse>(
+    getGetFederalMemberSenateVotesUrl(bioguideId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetFederalMemberSenateVotesQueryKey = (
+  bioguideId: string,
+  params?: GetFederalMemberSenateVotesParams,
+) => {
+  return [
+    `/api/federal/members/${bioguideId}/senate-votes`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetFederalMemberSenateVotesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFederalMemberSenateVotes>>,
+  TError = ErrorType<unknown>,
+>(
+  bioguideId: string,
+  params?: GetFederalMemberSenateVotesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFederalMemberSenateVotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetFederalMemberSenateVotesQueryKey(bioguideId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFederalMemberSenateVotes>>
+  > = ({ signal }) =>
+    getFederalMemberSenateVotes(bioguideId, params, {
+      signal,
+      ...requestOptions,
+    });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!bioguideId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFederalMemberSenateVotes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFederalMemberSenateVotesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFederalMemberSenateVotes>>
+>;
+export type GetFederalMemberSenateVotesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get Senate roll call vote records for a federal member
+ */
+
+export function useGetFederalMemberSenateVotes<
+  TData = Awaited<ReturnType<typeof getFederalMemberSenateVotes>>,
+  TError = ErrorType<unknown>,
+>(
+  bioguideId: string,
+  params?: GetFederalMemberSenateVotesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFederalMemberSenateVotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFederalMemberSenateVotesQueryOptions(
     bioguideId,
     params,
     options,

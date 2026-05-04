@@ -159,6 +159,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/HouseVotesListResponse"
 
+  /federal/members/{bioguideId}/senate-votes:
+    get:
+      operationId: getFederalMemberSenateVotes
+      tags: [federal]
+      summary: Get Senate roll call vote records for a federal member
+      parameters:
+        - name: bioguideId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [all, yea, nay, present, not-voting]
+            default: all
+      responses:
+        "200":
+          description: Senate votes list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SenateVotesListResponse"
+
   /federal/members/{bioguideId}/committees:
     get:
       operationId: getFederalMemberCommittees
@@ -665,6 +700,41 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/HouseVoteRecord"
+        totalCount:
+          type: integer
+        offset:
+          type: integer
+      required: [votes]
+
+    SenateVoteRecord:
+      type: object
+      properties:
+        rollCallNumber:
+          type: integer
+        date:
+          type: string
+        documentType:
+          type: string
+        documentNumber:
+          type: string
+        voteQuestion:
+          type: string
+        voteTitle:
+          type: string
+        voteResult:
+          type: string
+        voteCast:
+          type: string
+          enum: [Yea, Nay, Present, "Not Voting"]
+      required: [rollCallNumber, date, voteCast]
+
+    SenateVotesListResponse:
+      type: object
+      properties:
+        votes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SenateVoteRecord"
         totalCount:
           type: integer
         offset:

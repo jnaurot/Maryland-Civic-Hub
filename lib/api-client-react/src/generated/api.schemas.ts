@@ -148,6 +148,33 @@ export interface HouseVotesListResponse {
   offset?: number;
 }
 
+export type SenateVoteRecordVoteCast =
+  (typeof SenateVoteRecordVoteCast)[keyof typeof SenateVoteRecordVoteCast];
+
+export const SenateVoteRecordVoteCast = {
+  Yea: "Yea",
+  Nay: "Nay",
+  Present: "Present",
+  Not_Voting: "Not Voting",
+} as const;
+
+export interface SenateVoteRecord {
+  rollCallNumber: number;
+  date: string;
+  documentType?: string;
+  documentNumber?: string;
+  voteQuestion?: string;
+  voteTitle?: string;
+  voteResult?: string;
+  voteCast: SenateVoteRecordVoteCast;
+}
+
+export interface SenateVotesListResponse {
+  votes: SenateVoteRecord[];
+  totalCount?: number;
+  offset?: number;
+}
+
 export interface CommitteeMember {
   name: string;
   party?: string;
@@ -329,6 +356,23 @@ export type GetFederalMemberHouseVotesFilter =
   (typeof GetFederalMemberHouseVotesFilter)[keyof typeof GetFederalMemberHouseVotesFilter];
 
 export const GetFederalMemberHouseVotesFilter = {
+  all: "all",
+  yea: "yea",
+  nay: "nay",
+  present: "present",
+  "not-voting": "not-voting",
+} as const;
+
+export type GetFederalMemberSenateVotesParams = {
+  offset?: number;
+  limit?: number;
+  filter?: GetFederalMemberSenateVotesFilter;
+};
+
+export type GetFederalMemberSenateVotesFilter =
+  (typeof GetFederalMemberSenateVotesFilter)[keyof typeof GetFederalMemberSenateVotesFilter];
+
+export const GetFederalMemberSenateVotesFilter = {
   all: "all",
   yea: "yea",
   nay: "nay",

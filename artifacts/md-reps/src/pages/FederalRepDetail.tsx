@@ -4,12 +4,14 @@ import {
   useGetFederalMember,
   useGetFederalMemberBills,
   useGetFederalMemberHouseVotes,
+  useGetFederalMemberSenateVotes,
   useGetFederalMemberCommittees,
   useSearchCandidateFinance,
   useGetCandidateFinance,
   getGetFederalMemberQueryKey,
   getGetFederalMemberBillsQueryKey,
   getGetFederalMemberHouseVotesQueryKey,
+  getGetFederalMemberSenateVotesQueryKey,
   getGetFederalMemberCommitteesQueryKey,
   getSearchCandidateFinanceQueryKey,
   getGetCandidateFinanceQueryKey,
@@ -109,23 +111,49 @@ function BillsList({ bioguideId }: { bioguideId: string }) {
   );
 }
 
-function HouseVotesList({ bioguideId }: { bioguideId: string }) {
+function VotesList({ bioguideId, memberChamber }: { bioguideId: string; memberChamber?: string }) {
+  console.log("[VotesList] MOUNTED — bioguideId:", bioguideId, "memberChamber:", memberChamber);
+
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState<"all" | "yea" | "nay" | "present" | "not-voting">("all");
   const limit = 20;
 
-  const { data, isLoading } = useGetFederalMemberHouseVotes(
+  const normalizedChamber = memberChamber?.toLowerCase().trim() ?? "";
+  const isSenator = normalizedChamber === "senate";
+  const isHouse = normalizedChamber === "" || normalizedChamber.includes("house");
+  console.log("[VotesList] isSenator:", isSenator, "isHouse:", isHouse);
+
+  const houseQuery = useGetFederalMemberHouseVotes(
     bioguideId,
     { offset, limit, filter },
     {
       query: {
-        enabled: !!bioguideId,
+        enabled: !!bioguideId && isHouse,
         queryKey: getGetFederalMemberHouseVotesQueryKey(bioguideId, { offset, limit, filter }),
       },
     }
   );
 
-  const filters: { value: typeof filter; label: string }[] = [
+  const senateQuery = useGetFederalMemberSenateVotes(
+    bioguideId,
+    { offset, limit, filter },
+    {
+      query: {
+        enabled: !!bioguideId && isSenator,
+        queryKey: getGetFederalMemberSenateVotesQueryKey(bioguideId, { offset, limit, filter }),
+      },
+    }
+  );
+
+  const data = isSenator ? senateQuery.data : houseQuery.data;
+  const isLoading = isSenator ? senateQuery.isLoading : houseQuery.isLoading;
+  const error = isSenator ? senateQuery.error : houseQuery.error;
+  const status = isSenator ? senateQuery.status : houseQuery.status;
+  const totalCount = data?.totalCount ?? 0;
+  const votes = data?.votes ?? [];
+  console.log("[VotesList] data:", data, "isLoading:", isLoading, "status:", status, "error:", error, "totalCount:", totalCount, "votes.length:", votes.length);
+
+  const voteFilters: { value: typeof filter; label: string }[] = [
     { value: "all", label: "All" },
     { value: "yea", label: "Yea" },
     { value: "nay", label: "Nay" },
@@ -136,7 +164,7 @@ function HouseVotesList({ bioguideId }: { bioguideId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
-        {filters.map((f) => (
+        {voteFilters.map((f) => (
           <Button
             key={f.value}
             size="sm"
@@ -150,21 +178,24 @@ function HouseVotesList({ bioguideId }: { bioguideId: string }) {
 
       {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
-      {!isLoading && data?.votes?.length === 0 && (
+      {!isLoading && votes.length === 0 && (
         <p className="text-muted-foreground text-center py-10">No voting records found.</p>
       )}
 
-      {!isLoading && data?.votes?.map((vote: any) => (
+      {!isLoading && votes.map((vote: any) => (
         <Card key={vote.rollCallNumber} className="overflow-hidden">
           <CardContent className="p-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
-                {vote.legislationNumber && (
-                  <Badge variant="outline" className="text-xs font-mono mb-1">
-                    {vote.legislationType} {vote.legislationNumber}
-                  </Badge>
-                )}
-                <p className="font-medium text-sm line-clamp-2">{vote.voteDescription ?? "Untitled Vote"}</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className="text-xs">{memberChamber ?? "Congress"}</Badge>
+                  {(vote.legislationType || vote.documentType) && (
+                    <Badge variant="secondary" className="text-xs">
+                      {vote.legislationType || vote.documentType} {vote.legislationNumber || vote.documentNumber}
+                    </Badge>
+                  )}
+                </div>
+                <p className="font-medium text-sm line-clamp-2">{vote.voteTitle ?? vote.voteDescription ?? "Untitled Vote"}</p>
                 {vote.voteQuestion && <p className="text-xs text-muted-foreground mt-0.5">{vote.voteQuestion}</p>}
                 <p className="text-xs text-muted-foreground mt-1">{vote.date}</p>
               </div>
@@ -179,11 +210,11 @@ function HouseVotesList({ bioguideId }: { bioguideId: string }) {
         </Card>
       ))}
 
-      {data && (data.totalCount ?? 0) > limit && (
+      {totalCount > limit && (
         <div className="flex justify-between items-center pt-2">
           <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
-          <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount}</span>
-          <Button variant="outline" size="sm" disabled={offset + limit >= (data.totalCount ?? 0)} onClick={() => setOffset(offset + limit)}>Next</Button>
+          <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, totalCount)} of {totalCount}</span>
+          <Button variant="outline" size="sm" disabled={offset + limit >= totalCount} onClick={() => setOffset(offset + limit)}>Next</Button>
         </div>
       )}
     </div>
@@ -370,7 +401,7 @@ export function FederalRepDetail() {
               </TabsList>
 
               <TabsContent value="bills"><BillsList bioguideId={bioguideId} /></TabsContent>
-              <TabsContent value="votes"><HouseVotesList bioguideId={bioguideId} /></TabsContent>
+              <TabsContent value="votes"><VotesList bioguideId={bioguideId} memberChamber={member.chamber} /></TabsContent>
               <TabsContent value="committees"><CommitteesList bioguideId={bioguideId} /></TabsContent>
               <TabsContent value="finance"><FinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>
             </Tabs>
