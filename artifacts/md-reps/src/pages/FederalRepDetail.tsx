@@ -58,7 +58,7 @@ function formatMoney(n?: number) {
   return `$${n}`;
 }
 
-function BillsList({ bioguideId }: { bioguideId: string }) {
+function BillsList({ bioguideId, memberName }: { bioguideId: string; memberName?: string }) {
   const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
   const [offset, setOffset] = useState(0);
   const limit = 20;
@@ -66,6 +66,8 @@ function BillsList({ bioguideId }: { bioguideId: string }) {
   const { data, isLoading } = useGetFederalMemberBills(bioguideId, { type, offset, limit }, {
     query: { enabled: !!bioguideId, queryKey: getGetFederalMemberBillsQueryKey(bioguideId, { type, offset, limit }) }
   });
+
+  const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/federal/${bioguideId}`)}&name=${encodeURIComponent(memberName)}` : "";
 
   return (
     <div className="space-y-4">
@@ -81,7 +83,12 @@ function BillsList({ bioguideId }: { bioguideId: string }) {
       )}
 
       {!isLoading && data?.bills?.map((bill) => (
-        <Link key={bill.id} href={bill.number ? `/bills/federal/${bill.congress}/${bill.number.split(" ")[0].toLowerCase()}/${bill.number.split(" ")[1]}` : "#"}>
+        <Link key={bill.id} href={(() => {
+          if (!bill.number) return "#";
+          const parts = bill.number.split(" ");
+          const base = parts.length >= 2 ? `/bills/federal/${bill.congress}/${parts[0].toLowerCase()}/${parts[1]}` : `/bills/federal/${bill.congress}/${bill.number.toLowerCase()}`;
+          return base + fromParam;
+        })()}>
           <Card className="hover:border-primary transition-colors cursor-pointer">
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-4">
@@ -400,7 +407,7 @@ export function FederalRepDetail() {
                 <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" />Finance</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="bills"><BillsList bioguideId={bioguideId} /></TabsContent>
+              <TabsContent value="bills"><BillsList bioguideId={bioguideId} memberName={member.name} /></TabsContent>
               <TabsContent value="votes"><VotesList bioguideId={bioguideId} memberChamber={member.chamber} /></TabsContent>
               <TabsContent value="committees"><CommitteesList bioguideId={bioguideId} /></TabsContent>
               <TabsContent value="finance"><FinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>

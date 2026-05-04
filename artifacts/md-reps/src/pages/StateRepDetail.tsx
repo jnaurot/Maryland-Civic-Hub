@@ -43,12 +43,14 @@ function formatMoney(n?: number) {
   return `$${n}`;
 }
 
-function StateBillsList({ memberId, jurisdiction }: { memberId: string; jurisdiction?: string }) {
+function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: string; jurisdiction?: string; memberName?: string }) {
   const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
 
   const { data, isLoading } = useGetStateMemberBills(memberId, { type, jurisdiction }, {
     query: { enabled: !!memberId, queryKey: getGetStateMemberBillsQueryKey(memberId, { type, jurisdiction }) }
   });
+
+  const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/state/${memberId}`)}&name=${encodeURIComponent(memberName)}` : "";
 
   return (
     <div className="space-y-4">
@@ -64,7 +66,7 @@ function StateBillsList({ memberId, jurisdiction }: { memberId: string; jurisdic
       )}
 
       {!isLoading && data?.bills?.map((bill) => (
-        <Link key={bill.id} href={`/bills/state/${encodeURIComponent(bill.id)}`}>
+        <Link key={bill.id} href={`/bills/state/${encodeURIComponent(bill.id)}${fromParam}`}>
           <Card className="hover:border-primary transition-colors cursor-pointer">
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-4">
@@ -264,7 +266,7 @@ export function StateRepDetail() {
                 <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" />Finance</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="bills"><StateBillsList memberId={apiMemberId} jurisdiction={member.jurisdiction} /></TabsContent>
+              <TabsContent value="bills"><StateBillsList memberId={apiMemberId} jurisdiction={member.jurisdiction} memberName={member.name} /></TabsContent>
               <TabsContent value="votes"><StateVotesList memberId={apiMemberId} jurisdiction={member.jurisdiction} /></TabsContent>
               <TabsContent value="committees"><CommitteesFromBills /></TabsContent>
               <TabsContent value="finance"><StateFinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>

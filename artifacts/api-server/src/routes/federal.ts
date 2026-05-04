@@ -165,8 +165,8 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
     const billItems = allItems.filter((b: any) => b.type !== null && b.type !== undefined);
     const bills = billItems.map((b: any) => ({
       id: b.number ? `${b.congress}-${b.type?.toLowerCase()}-${b.number}` : String(Math.random()),
-      title: b.title ?? b.officialTitle ?? "Untitled",
-      number: b.number ?? b.billNumber,
+      title: b.title ?? "Untitled",
+      number: b.type && b.number ? `${b.type} ${b.number}` : b.billNumber,
       congress: String(b.congress),
       introducedDate: b.introducedDate,
       latestAction: b.latestAction?.text,

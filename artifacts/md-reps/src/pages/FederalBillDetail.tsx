@@ -1,4 +1,4 @@
-import { useParams, Link } from "wouter";
+import { useParams, Link, useSearch } from "wouter";
 import {
   useGetFederalBillDetail,
   getGetFederalBillDetailQueryKey,
@@ -58,6 +58,10 @@ function partyColor(party?: string) {
 
 export function FederalBillDetail() {
   const { congress, billType, billNumber } = useParams<{ congress: string; billType: string; billNumber: string }>();
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const fromPath = params.get("from") ?? "/bills/federal";
+  const fromName = params.get("name");
 
   const { data: bill, isLoading } = useGetFederalBillDetail(congress, billType, billNumber, {
     query: {
@@ -69,8 +73,8 @@ export function FederalBillDetail() {
   return (
     <div className="min-h-screen bg-muted/20">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Link href="/bills/federal" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
-          <ChevronLeft className="h-4 w-4" /> Back to Federal Bills
+        <Link href={fromPath} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
+          <ChevronLeft className="h-4 w-4" /> {fromName ? `Back to ${fromName}` : "Back to Federal Bills"}
         </Link>
 
         {isLoading ? (

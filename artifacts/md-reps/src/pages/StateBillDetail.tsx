@@ -1,4 +1,4 @@
-import { useParams, Link } from "wouter";
+import { useParams, Link, useSearch } from "wouter";
 import {
   useGetStateBillDetail,
   getGetStateBillDetailQueryKey,
@@ -58,6 +58,10 @@ function partyColor(party?: string) {
 export function StateBillDetail() {
   const { billId } = useParams<{ billId: string }>();
   const apiBillId = encodeURIComponent(billId);
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const fromPath = params.get("from") ?? "/bills/state";
+  const fromName = params.get("name");
 
   const { data: bill, isLoading } = useGetStateBillDetail(apiBillId, {
     query: {
@@ -69,8 +73,8 @@ export function StateBillDetail() {
   return (
     <div className="min-h-screen bg-muted/20">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Link href="/bills/state" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
-          <ChevronLeft className="h-4 w-4" /> Back to State Bills
+        <Link href={fromPath} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
+          <ChevronLeft className="h-4 w-4" /> {fromName ? `Back to ${fromName}` : "Back to State Bills"}
         </Link>
 
         {isLoading ? (
