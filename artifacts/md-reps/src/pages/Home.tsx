@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "wouter";
 import {
   useGetRepresentativesByAddress,
@@ -43,13 +43,6 @@ export function Home() {
       },
     },
   );
-
-  // When address search results arrive, update global selected state to match
-  useEffect(() => {
-    if (data?.stateCode) {
-      setSelectedState(data.stateCode.toUpperCase());
-    }
-  }, [data?.stateCode, setSelectedState]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,7 +242,7 @@ export function Home() {
             </div>
           )}
 
-          {!isLoading && !stateMembersLoading && !error && stateMembersData && (
+          {!isLoading && !stateMembersLoading && !error && showStateMembers && stateMembersData && (
             <div className="space-y-16">
               <div className="mb-8">
                 <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Showing federal representatives for</p>
