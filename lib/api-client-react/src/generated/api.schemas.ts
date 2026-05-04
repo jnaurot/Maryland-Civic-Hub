@@ -41,6 +41,12 @@ export interface RepresentativesResponse {
   stateName?: string;
 }
 
+export interface FederalStateMembersResponse {
+  stateCode: string;
+  stateName: string;
+  representatives: Representative[];
+}
+
 export interface Bill {
   id: string;
   title: string;
@@ -266,6 +272,10 @@ export interface FinanceSearchResponse {
 
 export type GetRepresentativesByAddressParams = {
   address: string;
+};
+
+export type GetFederalStateMembersParams = {
+  state: string;
 };
 
 export type GetFederalMemberBillsParams = {

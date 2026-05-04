@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { useGetRepresentativesByAddress, getGetRepresentativesByAddressQueryKey } from "@workspace/api-client-react";
+import {
+  useGetRepresentativesByAddress,
+  getGetRepresentativesByAddressQueryKey,
+  useGetFederalStateMembers,
+  getGetFederalStateMembersQueryKey,
+} from "@workspace/api-client-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -14,7 +19,7 @@ import type { Representative } from "@workspace/api-client-react";
 
 export function Home() {
   const { selectedState, setSelectedState, lastSearchedAddress, setLastSearchedAddress } = useAppState();
-  const [homeDropdownState, setHomeDropdownState] = useState("");
+  const [homeDropdownState, setHomeDropdownState] = useState(lastSearchedAddress ? "" : (selectedState ?? ""));
   const [addressInput, setAddressInput] = useState(lastSearchedAddress ?? "");
   const [searchAddress, setSearchAddress] = useState(lastSearchedAddress ?? "");
 
@@ -24,6 +29,17 @@ export function Home() {
       query: {
         enabled: !!searchAddress,
         queryKey: getGetRepresentativesByAddressQueryKey({ address: searchAddress }),
+      },
+    },
+  );
+
+  const showStateMembers = !lastSearchedAddress && !!selectedState;
+  const { data: stateMembersData, isLoading: stateMembersLoading } = useGetFederalStateMembers(
+    { state: selectedState || "" },
+    {
+      query: {
+        enabled: showStateMembers,
+        queryKey: getGetFederalStateMembersQueryKey({ state: selectedState || "" }),
       },
     },
   );
@@ -172,10 +188,12 @@ export function Home() {
       {/* Results Section */}
       <div className="flex-grow bg-muted/30">
         <div className="container mx-auto px-4 py-12">
-          {isLoading && (
+          {(isLoading || stateMembersLoading) && (
             <div className="text-center py-20">
               <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-lg text-muted-foreground">Finding your representatives...</p>
+              <p className="text-lg text-muted-foreground">
+                {isLoading ? "Finding your representatives..." : `Loading federal representatives for ${activeStateName}...`}
+              </p>
             </div>
           )}
 
@@ -231,7 +249,25 @@ export function Home() {
             </div>
           )}
 
-          {!isLoading && !error && !data && (
+          {!isLoading && !stateMembersLoading && !error && stateMembersData && (
+            <div className="space-y-16">
+              <div className="mb-8">
+                <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Showing federal representatives for</p>
+                <h2 className="text-2xl font-semibold">{stateMembersData.stateName ?? activeStateName}</h2>
+              </div>
+
+              {stateMembersData.representatives && stateMembersData.representatives.length > 0 && (
+                <section>
+                  <h2 className="text-3xl font-black mb-6 border-b pb-2">Federal Representatives</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {stateMembersData.representatives.map(renderRepCard)}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+
+          {!isLoading && !stateMembersLoading && !error && !data && !stateMembersData && (
             <div className="text-center py-20 text-muted-foreground">
               <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
                 <Search className="h-10 w-10 opacity-50" />

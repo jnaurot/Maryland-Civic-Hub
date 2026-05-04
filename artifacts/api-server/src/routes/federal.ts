@@ -8,6 +8,7 @@ import {
   GetFederalMemberCommitteesParams,
   GetFederalBillsQueryParams,
   GetFederalBillDetailParams,
+  GetFederalStateMembersQueryParams,
 } from "@workspace/api-zod";
 
 const router = Router();
@@ -30,6 +31,80 @@ async function congressFetch(path: string, params: Record<string, string | numbe
   }
   return res.json() as Promise<any>;
 }
+
+function formatCongressName(name: string): string {
+  const parts = name.split(", ");
+  if (parts.length === 2) return `${parts[1]} ${parts[0]}`;
+  return name;
+}
+
+function getLastName(name: string): string {
+  // Congress.gov raw format is "Last, First"; after formatting it's "First Last"
+  if (name.includes(", ")) {
+    return name.split(", ")[0]?.trim().toLowerCase() ?? "";
+  }
+  const parts = name.trim().split(/\s+/);
+  return parts[parts.length - 1]?.toLowerCase() ?? "";
+}
+
+router.get("/federal/state-members", async (req, res) => {
+  const parsed = GetFederalStateMembersQueryParams.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
+
+  const { state } = parsed.data;
+  const stateUpper = state.toUpperCase();
+
+  try {
+    const url = new URL(`${BASE}/member/${stateUpper}`);
+    url.searchParams.set("api_key", CONGRESS_API_KEY!);
+    url.searchParams.set("format", "json");
+    url.searchParams.set("currentMember", "true");
+    url.searchParams.set("limit", "250");
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Congress API error ${response.status}: ${text}`);
+    }
+    const data = await response.json() as any;
+
+    const members: any[] = data.members ?? [];
+    const mapped = members
+      .filter((m: any) => m.terms?.item?.some((t: any) => !t.endYear))
+      .map((m: any) => {
+        const latestTerm = m.terms?.item?.slice(-1)[0];
+        const chamber = latestTerm?.chamber;
+        const isSenate = chamber === "Senate";
+        return {
+          name: formatCongressName(m.name),
+          office: isSenate ? `U.S. Senator for ${stateUpper}` : `U.S. Representative, ${stateUpper}-${m.district ?? ""}`,
+          party: m.partyName,
+          photoUrl: m.depiction?.imageUrl,
+          level: "federal" as const,
+          chamber: isSenate ? "Senate" : "House",
+          bioguideId: m.bioguideId,
+          district: m.district ? String(m.district) : undefined,
+        };
+      });
+
+    // Sort: senators first, then representatives, then last name ascending
+    mapped.sort((a: any, b: any) => {
+      const aIsSenate = a.chamber === "Senate" ? 0 : 1;
+      const bIsSenate = b.chamber === "Senate" ? 0 : 1;
+      if (aIsSenate !== bIsSenate) return aIsSenate - bIsSenate;
+      return getLastName(a.name).localeCompare(getLastName(b.name));
+    });
+
+    return res.json({
+      stateCode: stateUpper,
+      stateName: stateUpper,
+      representatives: mapped,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching federal state members");
+    return res.status(500).json({ error: String(err) });
+  }
+});
 
 router.get("/federal/members/:bioguideId", async (req, res) => {
   const parsed = GetFederalMemberParams.safeParse(req.params);

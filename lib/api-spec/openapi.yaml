@@ -51,6 +51,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/RepresentativesResponse"
 
+  /federal/state-members:
+    get:
+      operationId: getFederalStateMembers
+      tags: [federal]
+      summary: Get all current federal members for a state
+      parameters:
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: State members list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FederalStateMembersResponse"
+
   /federal/members/{bioguideId}:
     get:
       operationId: getFederalMember
@@ -443,6 +462,19 @@ components:
         stateName:
           type: string
       required: [address, representatives]
+
+    FederalStateMembersResponse:
+      type: object
+      properties:
+        stateCode:
+          type: string
+        stateName:
+          type: string
+        representatives:
+          type: array
+          items:
+            $ref: "#/components/schemas/Representative"
+      required: [stateCode, stateName, representatives]
 
     Bill:
       type: object

@@ -45,6 +45,34 @@ export const GetRepresentativesByAddressResponse = zod.object({
 });
 
 /**
+ * @summary Get all current federal members for a state
+ */
+export const GetFederalStateMembersQueryParams = zod.object({
+  state: zod.coerce.string(),
+});
+
+export const GetFederalStateMembersResponse = zod.object({
+  stateCode: zod.string(),
+  stateName: zod.string(),
+  representatives: zod.array(
+    zod.object({
+      name: zod.string(),
+      office: zod.string(),
+      party: zod.string().optional(),
+      phone: zod.string().optional(),
+      photoUrl: zod.string().optional(),
+      level: zod.enum(["federal", "state", "local"]),
+      chamber: zod.string().optional(),
+      urls: zod.array(zod.string()).optional(),
+      emails: zod.array(zod.string()).optional(),
+      bioguideId: zod.string().optional(),
+      openstatesId: zod.string().optional(),
+      division: zod.string().optional(),
+    }),
+  ),
+});
+
+/**
  * @summary Get a federal member's details
  */
 export const GetFederalMemberParams = zod.object({

@@ -18,12 +18,14 @@ import type {
   BillsListResponse,
   CommitteesListResponse,
   FederalMemberDetail,
+  FederalStateMembersResponse,
   FinanceResponse,
   FinanceSearchResponse,
   GetCandidateFinanceParams,
   GetFederalBillsParams,
   GetFederalMemberBillsParams,
   GetFederalMemberVotesParams,
+  GetFederalStateMembersParams,
   GetRepresentativesByAddressParams,
   GetStateBillsParams,
   GetStateMemberBillsParams,
@@ -220,6 +222,109 @@ export function useGetRepresentativesByAddress<
     params,
     options,
   );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get all current federal members for a state
+ */
+export const getGetFederalStateMembersUrl = (
+  params: GetFederalStateMembersParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/federal/state-members?${stringifiedParams}`
+    : `/api/federal/state-members`;
+};
+
+export const getFederalStateMembers = async (
+  params: GetFederalStateMembersParams,
+  options?: RequestInit,
+): Promise<FederalStateMembersResponse> => {
+  return customFetch<FederalStateMembersResponse>(
+    getGetFederalStateMembersUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetFederalStateMembersQueryKey = (
+  params?: GetFederalStateMembersParams,
+) => {
+  return [`/api/federal/state-members`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetFederalStateMembersQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFederalStateMembers>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetFederalStateMembersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFederalStateMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetFederalStateMembersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFederalStateMembers>>
+  > = ({ signal }) =>
+    getFederalStateMembers(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFederalStateMembers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFederalStateMembersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFederalStateMembers>>
+>;
+export type GetFederalStateMembersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get all current federal members for a state
+ */
+
+export function useGetFederalStateMembers<
+  TData = Awaited<ReturnType<typeof getFederalStateMembers>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetFederalStateMembersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFederalStateMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFederalStateMembersQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
