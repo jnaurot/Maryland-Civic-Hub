@@ -1,14 +1,18 @@
 import { Router } from "express";
+import { eq, and, desc, sql } from "drizzle-orm";
+import { XMLParser } from "fast-xml-parser";
+import { db } from "@workspace/db";
+import { houseVotesTable, houseVoteRecordsTable } from "@workspace/db";
 import {
   GetFederalMemberParams,
   GetFederalMemberBillsParams,
   GetFederalMemberBillsQueryParams,
-  GetFederalMemberVotesParams,
-  GetFederalMemberVotesQueryParams,
   GetFederalMemberCommitteesParams,
   GetFederalBillsQueryParams,
   GetFederalBillDetailParams,
   GetFederalStateMembersQueryParams,
+  GetFederalMemberHouseVotesParams,
+  GetFederalMemberHouseVotesQueryParams,
 } from "@workspace/api-zod";
 
 const router = Router();
@@ -180,35 +184,181 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
   }
 });
 
-router.get("/federal/members/:bioguideId/votes", async (req, res) => {
-  const paramsParsed = GetFederalMemberVotesParams.safeParse(req.params);
-  const queryParsed = GetFederalMemberVotesQueryParams.safeParse(req.query);
+function parseClerkVoteXml(xml: string) {
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+  const obj = parser.parse(xml);
+  const meta = obj["rollcall-vote"]["vote-metadata"];
+  const data = obj["rollcall-vote"]["vote-data"]["recorded-vote"] ?? [];
+  const memberVotes = (Array.isArray(data) ? data : [data]).map((rv: any) => ({
+    bioguideId: rv.legislator["@_name-id"],
+    name: rv.legislator["#text"] || rv.legislator,
+    party: rv.legislator["@_party"],
+    state: rv.legislator["@_state"],
+    voteCast: rv.vote,
+  }));
+  return {
+    metadata: {
+      legisNum: meta["legis-num"],
+      voteQuestion: meta["vote-question"],
+      voteResult: meta["vote-result"],
+      voteDescription: meta["vote-desc"],
+      actionDate: meta["action-date"],
+      actionTime: meta["action-time"]?.["@_time-etz"],
+    },
+    memberVotes,
+  };
+}
+
+async function discoverAndIngestVotes(congress: number, session: number) {
+  const url = new URL(`${BASE}/house-vote/${congress}/${session}`);
+  url.searchParams.set("api_key", CONGRESS_API_KEY!);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", "250");
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Congress API error ${res.status}: ${text}`);
+  }
+  const data = await res.json() as any;
+  const votes: any[] = data.houseRollCallVotes ?? [];
+
+  // Batch process in chunks of 5 to avoid overwhelming Clerk server
+  const chunkSize = 5;
+  for (let i = 0; i < votes.length; i += chunkSize) {
+    const chunk = votes.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async (vote: any) => {
+        const existing = await db
+          .select({ id: houseVotesTable.id })
+          .from(houseVotesTable)
+          .where(
+            and(
+              eq(houseVotesTable.congress, vote.congress),
+              eq(houseVotesTable.session, vote.sessionNumber),
+              eq(houseVotesTable.rollCallNumber, vote.rollCallNumber)
+            )
+          )
+          .limit(1);
+
+        if (existing.length > 0) return; // Already ingested
+
+        const xmlUrl = vote.sourceDataURL;
+        if (!xmlUrl) return;
+
+        try {
+          const xmlRes = await fetch(xmlUrl);
+          if (!xmlRes.ok) return;
+          const xml = await xmlRes.text();
+          const parsed = parseClerkVoteXml(xml);
+
+          const [inserted] = await db
+            .insert(houseVotesTable)
+            .values({
+              congress: vote.congress,
+              session: vote.sessionNumber,
+              rollCallNumber: vote.rollCallNumber,
+              year: new Date(vote.startDate).getFullYear(),
+              voteDate: vote.startDate ? new Date(vote.startDate).toISOString().split("T")[0] : null,
+              legislationType: vote.legislationType ?? null,
+              legislationNumber: vote.legislationNumber ?? null,
+              voteQuestion: parsed.metadata.voteQuestion ?? null,
+              voteResult: parsed.metadata.voteResult ?? null,
+              voteDescription: parsed.metadata.voteDescription ?? null,
+              sourceDataUrl: xmlUrl,
+            })
+            .returning({ id: houseVotesTable.id });
+
+          if (inserted && parsed.memberVotes.length > 0) {
+            await db.insert(houseVoteRecordsTable).values(
+              parsed.memberVotes.map((m: any) => ({
+                voteId: inserted.id,
+                bioguideId: m.bioguideId,
+                memberName: m.name,
+                party: m.party ?? null,
+                state: m.state ?? null,
+                voteCast: m.voteCast,
+              }))
+            );
+          }
+        } catch {
+          // Ignore individual vote fetch/parse failures
+        }
+      })
+    );
+  }
+}
+
+router.get("/federal/members/:bioguideId/house-votes", async (req, res) => {
+  const paramsParsed = GetFederalMemberHouseVotesParams.safeParse(req.params);
+  const queryParsed = GetFederalMemberHouseVotesQueryParams.safeParse(req.query);
   if (!paramsParsed.success || !queryParsed.success) return res.status(400).json({ error: "Invalid params" });
 
   const { bioguideId } = paramsParsed.data;
-  const { offset, limit } = queryParsed.data;
+  const { offset, limit, filter } = queryParsed.data;
 
   try {
-    // Congress.gov doesn't have a direct votes-per-member endpoint; use recent votes from their senate/house rolls
-    // We fetch the member's sponsored bills as a proxy, but for real votes we use the member endpoint
-    const data = await congressFetch(`/member/${bioguideId}/sponsored-legislation`, { offset, limit });
-    const items = data.sponsoredLegislation?.item ?? [];
+    // Determine current congress/session for discovery
+    const currentYear = new Date().getFullYear();
+    const currentCongress = Math.floor((currentYear - 1789) / 2) + 1;
+    const currentSession = currentYear % 2 === 1 ? 1 : 2;
 
-    // Try to get actual voting records from Congress API
-    const votes = items.slice(0, limit).map((b: any) => ({
-      billId: b.number ? `${b.congress}-${b.type}-${b.number}` : undefined,
-      billTitle: b.title ?? "Untitled",
-      billNumber: `${b.type ?? ""} ${b.number ?? ""}`.trim(),
-      date: b.latestAction?.actionDate ?? b.introducedDate ?? "",
-      position: "Sponsor",
-      question: "Sponsorship",
-      result: b.latestAction?.text,
-      description: b.title,
-    }));
+    // Check how many total votes exist for this member
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(houseVoteRecordsTable)
+      .innerJoin(houseVotesTable, eq(houseVoteRecordsTable.voteId, houseVotesTable.id))
+      .where(eq(houseVoteRecordsTable.bioguideId, bioguideId));
 
-    return res.json({ votes, totalCount: data.pagination?.count, offset });
+    const totalInDb = Number(countResult[0]?.count ?? 0);
+
+    // If DB has fewer votes than requested, trigger discovery/ingestion
+    if (totalInDb < offset + limit) {
+      await discoverAndIngestVotes(currentCongress, currentSession);
+      // Also try previous session if current session is early
+      if (currentSession === 2) {
+        await discoverAndIngestVotes(currentCongress, 1);
+      }
+    }
+
+    // Build filter condition
+    const filterConditions = [eq(houseVoteRecordsTable.bioguideId, bioguideId)];
+    if (filter === "yea") filterConditions.push(eq(houseVoteRecordsTable.voteCast, "Yea"));
+    if (filter === "nay") filterConditions.push(eq(houseVoteRecordsTable.voteCast, "Nay"));
+    if (filter === "present") filterConditions.push(eq(houseVoteRecordsTable.voteCast, "Present"));
+    if (filter === "not-voting") filterConditions.push(eq(houseVoteRecordsTable.voteCast, "Not Voting"));
+
+    // Fetch paginated votes
+    const votes = await db
+      .select({
+        rollCallNumber: houseVotesTable.rollCallNumber,
+        date: houseVotesTable.voteDate,
+        legislationType: houseVotesTable.legislationType,
+        legislationNumber: houseVotesTable.legislationNumber,
+        voteQuestion: houseVotesTable.voteQuestion,
+        voteDescription: houseVotesTable.voteDescription,
+        voteResult: houseVotesTable.voteResult,
+        voteCast: houseVoteRecordsTable.voteCast,
+      })
+      .from(houseVoteRecordsTable)
+      .innerJoin(houseVotesTable, eq(houseVoteRecordsTable.voteId, houseVotesTable.id))
+      .where(and(...filterConditions))
+      .orderBy(desc(houseVotesTable.voteDate))
+      .limit(limit)
+      .offset(offset);
+
+    // Get total count for pagination
+    const totalCountResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(houseVoteRecordsTable)
+      .innerJoin(houseVotesTable, eq(houseVoteRecordsTable.voteId, houseVotesTable.id))
+      .where(and(...filterConditions));
+
+    const totalCount = Number(totalCountResult[0]?.count ?? 0);
+
+    return res.json({ votes, totalCount, offset });
   } catch (err) {
-    req.log.error({ err }, "Error fetching member votes");
+    req.log.error({ err }, "Error fetching house votes");
     return res.status(500).json({ error: String(err) });
   }
 });

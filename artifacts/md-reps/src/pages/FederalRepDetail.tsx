@@ -3,13 +3,13 @@ import { useParams, Link } from "wouter";
 import {
   useGetFederalMember,
   useGetFederalMemberBills,
-  useGetFederalMemberVotes,
+  useGetFederalMemberHouseVotes,
   useGetFederalMemberCommittees,
   useSearchCandidateFinance,
   useGetCandidateFinance,
   getGetFederalMemberQueryKey,
   getGetFederalMemberBillsQueryKey,
-  getGetFederalMemberVotesQueryKey,
+  getGetFederalMemberHouseVotesQueryKey,
   getGetFederalMemberCommitteesQueryKey,
   getSearchCandidateFinanceQueryKey,
   getGetCandidateFinanceQueryKey,
@@ -31,12 +31,22 @@ function partyColor(party?: string) {
   return "bg-gray-200 text-gray-800";
 }
 
-function voteColor(position?: string) {
-  if (!position) return "text-muted-foreground";
-  const p = position.toLowerCase();
-  if (p.includes("yea") || p.includes("yes") || p.includes("aye")) return "text-green-600 font-semibold";
-  if (p.includes("nay") || p.includes("no")) return "text-red-600 font-semibold";
-  return "text-muted-foreground";
+function voteColor(voteCast?: string) {
+  if (!voteCast) return "text-muted-foreground";
+  const v = voteCast.toLowerCase();
+  if (v === "yea") return "text-green-600 font-semibold";
+  if (v === "nay") return "text-red-600 font-semibold";
+  if (v === "present") return "text-yellow-600 font-semibold";
+  return "text-muted-foreground"; // Not Voting
+}
+
+function voteBadgeClass(voteCast?: string) {
+  if (!voteCast) return "bg-gray-100 text-gray-700";
+  const v = voteCast.toLowerCase();
+  if (v === "yea") return "bg-green-100 text-green-700 border-green-200";
+  if (v === "nay") return "bg-red-100 text-red-700 border-red-200";
+  if (v === "present") return "bg-yellow-100 text-yellow-700 border-yellow-200";
+  return "bg-muted text-muted-foreground border-muted-foreground/20"; // Not Voting
 }
 
 function formatMoney(n?: number) {
@@ -99,36 +109,72 @@ function BillsList({ bioguideId }: { bioguideId: string }) {
   );
 }
 
-function VotesList({ bioguideId }: { bioguideId: string }) {
+function HouseVotesList({ bioguideId }: { bioguideId: string }) {
   const [offset, setOffset] = useState(0);
+  const [filter, setFilter] = useState<"all" | "yea" | "nay" | "present" | "not-voting">("all");
   const limit = 20;
 
-  const { data, isLoading } = useGetFederalMemberVotes(bioguideId, { offset, limit }, {
-    query: { enabled: !!bioguideId, queryKey: getGetFederalMemberVotesQueryKey(bioguideId, { offset, limit }) }
-  });
+  const { data, isLoading } = useGetFederalMemberHouseVotes(
+    bioguideId,
+    { offset, limit, filter },
+    {
+      query: {
+        enabled: !!bioguideId,
+        queryKey: getGetFederalMemberHouseVotesQueryKey(bioguideId, { offset, limit, filter }),
+      },
+    }
+  );
+
+  const filters: { value: typeof filter; label: string }[] = [
+    { value: "all", label: "All" },
+    { value: "yea", label: "Yea" },
+    { value: "nay", label: "Nay" },
+    { value: "present", label: "Present" },
+    { value: "not-voting", label: "Not Voting" },
+  ];
 
   return (
-    <div className="space-y-3">
-      {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>}
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {filters.map((f) => (
+          <Button
+            key={f.value}
+            size="sm"
+            variant={filter === f.value ? "default" : "outline"}
+            onClick={() => { setFilter(f.value); setOffset(0); }}
+          >
+            {f.label}
+          </Button>
+        ))}
+      </div>
+
+      {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
       {!isLoading && data?.votes?.length === 0 && (
         <p className="text-muted-foreground text-center py-10">No voting records found.</p>
       )}
 
-      {!isLoading && data?.votes?.map((vote, i) => (
-        <Card key={i} className="overflow-hidden">
+      {!isLoading && data?.votes?.map((vote: any) => (
+        <Card key={vote.rollCallNumber} className="overflow-hidden">
           <CardContent className="p-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm line-clamp-2">{vote.billTitle}</p>
-                {vote.question && <p className="text-xs text-muted-foreground mt-0.5">{vote.question}</p>}
+                {vote.legislationNumber && (
+                  <Badge variant="outline" className="text-xs font-mono mb-1">
+                    {vote.legislationType} {vote.legislationNumber}
+                  </Badge>
+                )}
+                <p className="font-medium text-sm line-clamp-2">{vote.voteDescription ?? "Untitled Vote"}</p>
+                {vote.voteQuestion && <p className="text-xs text-muted-foreground mt-0.5">{vote.voteQuestion}</p>}
+                <p className="text-xs text-muted-foreground mt-1">{vote.date}</p>
               </div>
               <div className="text-right shrink-0">
-                <p className={`text-sm font-bold ${voteColor(vote.position)}`}>{vote.position}</p>
-                <p className="text-xs text-muted-foreground">{vote.date}</p>
+                <Badge variant="outline" className={`text-xs ${voteBadgeClass(vote.voteCast)}`}>
+                  {vote.voteCast}
+                </Badge>
+                <p className="text-xs text-muted-foreground mt-1">{vote.voteResult}</p>
               </div>
             </div>
-            {vote.result && <p className="text-xs text-muted-foreground mt-2 border-t pt-2">Result: {vote.result}</p>}
           </CardContent>
         </Card>
       ))}
@@ -324,7 +370,7 @@ export function FederalRepDetail() {
               </TabsList>
 
               <TabsContent value="bills"><BillsList bioguideId={bioguideId} /></TabsContent>
-              <TabsContent value="votes"><VotesList bioguideId={bioguideId} /></TabsContent>
+              <TabsContent value="votes"><HouseVotesList bioguideId={bioguideId} /></TabsContent>
               <TabsContent value="committees"><CommitteesList bioguideId={bioguideId} /></TabsContent>
               <TabsContent value="finance"><FinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>
             </Tabs>

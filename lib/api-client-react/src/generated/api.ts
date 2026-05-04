@@ -24,20 +24,20 @@ import type {
   GetCandidateFinanceParams,
   GetFederalBillsParams,
   GetFederalMemberBillsParams,
-  GetFederalMemberVotesParams,
+  GetFederalMemberHouseVotesParams,
   GetFederalStateMembersParams,
   GetRepresentativesByAddressParams,
   GetStateBillsParams,
   GetStateMemberBillsParams,
   GetStateMemberVotesParams,
   HealthStatus,
+  HouseVotesListResponse,
   RepresentativesResponse,
   SearchCandidateFinanceParams,
   StateBillDetail,
   StateBillsListResponse,
   StateMemberDetail,
   StateVotesListResponse,
-  VotesListResponse,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -544,11 +544,11 @@ export function useGetFederalMemberBills<
 }
 
 /**
- * @summary Get voting record for a federal member
+ * @summary Get House roll call vote records for a federal member
  */
-export const getGetFederalMemberVotesUrl = (
+export const getGetFederalMemberHouseVotesUrl = (
   bioguideId: string,
-  params?: GetFederalMemberVotesParams,
+  params?: GetFederalMemberHouseVotesParams,
 ) => {
   const normalizedParams = new URLSearchParams();
 
@@ -561,17 +561,17 @@ export const getGetFederalMemberVotesUrl = (
   const stringifiedParams = normalizedParams.toString();
 
   return stringifiedParams.length > 0
-    ? `/api/federal/members/${bioguideId}/votes?${stringifiedParams}`
-    : `/api/federal/members/${bioguideId}/votes`;
+    ? `/api/federal/members/${bioguideId}/house-votes?${stringifiedParams}`
+    : `/api/federal/members/${bioguideId}/house-votes`;
 };
 
-export const getFederalMemberVotes = async (
+export const getFederalMemberHouseVotes = async (
   bioguideId: string,
-  params?: GetFederalMemberVotesParams,
+  params?: GetFederalMemberHouseVotesParams,
   options?: RequestInit,
-): Promise<VotesListResponse> => {
-  return customFetch<VotesListResponse>(
-    getGetFederalMemberVotesUrl(bioguideId, params),
+): Promise<HouseVotesListResponse> => {
+  return customFetch<HouseVotesListResponse>(
+    getGetFederalMemberHouseVotesUrl(bioguideId, params),
     {
       ...options,
       method: "GET",
@@ -579,25 +579,25 @@ export const getFederalMemberVotes = async (
   );
 };
 
-export const getGetFederalMemberVotesQueryKey = (
+export const getGetFederalMemberHouseVotesQueryKey = (
   bioguideId: string,
-  params?: GetFederalMemberVotesParams,
+  params?: GetFederalMemberHouseVotesParams,
 ) => {
   return [
-    `/api/federal/members/${bioguideId}/votes`,
+    `/api/federal/members/${bioguideId}/house-votes`,
     ...(params ? [params] : []),
   ] as const;
 };
 
-export const getGetFederalMemberVotesQueryOptions = <
-  TData = Awaited<ReturnType<typeof getFederalMemberVotes>>,
+export const getGetFederalMemberHouseVotesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFederalMemberHouseVotes>>,
   TError = ErrorType<unknown>,
 >(
   bioguideId: string,
-  params?: GetFederalMemberVotesParams,
+  params?: GetFederalMemberHouseVotesParams,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberVotes>>,
+      Awaited<ReturnType<typeof getFederalMemberHouseVotes>>,
       TError,
       TData
     >;
@@ -608,12 +608,15 @@ export const getGetFederalMemberVotesQueryOptions = <
 
   const queryKey =
     queryOptions?.queryKey ??
-    getGetFederalMemberVotesQueryKey(bioguideId, params);
+    getGetFederalMemberHouseVotesQueryKey(bioguideId, params);
 
   const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getFederalMemberVotes>>
+    Awaited<ReturnType<typeof getFederalMemberHouseVotes>>
   > = ({ signal }) =>
-    getFederalMemberVotes(bioguideId, params, { signal, ...requestOptions });
+    getFederalMemberHouseVotes(bioguideId, params, {
+      signal,
+      ...requestOptions,
+    });
 
   return {
     queryKey,
@@ -621,37 +624,37 @@ export const getGetFederalMemberVotesQueryOptions = <
     enabled: !!bioguideId,
     ...queryOptions,
   } as UseQueryOptions<
-    Awaited<ReturnType<typeof getFederalMemberVotes>>,
+    Awaited<ReturnType<typeof getFederalMemberHouseVotes>>,
     TError,
     TData
   > & { queryKey: QueryKey };
 };
 
-export type GetFederalMemberVotesQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getFederalMemberVotes>>
+export type GetFederalMemberHouseVotesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFederalMemberHouseVotes>>
 >;
-export type GetFederalMemberVotesQueryError = ErrorType<unknown>;
+export type GetFederalMemberHouseVotesQueryError = ErrorType<unknown>;
 
 /**
- * @summary Get voting record for a federal member
+ * @summary Get House roll call vote records for a federal member
  */
 
-export function useGetFederalMemberVotes<
-  TData = Awaited<ReturnType<typeof getFederalMemberVotes>>,
+export function useGetFederalMemberHouseVotes<
+  TData = Awaited<ReturnType<typeof getFederalMemberHouseVotes>>,
   TError = ErrorType<unknown>,
 >(
   bioguideId: string,
-  params?: GetFederalMemberVotesParams,
+  params?: GetFederalMemberHouseVotesParams,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberVotes>>,
+      Awaited<ReturnType<typeof getFederalMemberHouseVotes>>,
       TError,
       TData
     >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetFederalMemberVotesQueryOptions(
+  const queryOptions = getGetFederalMemberHouseVotesQueryOptions(
     bioguideId,
     params,
     options,

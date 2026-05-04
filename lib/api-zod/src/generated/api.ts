@@ -134,31 +134,39 @@ export const GetFederalMemberBillsResponse = zod.object({
 });
 
 /**
- * @summary Get voting record for a federal member
+ * @summary Get House roll call vote records for a federal member
  */
-export const GetFederalMemberVotesParams = zod.object({
+export const GetFederalMemberHouseVotesParams = zod.object({
   bioguideId: zod.coerce.string(),
 });
 
-export const getFederalMemberVotesQueryOffsetDefault = 0;
-export const getFederalMemberVotesQueryLimitDefault = 20;
+export const getFederalMemberHouseVotesQueryOffsetDefault = 0;
+export const getFederalMemberHouseVotesQueryLimitDefault = 20;
+export const getFederalMemberHouseVotesQueryFilterDefault = `all`;
 
-export const GetFederalMemberVotesQueryParams = zod.object({
-  offset: zod.coerce.number().default(getFederalMemberVotesQueryOffsetDefault),
-  limit: zod.coerce.number().default(getFederalMemberVotesQueryLimitDefault),
+export const GetFederalMemberHouseVotesQueryParams = zod.object({
+  offset: zod.coerce
+    .number()
+    .default(getFederalMemberHouseVotesQueryOffsetDefault),
+  limit: zod.coerce
+    .number()
+    .default(getFederalMemberHouseVotesQueryLimitDefault),
+  filter: zod
+    .enum(["all", "yea", "nay", "present", "not-voting"])
+    .default(getFederalMemberHouseVotesQueryFilterDefault),
 });
 
-export const GetFederalMemberVotesResponse = zod.object({
+export const GetFederalMemberHouseVotesResponse = zod.object({
   votes: zod.array(
     zod.object({
-      billId: zod.string().optional(),
-      billTitle: zod.string(),
-      billNumber: zod.string().optional(),
+      rollCallNumber: zod.number(),
       date: zod.string(),
-      position: zod.string(),
-      question: zod.string().optional(),
-      result: zod.string().optional(),
-      description: zod.string().optional(),
+      legislationType: zod.string().optional(),
+      legislationNumber: zod.string().optional(),
+      voteQuestion: zod.string().optional(),
+      voteDescription: zod.string().optional(),
+      voteResult: zod.string().optional(),
+      voteCast: zod.enum(["Yea", "Nay", "Present", "Not Voting"]),
     }),
   ),
   totalCount: zod.number().optional(),

@@ -121,6 +121,33 @@ export interface VotesListResponse {
   offset?: number;
 }
 
+export type HouseVoteRecordVoteCast =
+  (typeof HouseVoteRecordVoteCast)[keyof typeof HouseVoteRecordVoteCast];
+
+export const HouseVoteRecordVoteCast = {
+  Yea: "Yea",
+  Nay: "Nay",
+  Present: "Present",
+  Not_Voting: "Not Voting",
+} as const;
+
+export interface HouseVoteRecord {
+  rollCallNumber: number;
+  date: string;
+  legislationType?: string;
+  legislationNumber?: string;
+  voteQuestion?: string;
+  voteDescription?: string;
+  voteResult?: string;
+  voteCast: HouseVoteRecordVoteCast;
+}
+
+export interface HouseVotesListResponse {
+  votes: HouseVoteRecord[];
+  totalCount?: number;
+  offset?: number;
+}
+
 export interface CommitteeMember {
   name: string;
   party?: string;
@@ -292,10 +319,22 @@ export const GetFederalMemberBillsType = {
   cosponsored: "cosponsored",
 } as const;
 
-export type GetFederalMemberVotesParams = {
+export type GetFederalMemberHouseVotesParams = {
   offset?: number;
   limit?: number;
+  filter?: GetFederalMemberHouseVotesFilter;
 };
+
+export type GetFederalMemberHouseVotesFilter =
+  (typeof GetFederalMemberHouseVotesFilter)[keyof typeof GetFederalMemberHouseVotesFilter];
+
+export const GetFederalMemberHouseVotesFilter = {
+  all: "all",
+  yea: "yea",
+  nay: "nay",
+  present: "present",
+  "not-voting": "not-voting",
+} as const;
 
 export type GetFederalBillsParams = {
   chamber?: GetFederalBillsChamber;

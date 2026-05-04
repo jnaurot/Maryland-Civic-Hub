@@ -124,11 +124,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/BillsListResponse"
 
-  /federal/members/{bioguideId}/votes:
+  /federal/members/{bioguideId}/house-votes:
     get:
-      operationId: getFederalMemberVotes
+      operationId: getFederalMemberHouseVotes
       tags: [federal]
-      summary: Get voting record for a federal member
+      summary: Get House roll call vote records for a federal member
       parameters:
         - name: bioguideId
           in: path
@@ -145,13 +145,19 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [all, yea, nay, present, not-voting]
+            default: all
       responses:
         "200":
-          description: Votes list
+          description: House votes list
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VotesListResponse"
+                $ref: "#/components/schemas/HouseVotesListResponse"
 
   /federal/members/{bioguideId}/committees:
     get:
@@ -624,6 +630,41 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VoteRecord"
+        totalCount:
+          type: integer
+        offset:
+          type: integer
+      required: [votes]
+
+    HouseVoteRecord:
+      type: object
+      properties:
+        rollCallNumber:
+          type: integer
+        date:
+          type: string
+        legislationType:
+          type: string
+        legislationNumber:
+          type: string
+        voteQuestion:
+          type: string
+        voteDescription:
+          type: string
+        voteResult:
+          type: string
+        voteCast:
+          type: string
+          enum: [Yea, Nay, Present, "Not Voting"]
+      required: [rollCallNumber, date, voteCast]
+
+    HouseVotesListResponse:
+      type: object
+      properties:
+        votes:
+          type: array
+          items:
+            $ref: "#/components/schemas/HouseVoteRecord"
         totalCount:
           type: integer
         offset:
