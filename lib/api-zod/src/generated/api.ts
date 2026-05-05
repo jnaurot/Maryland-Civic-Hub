@@ -42,6 +42,16 @@ export const GetRepresentativesByAddressResponse = zod.object({
   normalizedAddress: zod.string().optional(),
   stateCode: zod.string().optional(),
   stateName: zod.string().optional(),
+  stateSenateDistrict: zod.string().optional(),
+  stateHouseDistrict: zod.string().optional(),
+  stateRepCache: zod
+    .object({
+      source: zod.enum(["db", "openstates"]),
+      stale: zod.boolean(),
+      fetchedAt: zod.string(),
+      refreshFailed: zod.boolean().optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -70,6 +80,14 @@ export const GetFederalStateMembersResponse = zod.object({
       division: zod.string().optional(),
     }),
   ),
+  stateRepCache: zod
+    .object({
+      source: zod.enum(["db", "openstates"]),
+      stale: zod.boolean(),
+      fetchedAt: zod.string(),
+      refreshFailed: zod.boolean().optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -348,17 +366,54 @@ export const GetStateMemberParams = zod.object({
 });
 
 export const GetStateMemberResponse = zod.object({
-  id: zod.string(),
-  name: zod.string(),
-  party: zod.string().optional(),
-  chamber: zod.string().optional(),
-  district: zod.string().optional(),
-  email: zod.string().optional(),
-  phone: zod.string().optional(),
-  photoUrl: zod.string().optional(),
-  openstatesUrl: zod.string().optional(),
-  state: zod.string().optional(),
-  jurisdiction: zod.string().optional(),
+  legislator: zod.object({
+    id: zod.string(),
+    name: zod.string(),
+    party: zod.string().optional(),
+    chamber: zod.string().optional(),
+    district: zod.string().optional(),
+    email: zod.string().optional(),
+    phone: zod.string().optional(),
+    photoUrl: zod.string().optional(),
+    openstatesUrl: zod.string().optional(),
+    state: zod.string().optional(),
+    jurisdiction: zod.string().optional(),
+  }),
+  cache: zod.object({
+    source: zod.enum(["db", "openstates"]),
+    stale: zod.boolean(),
+    fetchedAt: zod.string(),
+    refreshFailed: zod.boolean().optional(),
+  }),
+});
+
+/**
+ * @summary Force refresh a state legislator from OpenStates
+ */
+export const RefreshStateMemberParams = zod.object({
+  memberId: zod.coerce.string(),
+});
+
+export const RefreshStateMemberResponse = zod.object({
+  legislator: zod.object({
+    id: zod.string(),
+    name: zod.string(),
+    party: zod.string().optional(),
+    chamber: zod.string().optional(),
+    district: zod.string().optional(),
+    email: zod.string().optional(),
+    phone: zod.string().optional(),
+    photoUrl: zod.string().optional(),
+    openstatesUrl: zod.string().optional(),
+    state: zod.string().optional(),
+    jurisdiction: zod.string().optional(),
+  }),
+  cache: zod.object({
+    source: zod.enum(["db", "openstates"]),
+    stale: zod.boolean(),
+    fetchedAt: zod.string(),
+    refreshFailed: zod.boolean().optional(),
+  }),
 });
 
 /**

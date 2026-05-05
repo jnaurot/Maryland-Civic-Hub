@@ -289,7 +289,26 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateMemberDetail"
+                $ref: "#/components/schemas/StateMemberDetailResponse"
+
+  /state/members/{memberId}/refresh:
+    post:
+      operationId: refreshStateMember
+      tags: [state]
+      summary: Force refresh a state legislator from OpenStates
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Refreshed state member details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateMemberDetailResponse"
 
   /state/members/{memberId}/bills:
     get:
@@ -528,6 +547,12 @@ components:
           type: string
         stateName:
           type: string
+        stateSenateDistrict:
+          type: string
+        stateHouseDistrict:
+          type: string
+        stateRepCache:
+          $ref: "#/components/schemas/CacheMeta"
       required: [address, representatives]
 
     FederalStateMembersResponse:
@@ -541,6 +566,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Representative"
+        stateRepCache:
+          $ref: "#/components/schemas/CacheMeta"
       required: [stateCode, stateName, representatives]
 
     Bill:
@@ -865,6 +892,29 @@ components:
         jurisdiction:
           type: string
       required: [id, name]
+
+    CacheMeta:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [db, openstates]
+        stale:
+          type: boolean
+        fetchedAt:
+          type: string
+        refreshFailed:
+          type: boolean
+      required: [source, stale, fetchedAt]
+
+    StateMemberDetailResponse:
+      type: object
+      properties:
+        legislator:
+          $ref: "#/components/schemas/StateMemberDetail"
+        cache:
+          $ref: "#/components/schemas/CacheMeta"
+      required: [legislator, cache]
 
     StateBill:
       type: object

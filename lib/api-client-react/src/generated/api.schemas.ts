@@ -33,18 +33,37 @@ export interface Representative {
   division?: string;
 }
 
+export type CacheMetaSource =
+  (typeof CacheMetaSource)[keyof typeof CacheMetaSource];
+
+export const CacheMetaSource = {
+  db: "db",
+  openstates: "openstates",
+} as const;
+
+export interface CacheMeta {
+  source: CacheMetaSource;
+  stale: boolean;
+  fetchedAt: string;
+  refreshFailed?: boolean;
+}
+
 export interface RepresentativesResponse {
   address: string;
   representatives: Representative[];
   normalizedAddress?: string;
   stateCode?: string;
   stateName?: string;
+  stateSenateDistrict?: string;
+  stateHouseDistrict?: string;
+  stateRepCache?: CacheMeta;
 }
 
 export interface FederalStateMembersResponse {
   stateCode: string;
   stateName: string;
   representatives: Representative[];
+  stateRepCache?: CacheMeta;
 }
 
 export interface Bill {
@@ -223,6 +242,11 @@ export interface StateMemberDetail {
   openstatesUrl?: string;
   state?: string;
   jurisdiction?: string;
+}
+
+export interface StateMemberDetailResponse {
+  legislator: StateMemberDetail;
+  cache: CacheMeta;
 }
 
 export interface StateBill {

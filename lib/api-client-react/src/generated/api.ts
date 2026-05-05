@@ -5,10 +5,13 @@
  * Civic App API
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
@@ -38,7 +41,7 @@ import type {
   SenateVotesListResponse,
   StateBillDetail,
   StateBillsListResponse,
-  StateMemberDetail,
+  StateMemberDetailResponse,
   StateVotesListResponse,
 } from "./api.schemas";
 
@@ -1107,11 +1110,14 @@ export const getGetStateMemberUrl = (memberId: string) => {
 export const getStateMember = async (
   memberId: string,
   options?: RequestInit,
-): Promise<StateMemberDetail> => {
-  return customFetch<StateMemberDetail>(getGetStateMemberUrl(memberId), {
-    ...options,
-    method: "GET",
-  });
+): Promise<StateMemberDetailResponse> => {
+  return customFetch<StateMemberDetailResponse>(
+    getGetStateMemberUrl(memberId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
 };
 
 export const getGetStateMemberQueryKey = (memberId: string) => {
@@ -1184,6 +1190,93 @@ export function useGetStateMember<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Force refresh a state legislator from OpenStates
+ */
+export const getRefreshStateMemberUrl = (memberId: string) => {
+  return `/api/state/members/${memberId}/refresh`;
+};
+
+export const refreshStateMember = async (
+  memberId: string,
+  options?: RequestInit,
+): Promise<StateMemberDetailResponse> => {
+  return customFetch<StateMemberDetailResponse>(
+    getRefreshStateMemberUrl(memberId),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getRefreshStateMemberMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshStateMember>>,
+    TError,
+    { memberId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof refreshStateMember>>,
+  TError,
+  { memberId: string },
+  TContext
+> => {
+  const mutationKey = ["refreshStateMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof refreshStateMember>>,
+    { memberId: string }
+  > = (props) => {
+    const { memberId } = props ?? {};
+
+    return refreshStateMember(memberId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RefreshStateMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof refreshStateMember>>
+>;
+
+export type RefreshStateMemberMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Force refresh a state legislator from OpenStates
+ */
+export const useRefreshStateMember = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshStateMember>>,
+    TError,
+    { memberId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof refreshStateMember>>,
+  TError,
+  { memberId: string },
+  TContext
+> => {
+  return useMutation(getRefreshStateMemberMutationOptions(options));
+};
 
 /**
  * @summary Get bills sponsored or cosponsored by a state member
