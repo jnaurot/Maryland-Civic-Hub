@@ -8,6 +8,12 @@ import {
 } from "@workspace/api-zod";
 import { getStateLegislator, refreshStateLegislator, isRateLimited, recordRateLimit } from "../lib/stateLegislatorCache";
 
+async function checkRateLimited() {
+  if (await isRateLimited()) {
+    throw new Error("OpenStates rate limit active. Please try again later.");
+  }
+}
+
 const router = Router();
 
 const OPENSTATES_API_KEY = process.env.OPENSTATES_API_KEY;
@@ -15,7 +21,7 @@ const BASE = "https://v3.openstates.org";
 
 async function openStatesFetch(path: string, params: Record<string, string | number> = {}) {
   if (!OPENSTATES_API_KEY) throw new Error("OPENSTATES_API_KEY not configured");
-  if (isRateLimited()) throw new Error("OpenStates rate limit active. Please try again later.");
+  await checkRateLimited();
   const url = new URL(`${BASE}${path}`);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
@@ -26,7 +32,7 @@ async function openStatesFetch(path: string, params: Record<string, string | num
   if (!res.ok) {
     const text = await res.text();
     if (res.status === 429 || (res.status === 403 && text.toLowerCase().includes("rate"))) {
-      recordRateLimit();
+      await recordRateLimit(res.status, text);
     }
     throw new Error(`OpenStates API error ${res.status}: ${text}`);
   }

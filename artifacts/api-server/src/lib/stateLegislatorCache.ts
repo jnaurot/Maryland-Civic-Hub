@@ -1,5 +1,5 @@
 import { eq, and, inArray, sql } from "drizzle-orm";
-import { db, stateLegislatorsTable } from "@workspace/db";
+import { db, stateLegislatorsTable, providerStatusTable } from "@workspace/db";
 
 const OPENSTATES_API_KEY = process.env.OPENSTATES_API_KEY;
 const OPENSTATES_BASE = "https://v3.openstates.org";
@@ -7,27 +7,76 @@ const OPENSTATES_BASE = "https://v3.openstates.org";
 // Stale threshold: 7 days
 const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Rate-limit protection state (module-level, per-process)
-let rateLimitBlockedUntil = 0;
-let rateLimitCooldownMs = 60_000; // start with 60s
-const MAX_COOLDOWN_MS = 60 * 60 * 1000; // cap at 1 hour
+// In-memory fallback for when DB is unavailable; keeps process warm
+let memBlockedUntil = 0;
 
-export function isRateLimited(): boolean {
-  return Date.now() < rateLimitBlockedUntil;
+const PROVIDER_KEY = "openstates";
+
+async function loadProviderStatus(): Promise<typeof providerStatusTable.$inferSelect | undefined> {
+  const rows = await db.select().from(providerStatusTable).where(eq(providerStatusTable.provider, PROVIDER_KEY)).limit(1);
+  return rows[0];
 }
 
-export function recordRateLimit() {
-  rateLimitBlockedUntil = Date.now() + rateLimitCooldownMs;
-  rateLimitCooldownMs = Math.min(rateLimitCooldownMs * 2, MAX_COOLDOWN_MS);
+export async function isRateLimited(): Promise<boolean> {
+  try {
+    const status = await loadProviderStatus();
+    if (status?.blockedUntil) {
+      return new Date().getTime() < new Date(status.blockedUntil).getTime();
+    }
+    return false;
+  } catch {
+    return Date.now() < memBlockedUntil;
+  }
 }
 
-function resetRateLimit() {
-  rateLimitCooldownMs = 60_000;
-  rateLimitBlockedUntil = 0;
+export async function recordRateLimit(statusCode: number, reason?: string) {
+  const blockedUntil = new Date(Date.now() + 60_000);
+  try {
+    await db.insert(providerStatusTable).values({
+      provider: PROVIDER_KEY,
+      blockedUntil,
+      reason: reason ?? `HTTP ${statusCode}`,
+      lastStatusCode: statusCode,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: providerStatusTable.provider,
+      set: {
+        blockedUntil,
+        reason: reason ?? `HTTP ${statusCode}`,
+        lastStatusCode: statusCode,
+        updatedAt: new Date(),
+      },
+    });
+  } catch {
+    memBlockedUntil = Date.now() + 60_000;
+  }
+}
+
+async function resetRateLimit() {
+  try {
+    await db.insert(providerStatusTable).values({
+      provider: PROVIDER_KEY,
+      blockedUntil: null,
+      reason: null,
+      lastStatusCode: null,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: providerStatusTable.provider,
+      set: {
+        blockedUntil: null,
+        reason: null,
+        lastStatusCode: null,
+        updatedAt: new Date(),
+      },
+    });
+  } catch {
+    memBlockedUntil = 0;
+  }
 }
 
 async function openStatesFetch(path: string, params: Record<string, string | number> = {}) {
   if (!OPENSTATES_API_KEY) throw new Error("OPENSTATES_API_KEY not configured");
+  if (await isRateLimited()) throw new Error("OpenStates rate limit active. Please try again later.");
   const url = new URL(`${OPENSTATES_BASE}${path}`);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
@@ -37,16 +86,12 @@ async function openStatesFetch(path: string, params: Record<string, string | num
   });
   if (!res.ok) {
     const text = await res.text();
-    // Treat 429 and 403 (often used for rate limits) as rate-limit events
     if (res.status === 429 || (res.status === 403 && text.toLowerCase().includes("rate"))) {
-      recordRateLimit();
+      await recordRateLimit(res.status, text);
     }
     throw new Error(`OpenStates API error ${res.status}: ${text}`);
   }
-  // Successful call resets backoff gradually (only if we were already unblocked)
-  if (rateLimitBlockedUntil === 0 && rateLimitCooldownMs > 60_000) {
-    rateLimitCooldownMs = Math.max(rateLimitCooldownMs / 2, 60_000);
-  }
+  await resetRateLimit();
   return res.json() as Promise<any>;
 }
 
@@ -116,7 +161,7 @@ export async function getStateLegislator(
       };
     }
     // Stale cache exists. Try to refresh if not rate limited.
-    if (!isRateLimited()) {
+    if (!(await isRateLimited())) {
       try {
         const fresh = await fetchStateLegislatorFromOpenStates(id);
         return {
@@ -149,7 +194,7 @@ export async function getStateLegislator(
   }
 
   // Cache miss
-  if (isRateLimited()) {
+  if (await isRateLimited()) {
     throw new Error("OpenStates rate limit active. No cached data available.");
   }
 
@@ -172,7 +217,7 @@ export async function refreshStateLegislator(
   id: string,
   logger?: any
 ): Promise<LegislatorResult> {
-  if (isRateLimited()) {
+  if (await isRateLimited()) {
     const rows = await db
       .select()
       .from(stateLegislatorsTable)
@@ -276,7 +321,7 @@ export async function fetchAndCacheDistrictLegislators(
   houseDistrict: string | null,
   logger?: any
 ): Promise<Array<ReturnType<typeof mapOpenStatesPerson>>> {
-  if (isRateLimited()) {
+  if (await isRateLimited()) {
     logger?.warn({ jurisdiction }, "Skipping OpenStates district fetch due to active rate limit");
     return [];
   }
@@ -362,7 +407,6 @@ export async function getDistrictLegislators(
   cache: CacheMeta;
 }> {
   // Try to find cached legislators matching the districts
-  const conditions = [eq(stateLegislatorsTable.jurisdiction, jurisdiction.toLowerCase())];
   const districts: string[] = [];
   if (senateDistrict) districts.push(senateDistrict);
   if (houseDistrict) districts.push(houseDistrict);
@@ -404,10 +448,12 @@ export async function getDistrictLegislators(
 }
 
 /** Expose rate-limit status for health/debug endpoints if needed. */
-export function getRateLimitStatus() {
+export async function getRateLimitStatus() {
+  const status = await loadProviderStatus();
   return {
-    blocked: isRateLimited(),
-    blockedUntil: new Date(rateLimitBlockedUntil).toISOString(),
-    currentCooldownMs: rateLimitCooldownMs,
+    blocked: status?.blockedUntil ? new Date().getTime() < new Date(status.blockedUntil).getTime() : false,
+    blockedUntil: status?.blockedUntil?.toISOString() ?? null,
+    reason: status?.reason ?? null,
+    lastStatusCode: status?.lastStatusCode ?? null,
   };
 }
