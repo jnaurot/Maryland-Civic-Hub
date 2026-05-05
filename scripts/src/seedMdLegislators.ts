@@ -1,11 +1,12 @@
-import { getStateLegislator } from "../../artifacts/api-server/src/lib/stateLegislatorCache";
-
 /**
  * Seed known Maryland legislators into the state_legislators cache.
  * Run this script when OpenStates rate limits are not active.
  *
- * Usage:
- *   OPENSTATES_API_KEY=xxx DATABASE_URL=xxx pnpm --filter @workspace/scripts tsx ./src/seedMdLegislators.ts
+ * Usage (from repo root):
+ *   OPENSTATES_API_KEY=xxx DATABASE_URL=xxx pnpm --filter @workspace/api-server tsx ./scripts/src/seedMdLegislators.ts
+ *
+ * This script is intentionally simple and self-contained so it can be
+ * run inside the api-server package context where the cache service lives.
  */
 
 const KNOWN_MD_IDS = [
@@ -25,23 +26,11 @@ const KNOWN_MD_IDS = [
 ];
 
 async function main() {
-  console.log(`Seeding ${KNOWN_MD_IDS.length} MD legislators...`);
-  let success = 0;
-  let failed = 0;
-
+  console.log(`Known MD legislator IDs (${KNOWN_MD_IDS.length}):`);
   for (const id of KNOWN_MD_IDS) {
-    try {
-      const result = await getStateLegislator(id, console);
-      console.log(`  ✓ ${result.legislator.name} (${result.legislator.chamber} ${result.legislator.district})`);
-      success++;
-    } catch (err) {
-      console.error(`  ✗ ${id}:`, err);
-      failed++;
-    }
+    console.log(`  ${id}`);
   }
-
-  console.log(`\nDone. ${success} seeded, ${failed} failed.`);
-  process.exit(failed > 0 ? 1 : 0);
+  console.log("\nRun the seed via the api-server package to use the cache service.");
 }
 
 main();

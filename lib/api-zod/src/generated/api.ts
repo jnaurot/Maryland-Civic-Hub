@@ -145,6 +145,8 @@ export const GetFederalMemberBillsResponse = zod.object({
       url: zod.string().optional(),
       status: zod.string().optional(),
       chamber: zod.string().optional(),
+      policyArea: zod.string().optional(),
+      subjects: zod.array(zod.string()).optional(),
     }),
   ),
   totalCount: zod.number().optional(),
@@ -290,6 +292,8 @@ export const GetFederalBillsResponse = zod.object({
       url: zod.string().optional(),
       status: zod.string().optional(),
       chamber: zod.string().optional(),
+      policyArea: zod.string().optional(),
+      subjects: zod.array(zod.string()).optional(),
     }),
   ),
   totalCount: zod.number().optional(),
@@ -356,6 +360,8 @@ export const GetFederalBillDetailResponse = zod.object({
     )
     .optional(),
   url: zod.string().optional(),
+  policyArea: zod.string().optional(),
+  subjects: zod.array(zod.string()).optional(),
 });
 
 /**
@@ -453,6 +459,7 @@ export const GetStateMemberBillsResponse = zod.object({
       latestActionDate: zod.string().optional(),
       sponsors: zod.array(zod.string()).optional(),
       url: zod.string().optional(),
+      subjects: zod.array(zod.string()).optional(),
     }),
   ),
   totalCount: zod.number().optional(),
@@ -527,6 +534,7 @@ export const GetStateBillsResponse = zod.object({
       latestActionDate: zod.string().optional(),
       sponsors: zod.array(zod.string()).optional(),
       url: zod.string().optional(),
+      subjects: zod.array(zod.string()).optional(),
     }),
   ),
   totalCount: zod.number().optional(),
@@ -602,6 +610,7 @@ export const GetStateBillDetailResponse = zod.object({
     )
     .optional(),
   url: zod.string().optional(),
+  subjects: zod.array(zod.string()).optional(),
 });
 
 /**

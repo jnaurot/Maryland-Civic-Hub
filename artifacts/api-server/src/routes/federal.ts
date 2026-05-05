@@ -742,6 +742,8 @@ router.get("/federal/bills", async (req, res) => {
       url: b.url,
       status: b.latestAction?.text,
       chamber: b.originChamber,
+      policyArea: b.policyArea?.name ?? undefined,
+      subjects: b.subjects?.count ? undefined : undefined,
     }));
 
     // Ensure most current first by latest action date
@@ -823,6 +825,8 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
       committees,
       actions,
       url: bill.url,
+      policyArea: bill.policyArea?.name ?? undefined,
+      subjects: undefined,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching bill detail");

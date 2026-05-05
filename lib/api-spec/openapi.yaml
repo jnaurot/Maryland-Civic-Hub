@@ -597,6 +597,12 @@ components:
           type: string
         chamber:
           type: string
+        policyArea:
+          type: string
+        subjects:
+          type: array
+          items:
+            type: string
       required: [id, title]
 
     BillDetail:
@@ -638,6 +644,12 @@ components:
             $ref: "#/components/schemas/BillAction"
         url:
           type: string
+        policyArea:
+          type: string
+        subjects:
+          type: array
+          items:
+            type: string
       required: [id, title]
 
     SponsorInfo:
@@ -943,6 +955,10 @@ components:
             type: string
         url:
           type: string
+        subjects:
+          type: array
+          items:
+            type: string
       required: [id, title]
 
     StateBillDetail:
@@ -986,6 +1002,10 @@ components:
             $ref: "#/components/schemas/StateBillVote"
         url:
           type: string
+        subjects:
+          type: array
+          items:
+            type: string
       required: [id, title]
 
     StateBillVote:

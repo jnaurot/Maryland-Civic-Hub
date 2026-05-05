@@ -53,6 +53,7 @@ function mapStateBill(b: any) {
     latestActionDate: latestAction?.date,
     sponsors: b.sponsorships?.map((s: any) => s.name ?? "") ?? [],
     url: b.openstates_url,
+    subjects: Array.isArray(b.subject) ? b.subject : (b.subject ? [b.subject] : undefined),
   };
 }
 
@@ -350,6 +351,7 @@ router.get("/state/bills/:billId", async (req, res) => {
         absentCount: v.counts?.find((c: any) => c.option === "absent")?.value,
       })) ?? [],
       url: data.openstates_url,
+      subjects: Array.isArray(data.subject) ? data.subject : (data.subject ? [data.subject] : undefined),
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching state bill detail");

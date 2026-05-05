@@ -78,6 +78,8 @@ export interface Bill {
   url?: string;
   status?: string;
   chamber?: string;
+  policyArea?: string;
+  subjects?: string[];
 }
 
 export interface SponsorInfo {
@@ -115,6 +117,8 @@ export interface BillDetail {
   committees?: CommitteeRef[];
   actions?: BillAction[];
   url?: string;
+  policyArea?: string;
+  subjects?: string[];
 }
 
 export interface BillsListResponse {
@@ -261,6 +265,7 @@ export interface StateBill {
   latestActionDate?: string;
   sponsors?: string[];
   url?: string;
+  subjects?: string[];
 }
 
 export interface StateBillVote {
@@ -287,6 +292,7 @@ export interface StateBillDetail {
   actions?: BillAction[];
   votes?: StateBillVote[];
   url?: string;
+  subjects?: string[];
 }
 
 export interface StateBillsListResponse {
