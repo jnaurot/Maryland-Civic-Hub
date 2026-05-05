@@ -48,10 +48,10 @@ export default defineConfig({
       },
     },
     output: {
-      workspace: apiZodSrc,
+      workspace: path.resolve(apiZodSrc, "generated"),
       client: "zod",
-      target: "generated",
-      mode: "split",
+      target: ".",
+      mode: "single",
       clean: true,
       prettier: true,
       override: {

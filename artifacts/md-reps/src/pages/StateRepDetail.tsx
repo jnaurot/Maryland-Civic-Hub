@@ -28,12 +28,22 @@ function partyColor(party?: string) {
   return "bg-gray-200 text-gray-800";
 }
 
-function voteColor(position?: string) {
-  if (!position) return "text-muted-foreground";
-  const p = position.toLowerCase();
-  if (p.includes("yes") || p.includes("yea") || p.includes("aye")) return "text-green-600 font-semibold";
-  if (p.includes("no") || p.includes("nay")) return "text-red-600 font-semibold";
+function voteColor(voteCast?: string) {
+  if (!voteCast) return "text-muted-foreground";
+  const v = voteCast.toLowerCase();
+  if (v === "yea") return "text-green-600 font-semibold";
+  if (v === "nay") return "text-red-600 font-semibold";
+  if (v === "present") return "text-yellow-600 font-semibold";
   return "text-muted-foreground";
+}
+
+function voteBadgeClass(voteCast?: string) {
+  if (!voteCast) return "bg-gray-100 text-gray-700";
+  const v = voteCast.toLowerCase();
+  if (v === "yea") return "bg-green-100 text-green-700 border-green-200";
+  if (v === "nay") return "bg-red-100 text-red-700 border-red-200";
+  if (v === "present") return "bg-yellow-100 text-yellow-700 border-yellow-200";
+  return "bg-muted text-muted-foreground border-muted-foreground/20";
 }
 
 function formatMoney(n?: number) {
@@ -45,9 +55,11 @@ function formatMoney(n?: number) {
 
 function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: string; jurisdiction?: string; memberName?: string }) {
   const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
+  const [offset, setOffset] = useState(0);
+  const limit = 20;
 
-  const { data, isLoading } = useGetStateMemberBills(memberId, { type, jurisdiction }, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberBillsQueryKey(memberId, { type, jurisdiction }) }
+  const { data, isLoading } = useGetStateMemberBills(memberId, { type, jurisdiction, offset, limit }, {
+    query: { enabled: !!memberId, queryKey: getGetStateMemberBillsQueryKey(memberId, { type, jurisdiction, offset, limit }) }
   });
 
   const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/state/${memberId}`)}&name=${encodeURIComponent(memberName)}` : "";
@@ -55,8 +67,8 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
   return (
     <div className="flex flex-col h-full">
       <div className="flex gap-2 shrink-0 pb-4">
-        <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => setType("sponsored")}>Sponsored</Button>
-        <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => setType("cosponsored")}>Cosponsored</Button>
+        <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => { setType("sponsored"); setOffset(0); }}>Sponsored</Button>
+        <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
@@ -86,17 +98,50 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
           </Link>
         ))}
       </div>
+
+      {data && (data.totalCount ?? 0) > limit && (
+        <div className="flex justify-between items-center pt-6 shrink-0">
+          <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
+          <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount}</span>
+          <Button variant="outline" size="sm" disabled={offset + limit >= (data.totalCount ?? 0)} onClick={() => setOffset(offset + limit)}>Next</Button>
+        </div>
+      )}
     </div>
   );
 }
 
 function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdiction?: string }) {
-  const { data, isLoading } = useGetStateMemberVotes(memberId, { jurisdiction }, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberVotesQueryKey(memberId, { jurisdiction }) }
+  const [offset, setOffset] = useState(0);
+  const [filter, setFilter] = useState<"all" | "yea" | "nay" | "present" | "not-voting">("all");
+  const limit = 20;
+
+  const { data, isLoading } = useGetStateMemberVotes(memberId, { jurisdiction, offset, limit, filter }, {
+    query: { enabled: !!memberId, queryKey: getGetStateMemberVotesQueryKey(memberId, { jurisdiction, offset, limit, filter }) }
   });
+
+  const voteFilters: { value: typeof filter; label: string }[] = [
+    { value: "all", label: "All" },
+    { value: "yea", label: "Yea" },
+    { value: "nay", label: "Nay" },
+    { value: "present", label: "Present" },
+    { value: "not-voting", label: "Not Voting" },
+  ];
 
   return (
     <div className="flex flex-col h-full">
+      <div className="flex flex-wrap gap-2 shrink-0 pb-4">
+        {voteFilters.map((f) => (
+          <Button
+            key={f.value}
+            size="sm"
+            variant={filter === f.value ? "default" : "outline"}
+            onClick={() => { setFilter(f.value); setOffset(0); }}
+          >
+            {f.label}
+          </Button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
         {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>}
 
@@ -122,6 +167,14 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
           </Card>
         ))}
       </div>
+
+      {data && (data.totalCount ?? 0) > limit && (
+        <div className="flex justify-between items-center pt-6 shrink-0">
+          <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
+          <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount}</span>
+          <Button variant="outline" size="sm" disabled={offset + limit >= (data.totalCount ?? 0)} onClick={() => setOffset(offset + limit)}>Next</Button>
+        </div>
+      )}
     </div>
   );
 }

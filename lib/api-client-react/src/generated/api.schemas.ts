@@ -282,6 +282,8 @@ export interface StateVoteRecord {
 
 export interface StateVotesListResponse {
   votes: StateVoteRecord[];
+  totalCount?: number;
+  offset?: number;
 }
 
 export type DonorEntryType =
@@ -398,6 +400,8 @@ export const GetFederalBillsChamber = {
 export type GetStateMemberBillsParams = {
   type?: GetStateMemberBillsType;
   jurisdiction?: string;
+  offset?: number;
+  limit?: number;
 };
 
 export type GetStateMemberBillsType =
@@ -410,7 +414,21 @@ export const GetStateMemberBillsType = {
 
 export type GetStateMemberVotesParams = {
   jurisdiction?: string;
+  offset?: number;
+  limit?: number;
+  filter?: GetStateMemberVotesFilter;
 };
+
+export type GetStateMemberVotesFilter =
+  (typeof GetStateMemberVotesFilter)[keyof typeof GetStateMemberVotesFilter];
+
+export const GetStateMemberVotesFilter = {
+  all: "all",
+  yea: "yea",
+  nay: "nay",
+  present: "present",
+  "not-voting": "not-voting",
+} as const;
 
 export type GetStateBillsParams = {
   chamber?: GetStateBillsChamber;

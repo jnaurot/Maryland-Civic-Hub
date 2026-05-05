@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { normalizeVoteCast } from "@workspace/db";
 import {
   GetStateMemberBillsQueryParams,
   GetStateMemberVotesQueryParams,
@@ -82,14 +83,16 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
   if (!memberId || !queryParsed.success) return res.status(400).json({ error: "Invalid params" });
 
   try {
-    const { jurisdiction } = queryParsed.data;
+    const { jurisdiction, offset, limit } = queryParsed.data;
+    const page = Math.floor(offset / limit) + 1;
     const data = await openStatesFetch("/bills", {
       jurisdiction,
-      per_page: 20,
+      per_page: limit,
+      page,
       sponsor_id: memberId,
     });
     const bills = (data.results ?? []).map(mapStateBill);
-    return res.json({ bills, totalCount: data.pagination?.total_items });
+    return res.json({ bills, totalCount: data.pagination?.total_items, offset });
   } catch (err) {
     req.log.error({ err }, "Error fetching state member bills");
     return res.status(500).json({ error: String(err) });
@@ -102,15 +105,18 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
   if (!memberId || !queryParsed.success) return res.status(400).json({ error: "Invalid params" });
 
   try {
-    const { jurisdiction } = queryParsed.data;
-    // OpenStates v3 has no standalone /votes endpoint — fetch bills the person sponsored
-    // and include vote records, then extract their individual vote
-    // include=votes must be passed as a repeated query param
+    const { jurisdiction, offset, limit, filter } = queryParsed.data;
+
+    // OpenStates v3 has no standalone /votes endpoint and limits requests to
+    // 10/min. We fetch a single page of bills per request and extract votes.
+    const billPage = Math.floor(offset / limit) + 1;
     const billUrl = new URL(`${BASE}/bills`);
     billUrl.searchParams.set("jurisdiction", jurisdiction);
     billUrl.searchParams.set("sponsor_id", memberId);
-    billUrl.searchParams.set("per_page", "20");
+    billUrl.searchParams.set("per_page", String(limit));
+    billUrl.searchParams.set("page", String(billPage));
     billUrl.searchParams.append("include", "votes");
+
     const billRes = await fetch(billUrl.toString(), {
       headers: { "X-API-KEY": OPENSTATES_API_KEY! },
     });
@@ -120,17 +126,17 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
     }
     const data = await billRes.json() as any;
 
-    const votes: any[] = [];
+    const allVotes: any[] = [];
     for (const bill of data.results ?? []) {
       for (const voteEvent of bill.votes ?? []) {
         const individualVotes: any[] = voteEvent.votes ?? [];
-        // Match by voter ID or by "Mr. President" (Senate president pro tempore)
         const personalVote = individualVotes.find(
           (vv: any) => vv.voter?.id === memberId || vv.voter_name === "Mr. President"
         );
-        const position = personalVote?.option ?? null;
-        if (position) {
-          votes.push({
+        const rawPosition = personalVote?.option ?? null;
+        if (rawPosition) {
+          const position = normalizeVoteCast(rawPosition);
+          allVotes.push({
             billId: bill.id,
             billTitle: bill.title ?? "Untitled",
             billIdentifier: bill.identifier,
@@ -138,12 +144,33 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
             position,
             result: voteEvent.result,
           });
-          break;
         }
       }
     }
 
-    return res.json({ votes });
+    // Sort by date descending (most recent first)
+    allVotes.sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    // Apply filter
+    let filteredVotes = allVotes;
+    if (filter === "yea") filteredVotes = allVotes.filter((v) => v.position === "Yea");
+    else if (filter === "nay") filteredVotes = allVotes.filter((v) => v.position === "Nay");
+    else if (filter === "present") filteredVotes = allVotes.filter((v) => v.position === "Present");
+    else if (filter === "not-voting") filteredVotes = allVotes.filter((v) => v.position === "Not Voting");
+
+    // totalCount here is the count of filtered votes on this bill page.
+    // OpenStates does not expose vote-level pagination, so we cannot know the
+    // global total across all bills. We synthesise a total so the UI allows
+    // navigation to the next bill page when there might be more votes.
+    const pageFilteredCount = filteredVotes.length;
+    const hasMoreBills = (data.pagination?.max_page ?? 1) > billPage;
+    const totalCount = pageFilteredCount + (hasMoreBills ? limit : 0);
+
+    return res.json({ votes: filteredVotes, totalCount, offset });
   } catch (err) {
     req.log.error({ err }, "Error fetching state member votes");
     return res.status(500).json({ error: String(err) });

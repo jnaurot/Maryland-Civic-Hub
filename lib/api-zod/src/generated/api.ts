@@ -370,6 +370,8 @@ export const GetStateMemberBillsParams = zod.object({
 
 export const getStateMemberBillsQueryTypeDefault = `sponsored`;
 export const getStateMemberBillsQueryJurisdictionDefault = `md`;
+export const getStateMemberBillsQueryOffsetDefault = 0;
+export const getStateMemberBillsQueryLimitDefault = 20;
 
 export const GetStateMemberBillsQueryParams = zod.object({
   type: zod
@@ -378,6 +380,8 @@ export const GetStateMemberBillsQueryParams = zod.object({
   jurisdiction: zod.coerce
     .string()
     .default(getStateMemberBillsQueryJurisdictionDefault),
+  offset: zod.coerce.number().default(getStateMemberBillsQueryOffsetDefault),
+  limit: zod.coerce.number().default(getStateMemberBillsQueryLimitDefault),
 });
 
 export const GetStateMemberBillsResponse = zod.object({
@@ -408,11 +412,19 @@ export const GetStateMemberVotesParams = zod.object({
 });
 
 export const getStateMemberVotesQueryJurisdictionDefault = `md`;
+export const getStateMemberVotesQueryOffsetDefault = 0;
+export const getStateMemberVotesQueryLimitDefault = 20;
+export const getStateMemberVotesQueryFilterDefault = `all`;
 
 export const GetStateMemberVotesQueryParams = zod.object({
   jurisdiction: zod.coerce
     .string()
     .default(getStateMemberVotesQueryJurisdictionDefault),
+  offset: zod.coerce.number().default(getStateMemberVotesQueryOffsetDefault),
+  limit: zod.coerce.number().default(getStateMemberVotesQueryLimitDefault),
+  filter: zod
+    .enum(["all", "yea", "nay", "present", "not-voting"])
+    .default(getStateMemberVotesQueryFilterDefault),
 });
 
 export const GetStateMemberVotesResponse = zod.object({
@@ -426,6 +438,8 @@ export const GetStateMemberVotesResponse = zod.object({
       result: zod.string().optional(),
     }),
   ),
+  totalCount: zod.number().optional(),
+  offset: zod.number().optional(),
 });
 
 /**
