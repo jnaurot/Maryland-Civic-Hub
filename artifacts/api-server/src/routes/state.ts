@@ -65,6 +65,19 @@ router.get("/state/members/:memberId", async (req, res) => {
   }
 });
 
+router.post("/state/members/:memberId/refresh", async (req, res) => {
+  const memberId = decodeURIComponent(req.params.memberId);
+  if (!memberId) return res.status(400).json({ error: "memberId required" });
+
+  try {
+    const result = await refreshStateLegislator(memberId, req.log);
+    return res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Error refreshing state member");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
 router.get("/state/members/:memberId/bills", async (req, res) => {
   const memberId = decodeURIComponent(req.params.memberId);
   const queryParsed = GetStateMemberBillsQueryParams.safeParse(req.query);
