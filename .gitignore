@@ -2,6 +2,7 @@
 
 .env
 script
+dev*.sh
 
 # compiled output
 dist

@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { XMLParser } from "fast-xml-parser";
-import { db } from "@workspace/db";
+import { db, normalizeVoteCast } from "@workspace/db";
 import { houseVotesTable, houseVoteRecordsTable, senateRollCallVotesTable, senatorVotePositionsTable, senatorIdentitiesTable } from "@workspace/db";
 import {
   GetFederalMemberParams,
@@ -205,7 +205,7 @@ function parseClerkVoteXml(xml: string) {
     name: rv.legislator["#text"] || rv.legislator,
     party: rv.legislator["@_party"],
     state: rv.legislator["@_state"],
-    voteCast: rv.vote,
+    voteCast: normalizeVoteCast(rv.vote),
   }));
   return {
     metadata: {
@@ -288,7 +288,7 @@ async function discoverAndIngestVotes(congress: number, session: number) {
                 memberName: m.name,
                 party: m.party ?? null,
                 state: m.state ?? null,
-                voteCast: m.voteCast,
+                voteCast: normalizeVoteCast(m.voteCast),
               }))
             );
           }
@@ -367,7 +367,12 @@ router.get("/federal/members/:bioguideId/house-votes", async (req, res) => {
 
     const totalCount = Number(totalCountResult[0]?.count ?? 0);
 
-    return res.json({ votes, totalCount, offset });
+    const normalizedVotes = votes.map((v) => ({
+      ...v,
+      voteCast: normalizeVoteCast(v.voteCast),
+    }));
+
+    return res.json({ votes: normalizedVotes, totalCount, offset });
   } catch (err) {
     req.log.error({ err }, "Error fetching house votes");
     return res.status(500).json({ error: String(err) });
@@ -485,7 +490,7 @@ function parseSenateVoteXml(xml: string): {
       name: `${m.first_name} ${m.last_name}`,
       state: m.state,
       party: m.party,
-      voteCast: m.vote_cast,
+      voteCast: normalizeVoteCast(m.vote_cast),
     })),
   };
 }
@@ -538,7 +543,7 @@ async function ingestSenateVotes(congress: number, session: number) {
                 senatorName: m.name,
                 state: m.state ?? null,
                 party: m.party ?? null,
-                voteCast: m.voteCast,
+                voteCast: normalizeVoteCast(m.voteCast),
                 bioguideId: null,
               }))
             );
@@ -610,7 +615,7 @@ router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
     if (filter === "yea") filterConditions.push(eq(senatorVotePositionsTable.voteCast, "Yea"));
     if (filter === "nay") filterConditions.push(eq(senatorVotePositionsTable.voteCast, "Nay"));
     if (filter === "present") filterConditions.push(eq(senatorVotePositionsTable.voteCast, "Present"));
-    if (filter === "not-voting") filterConditions.push(eq(senatorVotePositionsTable.voteCast, "Absent"));
+    if (filter === "not-voting") filterConditions.push(inArray(senatorVotePositionsTable.voteCast, ["Not Voting", "Absent"]));
 
     const votes = await db
       .select({
@@ -632,7 +637,7 @@ router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
 
     const normalized = votes.map((v) => ({
       ...v,
-      voteCast: v.voteCast === "Absent" ? "Not Voting" : v.voteCast,
+      voteCast: normalizeVoteCast(v.voteCast),
     }));
 
     const totalCountResult = await db
