@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import {
   useGetRepresentativesByAddress,
@@ -32,6 +32,13 @@ export function Home() {
       },
     },
   );
+
+  // When address search results arrive, update global selected state to match
+  useEffect(() => {
+    if (data?.stateCode) {
+      setSelectedState(data.stateCode.toUpperCase());
+    }
+  }, [data?.stateCode, setSelectedState]);
 
   const showStateMembers = !lastSearchedAddress && !!selectedState;
   const { data: stateMembersData, isLoading: stateMembersLoading } = useGetFederalStateMembers(
@@ -119,9 +126,9 @@ export function Home() {
   };
 
   return (
-    <div className="min-h-[100dvh] flex flex-col">
+    <div className="h-[calc(100vh-4rem)] flex flex-col">
       {/* Hero Section */}
-      <div className="bg-primary text-primary-foreground py-20 px-4 relative overflow-hidden">
+      <div className="bg-primary text-primary-foreground py-20 px-4 relative overflow-hidden shrink-0">
         {flagUrl && (
           <div
             className="absolute inset-0 opacity-10 bg-cover bg-center"
@@ -178,9 +185,29 @@ export function Home() {
         </div>
       </div>
 
-      {/* Results Section */}
-      <div className="flex-grow bg-muted/30">
-        <div className="container mx-auto px-4 py-12">
+      {/* Results header - address search */}
+      {!isLoading && !error && data && (data.normalizedAddress || data.stateName) && (
+        <div className="shrink-0 bg-muted/30">
+          <div className="container mx-auto px-4 pt-6">
+            <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Showing results for</p>
+            <h2 className="text-2xl font-semibold">{data.normalizedAddress ?? activeStateName}</h2>
+          </div>
+        </div>
+      )}
+
+      {/* Results header - state members */}
+      {!isLoading && !stateMembersLoading && !error && showStateMembers && stateMembersData && (
+        <div className="shrink-0 bg-muted/30">
+          <div className="container mx-auto px-4 pt-6">
+            <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Showing federal representatives for</p>
+            <h2 className="text-2xl font-semibold">{stateMembersData.stateName ?? activeStateName}</h2>
+          </div>
+        </div>
+      )}
+
+      {/* Scrollable results */}
+      <div className="flex-1 overflow-y-auto bg-muted/30">
+        <div className="container mx-auto px-4 pt-6 pb-12">
           {(isLoading || stateMembersLoading) && (
             <div className="text-center py-20">
               <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -199,13 +226,6 @@ export function Home() {
 
           {!isLoading && !error && data && (
             <div className="space-y-16">
-              {(data.normalizedAddress || data.stateName) && (
-                <div className="mb-8">
-                  <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Showing results for</p>
-                  <h2 className="text-2xl font-semibold">{data.normalizedAddress ?? activeStateName}</h2>
-                </div>
-              )}
-
               {(() => {
                 const { federal, state, local } = groupReps(data.representatives ?? []);
                 return (
@@ -244,11 +264,6 @@ export function Home() {
 
           {!isLoading && !stateMembersLoading && !error && showStateMembers && stateMembersData && (
             <div className="space-y-16">
-              <div className="mb-8">
-                <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Showing federal representatives for</p>
-                <h2 className="text-2xl font-semibold">{stateMembersData.stateName ?? activeStateName}</h2>
-              </div>
-
               {stateMembersData.representatives && stateMembersData.representatives.length > 0 && (
                 <section>
                   <h2 className="text-3xl font-black mb-6 border-b pb-2">Federal Representatives</h2>

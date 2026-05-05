@@ -70,45 +70,47 @@ function BillsList({ bioguideId, memberName }: { bioguideId: string; memberName?
   const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/federal/${bioguideId}`)}&name=${encodeURIComponent(memberName)}` : "";
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
+    <div className="flex flex-col h-full">
+      <div className="flex gap-2 shrink-0 pb-4">
         <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => { setType("sponsored"); setOffset(0); }}>Sponsored</Button>
         <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
       </div>
 
-      {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+        {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
-      {!isLoading && data?.bills?.length === 0 && (
-        <p className="text-muted-foreground text-center py-10">No bills found.</p>
-      )}
+        {!isLoading && data?.bills?.length === 0 && (
+          <p className="text-muted-foreground text-center py-10">No bills found.</p>
+        )}
 
-      {!isLoading && data?.bills?.map((bill) => (
-        <Link key={bill.id} href={(() => {
-          if (!bill.number) return "#";
-          const parts = bill.number.split(" ");
-          const base = parts.length >= 2 ? `/bills/federal/${bill.congress}/${parts[0].toLowerCase()}/${parts[1]}` : `/bills/federal/${bill.congress}/${bill.number.toLowerCase()}`;
-          return base + fromParam;
-        })()}>
-          <Card className="hover:border-primary transition-colors cursor-pointer">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    {bill.number && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.number}</Badge>}
-                    {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
+        {!isLoading && data?.bills?.map((bill) => (
+          <Link key={bill.id} href={(() => {
+            if (!bill.number) return "#";
+            const parts = bill.number.split(" ");
+            const base = parts.length >= 2 ? `/bills/federal/${bill.congress}/${parts[0].toLowerCase()}/${parts[1]}` : `/bills/federal/${bill.congress}/${bill.number.toLowerCase()}`;
+            return base + fromParam;
+          })()}>
+            <Card className="hover:border-primary transition-colors cursor-pointer">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      {bill.number && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.number}</Badge>}
+                      {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
+                    </div>
+                    <p className="font-medium text-sm line-clamp-2">{bill.title}</p>
+                    {bill.latestAction && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{bill.latestAction}</p>}
                   </div>
-                  <p className="font-medium text-sm line-clamp-2">{bill.title}</p>
-                  {bill.latestAction && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{bill.latestAction}</p>}
+                  {bill.introducedDate && <span className="text-xs text-muted-foreground shrink-0">{bill.introducedDate}</span>}
                 </div>
-                {bill.introducedDate && <span className="text-xs text-muted-foreground shrink-0">{bill.introducedDate}</span>}
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      ))}
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
 
       {data && (data.totalCount ?? 0) > limit && (
-        <div className="flex justify-between items-center pt-2">
+        <div className="flex justify-between items-center pt-6 shrink-0">
           <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
           <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount}</span>
           <Button variant="outline" size="sm" disabled={offset + limit >= (data.totalCount ?? 0)} onClick={() => setOffset(offset + limit)}>Next</Button>
@@ -169,8 +171,8 @@ function VotesList({ bioguideId, memberChamber }: { bioguideId: string; memberCh
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col h-full">
+      <div className="flex flex-wrap gap-2 shrink-0 pb-4">
         {voteFilters.map((f) => (
           <Button
             key={f.value}
@@ -183,42 +185,44 @@ function VotesList({ bioguideId, memberChamber }: { bioguideId: string; memberCh
         ))}
       </div>
 
-      {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+        {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
-      {!isLoading && votes.length === 0 && (
-        <p className="text-muted-foreground text-center py-10">No voting records found.</p>
-      )}
+        {!isLoading && votes.length === 0 && (
+          <p className="text-muted-foreground text-center py-10">No voting records found.</p>
+        )}
 
-      {!isLoading && votes.map((vote: any) => (
-        <Card key={vote.rollCallNumber} className="overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className="text-xs">{memberChamber ?? "Congress"}</Badge>
-                  {(vote.legislationType || vote.documentType) && (
-                    <Badge variant="secondary" className="text-xs">
-                      {vote.legislationType || vote.documentType} {vote.legislationNumber || vote.documentNumber}
-                    </Badge>
-                  )}
+        {!isLoading && votes.map((vote: any) => (
+          <Card key={vote.rollCallNumber} className="overflow-hidden">
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="outline" className="text-xs">{memberChamber ?? "Congress"}</Badge>
+                    {(vote.legislationType || vote.documentType) && (
+                      <Badge variant="secondary" className="text-xs">
+                        {vote.legislationType || vote.documentType} {vote.legislationNumber || vote.documentNumber}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="font-medium text-sm line-clamp-2">{vote.voteTitle ?? vote.voteDescription ?? "Untitled Vote"}</p>
+                  {vote.voteQuestion && <p className="text-xs text-muted-foreground mt-0.5">{vote.voteQuestion}</p>}
+                  <p className="text-xs text-muted-foreground mt-1">{vote.date}</p>
                 </div>
-                <p className="font-medium text-sm line-clamp-2">{vote.voteTitle ?? vote.voteDescription ?? "Untitled Vote"}</p>
-                {vote.voteQuestion && <p className="text-xs text-muted-foreground mt-0.5">{vote.voteQuestion}</p>}
-                <p className="text-xs text-muted-foreground mt-1">{vote.date}</p>
+                <div className="text-right shrink-0">
+                  <Badge variant="outline" className={`text-xs ${voteBadgeClass(vote.voteCast)}`}>
+                    {vote.voteCast}
+                  </Badge>
+                  <p className="text-xs text-muted-foreground mt-1">{vote.voteResult}</p>
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <Badge variant="outline" className={`text-xs ${voteBadgeClass(vote.voteCast)}`}>
-                  {vote.voteCast}
-                </Badge>
-                <p className="text-xs text-muted-foreground mt-1">{vote.voteResult}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
       {totalCount > limit && (
-        <div className="flex justify-between items-center pt-2">
+        <div className="flex justify-between items-center pt-6 shrink-0">
           <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
           <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, totalCount)} of {totalCount}</span>
           <Button variant="outline" size="sm" disabled={offset + limit >= totalCount} onClick={() => setOffset(offset + limit)}>Next</Button>
@@ -233,39 +237,43 @@ function CommitteesList({ bioguideId }: { bioguideId: string }) {
     query: { enabled: !!bioguideId, queryKey: getGetFederalMemberCommitteesQueryKey(bioguideId) }
   });
 
-  if (isLoading) return <div className="space-y-4">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}</div>;
-
-  if (!data?.committees?.length) return <p className="text-muted-foreground text-center py-10">No committee memberships found.</p>;
-
   return (
-    <div className="space-y-4">
-      {data.committees.map((c, i) => (
-        <Card key={i}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">{c.name}</CardTitle>
-            <div className="flex gap-2">
-              {c.chamber && <Badge variant="outline" className="text-xs">{c.chamber}</Badge>}
-              {c.rank && <Badge variant="secondary" className="text-xs">{c.rank}</Badge>}
-            </div>
-          </CardHeader>
-          {c.members && c.members.length > 0 && (
-            <CardContent className="pt-0">
-              <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Members</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                {c.members.map((m, j) => (
-                  <div key={j} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
-                    <RepNameLink name={m.name} bioguideId={m.bioguideId} />
-                    <div className="flex gap-1">
-                      {m.party && <Badge className={`text-xs ${partyColor(m.party)}`}>{m.party?.charAt(0)}</Badge>}
-                      {m.state && <span className="text-muted-foreground text-xs">{m.state}</span>}
-                    </div>
-                  </div>
-                ))}
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+        {isLoading && <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}</div>}
+
+        {!isLoading && !data?.committees?.length && (
+          <p className="text-muted-foreground text-center py-10">No committee memberships found.</p>
+        )}
+
+        {!isLoading && data?.committees?.map((c, i) => (
+          <Card key={i}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">{c.name}</CardTitle>
+              <div className="flex gap-2">
+                {c.chamber && <Badge variant="outline" className="text-xs">{c.chamber}</Badge>}
+                {c.rank && <Badge variant="secondary" className="text-xs">{c.rank}</Badge>}
               </div>
-            </CardContent>
-          )}
-        </Card>
-      ))}
+            </CardHeader>
+            {c.members && c.members.length > 0 && (
+              <CardContent className="pt-0">
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Members</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                  {c.members.map((m, j) => (
+                    <div key={j} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                      <RepNameLink name={m.name} bioguideId={m.bioguideId} />
+                      <div className="flex gap-1">
+                        {m.party && <Badge className={`text-xs ${partyColor(m.party)}`}>{m.party?.charAt(0)}</Badge>}
+                        {m.state && <span className="text-muted-foreground text-xs">{m.state}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -281,68 +289,72 @@ function FinanceTab({ name, state }: { name: string; state?: string }) {
     query: { enabled: !!candidateId, queryKey: getGetCandidateFinanceQueryKey(candidateId ?? "", {}) }
   });
 
-  if (searchLoading || financeLoading) return <div className="space-y-4">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>;
-
-  if (!candidateId) return (
-    <div className="text-center py-10 text-muted-foreground">
-      <DollarSign className="h-10 w-10 mx-auto mb-3 opacity-30" />
-      <p>No FEC campaign finance records found for this member.</p>
-    </div>
-  );
-
   return (
-    <div className="space-y-6">
-      {financeData && (
-        <div className="grid grid-cols-3 gap-4">
-          {[
-            { label: "Total Raised", value: formatMoney(financeData.totalRaised) },
-            { label: "Total Spent", value: formatMoney(financeData.totalSpent) },
-            { label: "Cash on Hand", value: formatMoney(financeData.cashOnHand) },
-          ].map((item) => (
-            <Card key={item.label}>
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-black">{item.value}</p>
-                <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-6 pr-1">
+        {(searchLoading || financeLoading) && <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>}
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {financeData?.topDonors && financeData.topDonors.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Top Donors</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-2">
-              {financeData.topDonors.map((d, i) => (
-                <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                  <div>
-                    <p className="text-sm font-medium">{d.name}</p>
-                    {d.type && <p className="text-xs text-muted-foreground capitalize">{d.type}</p>}
-                  </div>
-                  <span className="text-sm font-bold text-green-700">{formatMoney(d.total)}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+        {!searchLoading && !financeLoading && !candidateId && (
+          <div className="text-center py-10 text-muted-foreground">
+            <DollarSign className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p>No FEC campaign finance records found for this member.</p>
+          </div>
         )}
 
-        {financeData?.topIndustries && financeData.topIndustries.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Top Industries</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-2">
-              {financeData.topIndustries.map((d, i) => (
-                <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                  <p className="text-sm font-medium">{d.name}</p>
-                  <span className="text-sm font-bold text-green-700">{formatMoney(d.total)}</span>
-                </div>
+        {!searchLoading && !financeLoading && candidateId && financeData && (
+          <>
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: "Total Raised", value: formatMoney(financeData.totalRaised) },
+                { label: "Total Spent", value: formatMoney(financeData.totalSpent) },
+                { label: "Cash on Hand", value: formatMoney(financeData.cashOnHand) },
+              ].map((item) => (
+                <Card key={item.label}>
+                  <CardContent className="p-4 text-center">
+                    <p className="text-2xl font-black">{item.value}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
+                  </CardContent>
+                </Card>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              {financeData?.topDonors && financeData.topDonors.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Top Donors</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 space-y-2">
+                    {financeData.topDonors.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                        <div>
+                          <p className="text-sm font-medium">{d.name}</p>
+                          {d.type && <p className="text-xs text-muted-foreground capitalize">{d.type}</p>}
+                        </div>
+                        <span className="text-sm font-bold text-green-700">{formatMoney(d.total)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {financeData?.topIndustries && financeData.topIndustries.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Top Industries</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 space-y-2">
+                    {financeData.topIndustries.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                        <p className="text-sm font-medium">{d.name}</p>
+                        <span className="text-sm font-bold text-green-700">{formatMoney(d.total)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -357,9 +369,9 @@ export function FederalRepDetail() {
   });
 
   return (
-    <div className="min-h-screen bg-muted/20">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-muted/20">
+      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
+        <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors shrink-0">
           <ChevronLeft className="h-4 w-4" /> Back to search
         </Link>
 
@@ -370,7 +382,7 @@ export function FederalRepDetail() {
           </div>
         ) : member ? (
           <>
-            <Card className="mb-6">
+            <Card className="mb-6 shrink-0">
               <CardContent className="p-6">
                 <div className="flex flex-col sm:flex-row items-start gap-6">
                   <Avatar className="h-24 w-24 border-2 border-muted shrink-0">
@@ -399,18 +411,18 @@ export function FederalRepDetail() {
               </CardContent>
             </Card>
 
-            <Tabs defaultValue="bills">
-              <TabsList className="w-full mb-6">
+            <Tabs defaultValue="bills" className="flex flex-col flex-1 min-h-0">
+              <TabsList className="w-full mb-6 shrink-0">
                 <TabsTrigger value="bills" className="flex-1 gap-1.5"><FileText className="h-4 w-4" />Bills</TabsTrigger>
                 <TabsTrigger value="votes" className="flex-1 gap-1.5"><Vote className="h-4 w-4" />Votes</TabsTrigger>
                 <TabsTrigger value="committees" className="flex-1 gap-1.5"><Users className="h-4 w-4" />Committees</TabsTrigger>
                 <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" />Finance</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="bills"><BillsList bioguideId={bioguideId} memberName={member.name} /></TabsContent>
-              <TabsContent value="votes"><VotesList bioguideId={bioguideId} memberChamber={member.chamber} /></TabsContent>
-              <TabsContent value="committees"><CommitteesList bioguideId={bioguideId} /></TabsContent>
-              <TabsContent value="finance"><FinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>
+              <TabsContent value="bills" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><BillsList bioguideId={bioguideId} memberName={member.name} /></TabsContent>
+              <TabsContent value="votes" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><VotesList bioguideId={bioguideId} memberChamber={member.chamber} /></TabsContent>
+              <TabsContent value="committees" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><CommitteesList bioguideId={bioguideId} /></TabsContent>
+              <TabsContent value="finance" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><FinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>
             </Tabs>
           </>
         ) : (

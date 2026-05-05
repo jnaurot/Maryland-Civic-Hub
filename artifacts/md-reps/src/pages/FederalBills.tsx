@@ -28,14 +28,14 @@ export function FederalBills() {
   };
 
   return (
-    <div className="min-h-screen bg-muted/20">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="mb-8">
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-muted/20">
+      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
+        <div className="mb-8 shrink-0">
           <h1 className="text-4xl font-black mb-2">Federal Bills</h1>
           <p className="text-muted-foreground">Bills currently being considered in the U.S. Congress</p>
         </div>
 
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center gap-4 mb-6 shrink-0">
           <Select value={chamber} onValueChange={handleChamberChange}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Filter by chamber" />
@@ -51,20 +51,20 @@ export function FederalBills() {
           )}
         </div>
 
-        {isLoading && (
-          <div className="space-y-3">
-            {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
-          </div>
-        )}
+        <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-3">
+          {isLoading && (
+            <div className="space-y-3">
+              {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+            </div>
+          )}
 
-        {!isLoading && data?.bills?.length === 0 && (
-          <div className="text-center py-20 text-muted-foreground">
-            <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p>No bills found.</p>
-          </div>
-        )}
+          {!isLoading && data?.bills?.length === 0 && (
+            <div className="text-center py-20 text-muted-foreground">
+              <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
+              <p>No bills found.</p>
+            </div>
+          )}
 
-        <div className="space-y-3">
           {!isLoading && data?.bills?.map((bill) => {
             const parts = bill.number?.split(" ") ?? [];
             const billType = parts[0]?.toLowerCase() ?? "";
@@ -105,7 +105,7 @@ export function FederalBills() {
         </div>
 
         {data && (data.totalCount ?? 0) > limit && (
-          <div className="flex justify-between items-center pt-6">
+          <div className="flex justify-between items-center pt-6 shrink-0">
             <Button variant="outline" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
             <span className="text-sm text-muted-foreground">
               {offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount?.toLocaleString()}

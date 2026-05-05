@@ -53,37 +53,39 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
   const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/state/${memberId}`)}&name=${encodeURIComponent(memberName)}` : "";
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
+    <div className="flex flex-col h-full">
+      <div className="flex gap-2 shrink-0 pb-4">
         <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => setType("sponsored")}>Sponsored</Button>
         <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => setType("cosponsored")}>Cosponsored</Button>
       </div>
 
-      {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+        {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
-      {!isLoading && data?.bills?.length === 0 && (
-        <p className="text-muted-foreground text-center py-10">No bills found.</p>
-      )}
+        {!isLoading && data?.bills?.length === 0 && (
+          <p className="text-muted-foreground text-center py-10">No bills found.</p>
+        )}
 
-      {!isLoading && data?.bills?.map((bill) => (
-        <Link key={bill.id} href={`/bills/state/${encodeURIComponent(bill.id)}${fromParam}`}>
-          <Card className="hover:border-primary transition-colors cursor-pointer">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    {bill.identifier && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.identifier}</Badge>}
-                    {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
+        {!isLoading && data?.bills?.map((bill) => (
+          <Link key={bill.id} href={`/bills/state/${encodeURIComponent(bill.id)}${fromParam}`}>
+            <Card className="hover:border-primary transition-colors cursor-pointer">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      {bill.identifier && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.identifier}</Badge>}
+                      {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
+                    </div>
+                    <p className="font-medium text-sm line-clamp-2">{bill.title}</p>
+                    {bill.latestAction && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{bill.latestAction}</p>}
                   </div>
-                  <p className="font-medium text-sm line-clamp-2">{bill.title}</p>
-                  {bill.latestAction && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{bill.latestAction}</p>}
+                  {bill.introducedDate && <span className="text-xs text-muted-foreground shrink-0">{bill.introducedDate}</span>}
                 </div>
-                {bill.introducedDate && <span className="text-xs text-muted-foreground shrink-0">{bill.introducedDate}</span>}
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      ))}
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
@@ -93,29 +95,33 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
     query: { enabled: !!memberId, queryKey: getGetStateMemberVotesQueryKey(memberId, { jurisdiction }) }
   });
 
-  if (isLoading) return <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>;
-
-  if (!data?.votes?.length) return <p className="text-muted-foreground text-center py-10">No voting records found.</p>;
-
   return (
-    <div className="space-y-3">
-      {data.votes.map((vote, i) => (
-        <Card key={i}>
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                {vote.billIdentifier && <Badge variant="outline" className="text-xs font-mono mb-1">{vote.billIdentifier}</Badge>}
-                <p className="font-medium text-sm line-clamp-2">{vote.billTitle}</p>
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+        {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>}
+
+        {!isLoading && !data?.votes?.length && (
+          <p className="text-muted-foreground text-center py-10">No voting records found.</p>
+        )}
+
+        {!isLoading && data?.votes?.map((vote, i) => (
+          <Card key={i}>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  {vote.billIdentifier && <Badge variant="outline" className="text-xs font-mono mb-1">{vote.billIdentifier}</Badge>}
+                  <p className="font-medium text-sm line-clamp-2">{vote.billTitle}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className={`text-sm font-bold ${voteColor(vote.position)}`}>{vote.position}</p>
+                  <p className="text-xs text-muted-foreground">{vote.date}</p>
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <p className={`text-sm font-bold ${voteColor(vote.position)}`}>{vote.position}</p>
-                <p className="text-xs text-muted-foreground">{vote.date}</p>
-              </div>
-            </div>
-            {vote.result && <p className="text-xs text-muted-foreground mt-2 border-t pt-2">Result: {vote.result}</p>}
-          </CardContent>
-        </Card>
-      ))}
+              {vote.result && <p className="text-xs text-muted-foreground mt-2 border-t pt-2">Result: {vote.result}</p>}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -130,69 +136,73 @@ function StateFinanceTab({ name, state }: { name: string; state?: string }) {
     query: { enabled: !!candidateId, queryKey: getGetCandidateFinanceQueryKey(candidateId ?? "", {}) }
   });
 
-  if (searchLoading || financeLoading) return <div className="space-y-4">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>;
-
-  if (!candidateId) return (
-    <div className="text-center py-10 text-muted-foreground">
-      <DollarSign className="h-10 w-10 mx-auto mb-3 opacity-30" />
-      <p>No FEC campaign finance records found for this member.</p>
-      <p className="text-sm mt-2">State legislators may not have federal FEC filings.</p>
-    </div>
-  );
-
   return (
-    <div className="space-y-6">
-      {financeData && (
-        <div className="grid grid-cols-3 gap-4">
-          {[
-            { label: "Total Raised", value: formatMoney(financeData.totalRaised) },
-            { label: "Total Spent", value: formatMoney(financeData.totalSpent) },
-            { label: "Cash on Hand", value: formatMoney(financeData.cashOnHand) },
-          ].map((item) => (
-            <Card key={item.label}>
-              <CardContent className="p-4 text-center">
-                <p className="text-2xl font-black">{item.value}</p>
-                <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-6 pr-1">
+        {(searchLoading || financeLoading) && <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>}
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {financeData?.topDonors && financeData.topDonors.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Top Donors</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-2">
-              {financeData.topDonors.map((d, i) => (
-                <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                  <div>
-                    <p className="text-sm font-medium">{d.name}</p>
-                    {d.type && <p className="text-xs text-muted-foreground capitalize">{d.type}</p>}
-                  </div>
-                  <span className="text-sm font-bold text-green-700">{formatMoney(d.total)}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+        {!searchLoading && !financeLoading && !candidateId && (
+          <div className="text-center py-10 text-muted-foreground">
+            <DollarSign className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p>No FEC campaign finance records found for this member.</p>
+            <p className="text-sm mt-2">State legislators may not have federal FEC filings.</p>
+          </div>
         )}
 
-        {financeData?.topIndustries && financeData.topIndustries.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Top Industries</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-2">
-              {financeData.topIndustries.map((d, i) => (
-                <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                  <p className="text-sm font-medium">{d.name}</p>
-                  <span className="text-sm font-bold text-green-700">{formatMoney(d.total)}</span>
-                </div>
+        {!searchLoading && !financeLoading && candidateId && financeData && (
+          <>
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: "Total Raised", value: formatMoney(financeData.totalRaised) },
+                { label: "Total Spent", value: formatMoney(financeData.totalSpent) },
+                { label: "Cash on Hand", value: formatMoney(financeData.cashOnHand) },
+              ].map((item) => (
+                <Card key={item.label}>
+                  <CardContent className="p-4 text-center">
+                    <p className="text-2xl font-black">{item.value}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
+                  </CardContent>
+                </Card>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              {financeData?.topDonors && financeData.topDonors.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Top Donors</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 space-y-2">
+                    {financeData.topDonors.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                        <div>
+                          <p className="text-sm font-medium">{d.name}</p>
+                          {d.type && <p className="text-xs text-muted-foreground capitalize">{d.type}</p>}
+                        </div>
+                        <span className="text-sm font-bold text-green-700">{formatMoney(d.total)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {financeData?.topIndustries && financeData.topIndustries.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Top Industries</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 space-y-2">
+                    {financeData.topIndustries.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                        <p className="text-sm font-medium">{d.name}</p>
+                        <span className="text-sm font-bold text-green-700">{formatMoney(d.total)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -201,9 +211,13 @@ function StateFinanceTab({ name, state }: { name: string; state?: string }) {
 
 function CommitteesFromBills() {
   return (
-    <div className="text-center py-10 text-muted-foreground">
-      <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
-      <p>Committee memberships for state legislators are available through the state legislature website.</p>
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+        <div className="text-center py-10 text-muted-foreground">
+          <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p>Committee memberships for state legislators are available through the state legislature website.</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -217,9 +231,9 @@ export function StateRepDetail() {
   });
 
   return (
-    <div className="min-h-screen bg-muted/20">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-muted/20">
+      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
+        <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors shrink-0">
           <ChevronLeft className="h-4 w-4" /> Back to search
         </Link>
 
@@ -230,7 +244,7 @@ export function StateRepDetail() {
           </div>
         ) : member ? (
           <>
-            <Card className="mb-6">
+            <Card className="mb-6 shrink-0">
               <CardContent className="p-6">
                 <div className="flex flex-col sm:flex-row items-start gap-6">
                   <Avatar className="h-24 w-24 border-2 border-muted shrink-0">
@@ -258,18 +272,18 @@ export function StateRepDetail() {
               </CardContent>
             </Card>
 
-            <Tabs defaultValue="bills">
-              <TabsList className="w-full mb-6">
+            <Tabs defaultValue="bills" className="flex flex-col flex-1 min-h-0">
+              <TabsList className="w-full mb-6 shrink-0">
                 <TabsTrigger value="bills" className="flex-1 gap-1.5"><FileText className="h-4 w-4" />Bills</TabsTrigger>
                 <TabsTrigger value="votes" className="flex-1 gap-1.5"><Vote className="h-4 w-4" />Votes</TabsTrigger>
                 <TabsTrigger value="committees" className="flex-1 gap-1.5"><Users className="h-4 w-4" />Committees</TabsTrigger>
                 <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" />Finance</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="bills"><StateBillsList memberId={apiMemberId} jurisdiction={member.jurisdiction} memberName={member.name} /></TabsContent>
-              <TabsContent value="votes"><StateVotesList memberId={apiMemberId} jurisdiction={member.jurisdiction} /></TabsContent>
-              <TabsContent value="committees"><CommitteesFromBills /></TabsContent>
-              <TabsContent value="finance"><StateFinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>
+              <TabsContent value="bills" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><StateBillsList memberId={apiMemberId} jurisdiction={member.jurisdiction} memberName={member.name} /></TabsContent>
+              <TabsContent value="votes" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><StateVotesList memberId={apiMemberId} jurisdiction={member.jurisdiction} /></TabsContent>
+              <TabsContent value="committees" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><CommitteesFromBills /></TabsContent>
+              <TabsContent value="finance" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><StateFinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>
             </Tabs>
           </>
         ) : (
