@@ -351,6 +351,7 @@ router.get("/state/bills/:billId", async (req, res) => {
         absentCount: v.counts?.find((c: any) => c.option === "absent")?.value,
       })) ?? [],
       url: data.openstates_url,
+      textUrl: data.openstates_url,
       subjects: Array.isArray(data.subject) ? data.subject : (data.subject ? [data.subject] : undefined),
     });
   } catch (err) {

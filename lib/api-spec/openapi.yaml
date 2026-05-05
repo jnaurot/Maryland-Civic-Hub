@@ -644,6 +644,8 @@ components:
             $ref: "#/components/schemas/BillAction"
         url:
           type: string
+        textUrl:
+          type: string
         policyArea:
           type: string
         subjects:
@@ -1001,6 +1003,8 @@ components:
           items:
             $ref: "#/components/schemas/StateBillVote"
         url:
+          type: string
+        textUrl:
           type: string
         subjects:
           type: array

@@ -767,12 +767,13 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
   const { congress, billType, billNumber } = parsed.data;
 
   try {
-    const [billData, cosponsorsData, committeesData, actionsData, summaryData] = await Promise.allSettled([
+    const [billData, cosponsorsData, committeesData, actionsData, summaryData, textData] = await Promise.allSettled([
       congressFetch(`/bill/${congress}/${billType}/${billNumber}`),
       congressFetch(`/bill/${congress}/${billType}/${billNumber}/cosponsors`, { limit: 50 }),
       congressFetch(`/bill/${congress}/${billType}/${billNumber}/committees`),
       congressFetch(`/bill/${congress}/${billType}/${billNumber}/actions`, { limit: 20 }),
       congressFetch(`/bill/${congress}/${billType}/${billNumber}/summaries`),
+      congressFetch(`/bill/${congress}/${billType}/${billNumber}/text`),
     ]);
 
     const bill = billData.status === "fulfilled" ? (billData.value.bill ?? {}) : {};
@@ -805,6 +806,12 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
       ? (summaryData.value.summaries?.item?.[0]?.text ?? undefined)
       : undefined;
 
+    const textVersions = textData.status === "fulfilled" ? (textData.value.textVersions ?? []) : [];
+    const latestText = textVersions[0];
+    const textUrl = latestText?.formats?.find((f: any) => f.type === "PDF")?.url
+      ?? latestText?.formats?.[0]?.url
+      ?? undefined;
+
     return res.json({
       id: `${congress}-${billType}-${billNumber}`,
       title: bill.title ?? "Untitled",
@@ -825,6 +832,7 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
       committees,
       actions,
       url: bill.url,
+      textUrl,
       policyArea: bill.policyArea?.name ?? undefined,
       subjects: undefined,
     });

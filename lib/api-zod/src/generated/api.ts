@@ -360,6 +360,7 @@ export const GetFederalBillDetailResponse = zod.object({
     )
     .optional(),
   url: zod.string().optional(),
+  textUrl: zod.string().optional(),
   policyArea: zod.string().optional(),
   subjects: zod.array(zod.string()).optional(),
 });
@@ -610,6 +611,7 @@ export const GetStateBillDetailResponse = zod.object({
     )
     .optional(),
   url: zod.string().optional(),
+  textUrl: zod.string().optional(),
   subjects: zod.array(zod.string()).optional(),
 });
 

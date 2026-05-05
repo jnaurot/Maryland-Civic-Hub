@@ -107,11 +107,18 @@ export function StateBillDetail() {
                   </div>
                 )}
 
-                {bill.url && (
-                  <a href={bill.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-3">
-                    View on OpenStates <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
+                <div className="flex flex-wrap gap-4 mt-3">
+                  {bill.textUrl && (
+                    <a href={bill.textUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                      Read full text <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                  {bill.url && (
+                    <a href={bill.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+                      View on OpenStates <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
               </CardContent>
             </Card>
 

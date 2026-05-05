@@ -117,6 +117,7 @@ export interface BillDetail {
   committees?: CommitteeRef[];
   actions?: BillAction[];
   url?: string;
+  textUrl?: string;
   policyArea?: string;
   subjects?: string[];
 }
@@ -292,6 +293,7 @@ export interface StateBillDetail {
   actions?: BillAction[];
   votes?: StateBillVote[];
   url?: string;
+  textUrl?: string;
   subjects?: string[];
 }
 
