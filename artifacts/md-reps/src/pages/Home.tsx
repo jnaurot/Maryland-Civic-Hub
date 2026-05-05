@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search } from "lucide-react";
+import { Search, AlertTriangle } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { US_STATES, getStateName, getStateFlagUrl } from "@/lib/states";
 import type { Representative } from "@workspace/api-client-react";
@@ -241,7 +241,15 @@ export function Home() {
 
                     {state.length > 0 && (
                       <section>
-                        <h2 className="text-3xl font-black mb-6 border-b pb-2">State Representatives</h2>
+                        <div className="flex items-center justify-between border-b pb-2 mb-6">
+                          <h2 className="text-3xl font-black">State Representatives</h2>
+                          {data?.stateRepCache?.stale && (
+                            <div className="flex items-center gap-1.5 text-sm text-amber-700">
+                              <AlertTriangle className="h-4 w-4" />
+                              <span>Data may be outdated</span>
+                            </div>
+                          )}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {state.map(renderRepCard)}
                         </div>

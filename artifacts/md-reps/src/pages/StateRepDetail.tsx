@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "wouter";
 import {
   useGetStateMember,
@@ -6,6 +6,7 @@ import {
   useGetStateMemberVotes,
   useSearchCandidateFinance,
   useGetCandidateFinance,
+  useRefreshStateMember,
   getGetStateMemberQueryKey,
   getGetStateMemberBillsQueryKey,
   getGetStateMemberVotesQueryKey,
@@ -18,7 +19,24 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Users, FileText, Vote, DollarSign, ExternalLink } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "@/hooks/use-toast";
+import {
+  ChevronLeft,
+  Users,
+  FileText,
+  Vote,
+  DollarSign,
+  ExternalLink,
+  MoreHorizontal,
+  RefreshCw,
+  AlertTriangle,
+} from "lucide-react";
 
 function partyColor(party?: string) {
   if (!party) return "bg-gray-100 text-gray-700";
@@ -279,9 +297,45 @@ export function StateRepDetail() {
   const { memberId } = useParams<{ memberId: string }>();
   const apiMemberId = encodeURIComponent(memberId);
 
-  const { data: member, isLoading } = useGetStateMember(apiMemberId, {
+  const { data: memberData, isLoading } = useGetStateMember(apiMemberId, {
     query: { enabled: !!apiMemberId, queryKey: getGetStateMemberQueryKey(apiMemberId) }
   });
+
+  const member = memberData?.legislator;
+  const cache = memberData?.cache;
+
+  const refreshMutation = useRefreshStateMember({
+    mutation: {
+      onSuccess: () => {
+        toast({
+          title: "Refreshed",
+          description: "Legislator data has been updated.",
+        });
+      },
+      onError: (err: any) => {
+        toast({
+          title: "Refresh failed",
+          description: err?.message || "Could not refresh from OpenStates.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  useEffect(() => {
+    if (cache?.refreshFailed) {
+      toast({
+        title: "Data may be outdated",
+        description: "Could not refresh from OpenStates. Showing cached data.",
+        variant: "destructive",
+      });
+    }
+  }, [cache?.refreshFailed]);
+
+  const handleRefresh = () => {
+    if (!apiMemberId) return;
+    refreshMutation.mutate({ memberId: apiMemberId });
+  };
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col bg-muted/20">
@@ -297,6 +351,26 @@ export function StateRepDetail() {
           </div>
         ) : member ? (
           <>
+            {cache?.stale && (
+              <div className="mb-4 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span className="flex-1">Data may be outdated.</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto py-1 px-2 text-amber-700 hover:text-amber-800 hover:bg-amber-100"
+                  onClick={handleRefresh}
+                  disabled={refreshMutation.isPending}
+                >
+                  {refreshMutation.isPending ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Refresh"
+                  )}
+                </Button>
+              </div>
+            )}
+
             <Card className="mb-6 shrink-0">
               <CardContent className="p-6">
                 <div className="flex flex-col sm:flex-row items-start gap-6">
@@ -305,21 +379,38 @@ export function StateRepDetail() {
                     <AvatarFallback className="text-2xl">{member.name?.substring(0, 2)}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
-                    <h1 className="text-3xl font-black mb-2">{member.name}</h1>
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {member.party && <Badge className={partyColor(member.party)}>{member.party}</Badge>}
-                      {member.chamber && <Badge variant="outline">{member.chamber}</Badge>}
-                      {member.district && <Badge variant="secondary">District {member.district}</Badge>}
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h1 className="text-3xl font-black mb-2">{member.name}</h1>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {member.party && <Badge className={partyColor(member.party)}>{member.party}</Badge>}
+                          {member.chamber && <Badge variant="outline">{member.chamber}</Badge>}
+                          {member.district && <Badge variant="secondary">District {member.district}</Badge>}
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                          {member.email && <a href={`mailto:${member.email}`} className="hover:text-foreground transition-colors">{member.email}</a>}
+                          {member.phone && <span>{member.phone}</span>}
+                        </div>
+                        {member.openstatesUrl && (
+                          <a href={member.openstatesUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2">
+                            OpenStates Profile <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="shrink-0">
+                            <MoreHorizontal className="h-5 w-5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={handleRefresh} disabled={refreshMutation.isPending}>
+                            <RefreshCw className={`h-4 w-4 mr-2 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+                            Refresh data
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                      {member.email && <a href={`mailto:${member.email}`} className="hover:text-foreground transition-colors">{member.email}</a>}
-                      {member.phone && <span>{member.phone}</span>}
-                    </div>
-                    {member.openstatesUrl && (
-                      <a href={member.openstatesUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2">
-                        OpenStates Profile <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
                   </div>
                 </div>
               </CardContent>
