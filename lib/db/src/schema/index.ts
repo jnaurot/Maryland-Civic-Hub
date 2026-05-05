@@ -22,3 +22,5 @@ export * from "./house_vote_records";
 export * from "./senate_roll_call_votes";
 export * from "./senator_vote_positions";
 export * from "./senator_identities";
+export * from "./state_vote_records";
+export * from "./state_legislators";
