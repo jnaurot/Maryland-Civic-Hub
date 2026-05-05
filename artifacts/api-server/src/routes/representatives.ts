@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { GetRepresentativesByAddressQueryParams } from "@workspace/api-zod";
+import { getDistrictLegislators } from "../lib/stateLegislatorCache";
 
 const router = Router();
 
-const OPENSTATES_API_KEY = process.env.OPENSTATES_API_KEY;
 const CONGRESS_API_KEY = process.env.CONGRESS_API_KEY;
 
 async function geocodeAddress(address: string): Promise<{
@@ -116,19 +116,6 @@ function formatCongressName(name: string): string {
   return name;
 }
 
-async function fetchOpenStatesPeople(stateCode: string, district: string, orgClass: "upper" | "lower"): Promise<any[]> {
-  if (!OPENSTATES_API_KEY) return [];
-  const url = new URL("https://v3.openstates.org/people");
-  url.searchParams.set("jurisdiction", stateCode.toLowerCase());
-  url.searchParams.set("district", district);
-  url.searchParams.set("org_classification", orgClass);
-  url.searchParams.set("per_page", "10");
-  const res = await fetch(url.toString(), { headers: { "X-API-KEY": OPENSTATES_API_KEY } });
-  if (!res.ok) return [];
-  const data = await res.json() as any;
-  return data.results ?? [];
-}
-
 const STATE_NAMES: Record<string, string> = {
   AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado",
   CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
@@ -145,30 +132,28 @@ function getStateName(code: string): string | undefined {
   return STATE_NAMES[code.toUpperCase()];
 }
 
-function mapOsPerson(person: any): any {
-  const role = person.current_role ?? {};
-  return {
-    name: person.name ?? "",
-    office: role.title ?? (role.org_classification === "upper" ? "State Senator" : "State Delegate"),
-    party: person.party,
-    photoUrl: person.image,
-    level: "state" as const,
-    chamber: role.org_classification === "upper" ? "Senate" : "House of Delegates",
-    openstatesId: person.id,
-    district: role.district ? String(role.district) : undefined,
-  };
-}
-
-async function fetchStateLegislators(stateCode: string, stateSenateDistrict: string | null, stateHouseDistrict: string | null): Promise<any[]> {
-  if (!OPENSTATES_API_KEY) return [];
+async function fetchStateLegislators(stateCode: string, stateSenateDistrict: string | null, stateHouseDistrict: string | null, logger?: any): Promise<{ stateReps: any[]; cache: any }> {
   try {
-    const queries: Promise<any[]>[] = [];
-    if (stateSenateDistrict) queries.push(fetchOpenStatesPeople(stateCode, stateSenateDistrict, "upper"));
-    if (stateHouseDistrict) queries.push(fetchOpenStatesPeople(stateCode, stateHouseDistrict, "lower"));
-    const results = await Promise.all(queries);
-    return results.flat().map(mapOsPerson);
+    const { legislators, cache } = await getDistrictLegislators(
+      stateCode,
+      stateSenateDistrict,
+      stateHouseDistrict,
+      logger
+    );
+    const stateReps = legislators.map((person) => ({
+      name: person.name ?? "",
+      office: person.chamber === "Senate" ? "State Senator" : "State Delegate",
+      party: person.party,
+      photoUrl: person.photoUrl,
+      level: "state" as const,
+      chamber: person.chamber,
+      openstatesId: person.id,
+      district: person.district ?? undefined,
+    }));
+    return { stateReps, cache };
   } catch (e) {
-    return [];
+    logger?.error({ err: e }, "Error fetching state legislators");
+    return { stateReps: [], cache: { source: "db", stale: false, fetchedAt: new Date().toISOString() } };
   }
 }
 
@@ -184,12 +169,16 @@ router.get("/representatives", async (req, res) => {
     const geo = await geocodeAddress(address);
     const stateCode = geo.stateCode ?? "";
 
-    const [federalReps, stateReps] = await Promise.all([
+    if (!geo.stateSenateDistrict && !geo.stateHouseDistrict) {
+      req.log.warn({ stateCode }, "Census geocoder returned no state legislative districts");
+    }
+
+    const [federalReps, stateResult] = await Promise.all([
       fetchCongressMembers(stateCode, geo.district ?? ""),
-      fetchStateLegislators(stateCode, geo.stateSenateDistrict, geo.stateHouseDistrict),
+      fetchStateLegislators(stateCode, geo.stateSenateDistrict, geo.stateHouseDistrict, req.log),
     ]);
 
-    const representatives = [...federalReps, ...stateReps];
+    const representatives = [...federalReps, ...stateResult.stateReps];
 
     return res.json({
       address,
@@ -199,6 +188,7 @@ router.get("/representatives", async (req, res) => {
       stateSenateDistrict: geo.stateSenateDistrict,
       stateHouseDistrict: geo.stateHouseDistrict,
       representatives,
+      stateRepCache: stateResult.cache,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching representatives");

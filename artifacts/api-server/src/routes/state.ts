@@ -1,10 +1,12 @@
 import { Router } from "express";
-import { normalizeVoteCast } from "@workspace/db";
+import { eq, and, desc, sql } from "drizzle-orm";
+import { db, normalizeVoteCast, normalizeStateVotePosition, stateVoteRecordsTable } from "@workspace/db";
 import {
   GetStateMemberBillsQueryParams,
   GetStateMemberVotesQueryParams,
   GetStateBillsQueryParams,
 } from "@workspace/api-zod";
+import { getStateLegislator, refreshStateLegislator, isRateLimited, recordRateLimit } from "../lib/stateLegislatorCache";
 
 const router = Router();
 
@@ -13,6 +15,7 @@ const BASE = "https://v3.openstates.org";
 
 async function openStatesFetch(path: string, params: Record<string, string | number> = {}) {
   if (!OPENSTATES_API_KEY) throw new Error("OPENSTATES_API_KEY not configured");
+  if (isRateLimited()) throw new Error("OpenStates rate limit active. Please try again later.");
   const url = new URL(`${BASE}${path}`);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
@@ -22,6 +25,9 @@ async function openStatesFetch(path: string, params: Record<string, string | num
   });
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 429 || (res.status === 403 && text.toLowerCase().includes("rate"))) {
+      recordRateLimit();
+    }
     throw new Error(`OpenStates API error ${res.status}: ${text}`);
   }
   return res.json() as Promise<any>;
@@ -51,26 +57,8 @@ router.get("/state/members/:memberId", async (req, res) => {
   if (!memberId) return res.status(400).json({ error: "memberId required" });
 
   try {
-    const data = await openStatesFetch("/people", { id: memberId, per_page: 1 });
-    const person = data.results?.[0];
-    if (!person) return res.status(404).json({ error: "Member not found" });
-    const jurisdictionId = person.jurisdiction?.id ?? "";
-    const jurisdictionMatch = jurisdictionId.match(/state:([a-z]{2})/);
-    const jurisdiction = jurisdictionMatch ? jurisdictionMatch[1] : (person.jurisdiction?.name ?? "").toLowerCase().replace(/\s+/g, "");
-
-    return res.json({
-      id: person.id ?? memberId,
-      name: person.name ?? "",
-      party: person.party,
-      chamber: person.current_role?.title,
-      district: person.current_role?.district ? String(person.current_role.district) : undefined,
-      email: person.email,
-      phone: person.links?.[0]?.url,
-      photoUrl: person.image,
-      openstatesUrl: person.openstates_url,
-      state: person.jurisdiction?.name ?? undefined,
-      jurisdiction,
-    });
+    const result = await getStateLegislator(memberId, req.log);
+    return res.json(result);
   } catch (err) {
     req.log.error({ err }, "Error fetching state member");
     return res.status(500).json({ error: String(err) });
@@ -99,6 +87,90 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
   }
 });
 
+async function ingestStateVotesForMember({
+  jurisdiction,
+  memberId,
+  maxPages = 10,
+}: {
+  jurisdiction: string;
+  memberId: string;
+  maxPages?: number;
+}) {
+  let inserted = 0;
+  let scannedBills = 0;
+
+  for (let page = 1; page <= maxPages; page++) {
+    const data = await openStatesFetch("/bills", {
+      jurisdiction,
+      page,
+      per_page: 20,
+      sponsor_id: memberId,
+      include: "votes",
+    });
+
+    const bills = data.results ?? [];
+    if (bills.length === 0) break;
+
+    for (const bill of bills) {
+      scannedBills++;
+
+      for (const voteEvent of bill.votes ?? []) {
+        const individualVotes: any[] = voteEvent.votes ?? [];
+
+        for (const vote of individualVotes) {
+          const personId = vote.voter?.id ?? vote.voter_id ?? vote.legislator_id;
+          const personName = vote.voter_name ?? vote.name;
+
+          if (personId !== memberId && personName !== "Mr. President") {
+            continue;
+          }
+
+          const position = normalizeStateVotePosition(vote.option ?? vote.vote ?? vote.position);
+
+          await db
+            .insert(stateVoteRecordsTable)
+            .values({
+              jurisdiction,
+              legislatorId: memberId,
+              legislatorName: personName ?? null,
+              voteEventId: String(voteEvent.id ?? `${bill.id}-${voteEvent.start_date}`),
+              billId: bill.id,
+              billIdentifier: bill.identifier ?? null,
+              billTitle: bill.title ?? null,
+              chamber: voteEvent.chamber ?? bill.from_organization?.classification ?? null,
+              motionText: voteEvent.motion_text ?? null,
+              result: voteEvent.result ?? null,
+              position,
+              votedAt: voteEvent.start_date ? new Date(voteEvent.start_date) : (voteEvent.date ? new Date(voteEvent.date) : null),
+              sourceUrl: bill.openstates_url ?? null,
+              raw: { bill, voteEvent, vote },
+            })
+            .onConflictDoUpdate({
+              target: [
+                stateVoteRecordsTable.jurisdiction,
+                stateVoteRecordsTable.legislatorId,
+                stateVoteRecordsTable.voteEventId,
+              ],
+              set: {
+                position,
+                billTitle: bill.title ?? null,
+                result: voteEvent.result ?? null,
+                fetchedAt: new Date(),
+                raw: { bill, voteEvent, vote },
+              },
+            });
+
+          inserted++;
+        }
+      }
+    }
+
+    if (!data.pagination?.next_page) break;
+  }
+
+  return { inserted, scannedBills };
+}
+
 router.get("/state/members/:memberId/votes", async (req, res) => {
   const memberId = decodeURIComponent(req.params.memberId);
   const queryParsed = GetStateMemberVotesQueryParams.safeParse(req.query);
@@ -107,70 +179,68 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
   try {
     const { jurisdiction, offset, limit, filter } = queryParsed.data;
 
-    // OpenStates v3 has no standalone /votes endpoint and limits requests to
-    // 10/min. We fetch a single page of bills per request and extract votes.
-    const billPage = Math.floor(offset / limit) + 1;
-    const billUrl = new URL(`${BASE}/bills`);
-    billUrl.searchParams.set("jurisdiction", jurisdiction);
-    billUrl.searchParams.set("sponsor_id", memberId);
-    billUrl.searchParams.set("per_page", String(limit));
-    billUrl.searchParams.set("page", String(billPage));
-    billUrl.searchParams.append("include", "votes");
+    // Check if we have any persisted vote records for this member
+    const existing = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stateVoteRecordsTable)
+      .where(
+        and(
+          eq(stateVoteRecordsTable.jurisdiction, jurisdiction),
+          eq(stateVoteRecordsTable.legislatorId, memberId)
+        )
+      );
 
-    const billRes = await fetch(billUrl.toString(), {
-      headers: { "X-API-KEY": OPENSTATES_API_KEY! },
-    });
-    if (!billRes.ok) {
-      const text = await billRes.text();
-      throw new Error(`OpenStates API error ${billRes.status}: ${text}`);
-    }
-    const data = await billRes.json() as any;
-
-    const allVotes: any[] = [];
-    for (const bill of data.results ?? []) {
-      for (const voteEvent of bill.votes ?? []) {
-        const individualVotes: any[] = voteEvent.votes ?? [];
-        const personalVote = individualVotes.find(
-          (vv: any) => vv.voter?.id === memberId || vv.voter_name === "Mr. President"
-        );
-        const rawPosition = personalVote?.option ?? null;
-        if (rawPosition) {
-          const position = normalizeVoteCast(rawPosition);
-          allVotes.push({
-            billId: bill.id,
-            billTitle: bill.title ?? "Untitled",
-            billIdentifier: bill.identifier,
-            date: voteEvent.start_date ?? voteEvent.date ?? "",
-            position,
-            result: voteEvent.result,
-          });
-        }
-      }
+    if (Number(existing[0]?.count ?? 0) === 0) {
+      req.log.info({ memberId, jurisdiction }, "No state vote records in DB; triggering ingestion");
+      const { inserted, scannedBills } = await ingestStateVotesForMember({ jurisdiction, memberId });
+      req.log.info({ memberId, jurisdiction, inserted, scannedBills }, "State vote ingestion complete");
     }
 
-    // Sort by date descending (most recent first)
-    allVotes.sort((a, b) => {
-      const dateA = a.date ? new Date(a.date).getTime() : 0;
-      const dateB = b.date ? new Date(b.date).getTime() : 0;
-      return dateB - dateA;
-    });
+    // Build filter conditions
+    const baseConditions = [
+      eq(stateVoteRecordsTable.jurisdiction, jurisdiction),
+      eq(stateVoteRecordsTable.legislatorId, memberId),
+    ];
 
-    // Apply filter
-    let filteredVotes = allVotes;
-    if (filter === "yea") filteredVotes = allVotes.filter((v) => v.position === "Yea");
-    else if (filter === "nay") filteredVotes = allVotes.filter((v) => v.position === "Nay");
-    else if (filter === "present") filteredVotes = allVotes.filter((v) => v.position === "Present");
-    else if (filter === "not-voting") filteredVotes = allVotes.filter((v) => v.position === "Not Voting");
+    if (filter === "yea") baseConditions.push(eq(stateVoteRecordsTable.position, "Yea"));
+    else if (filter === "nay") baseConditions.push(eq(stateVoteRecordsTable.position, "Nay"));
+    else if (filter === "present") baseConditions.push(eq(stateVoteRecordsTable.position, "Present"));
+    else if (filter === "not-voting") baseConditions.push(eq(stateVoteRecordsTable.position, "Not Voting"));
 
-    // totalCount here is the count of filtered votes on this bill page.
-    // OpenStates does not expose vote-level pagination, so we cannot know the
-    // global total across all bills. We synthesise a total so the UI allows
-    // navigation to the next bill page when there might be more votes.
-    const pageFilteredCount = filteredVotes.length;
-    const hasMoreBills = (data.pagination?.max_page ?? 1) > billPage;
-    const totalCount = pageFilteredCount + (hasMoreBills ? limit : 0);
+    // Fetch paginated votes
+    const rows = await db
+      .select({
+        billId: stateVoteRecordsTable.billId,
+        billTitle: stateVoteRecordsTable.billTitle,
+        billIdentifier: stateVoteRecordsTable.billIdentifier,
+        date: stateVoteRecordsTable.votedAt,
+        position: stateVoteRecordsTable.position,
+        result: stateVoteRecordsTable.result,
+      })
+      .from(stateVoteRecordsTable)
+      .where(and(...baseConditions))
+      .orderBy(desc(stateVoteRecordsTable.votedAt))
+      .limit(limit)
+      .offset(offset);
 
-    return res.json({ votes: filteredVotes, totalCount, offset });
+    // Count total for pagination
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stateVoteRecordsTable)
+      .where(and(...baseConditions));
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+
+    const votes = rows.map((r) => ({
+      billId: r.billId,
+      billTitle: r.billTitle ?? "Untitled",
+      billIdentifier: r.billIdentifier ?? undefined,
+      date: r.date ? new Date(r.date).toISOString().split("T")[0] : "",
+      position: r.position,
+      result: r.result ?? undefined,
+    }));
+
+    return res.json({ votes, totalCount, offset });
   } catch (err) {
     req.log.error({ err }, "Error fetching state member votes");
     return res.status(500).json({ error: String(err) });
