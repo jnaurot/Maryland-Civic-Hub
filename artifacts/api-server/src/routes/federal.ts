@@ -773,7 +773,6 @@ router.get("/federal/bills", async (req, res) => {
         set: {
           title: bill.title,
           number: bill.number ?? null,
-          status: bill.status ?? null,
           policyArea: bill.policyArea ?? null,
           subjects: bill.subjects ?? [],
           url: bill.url ?? null,
