@@ -126,7 +126,7 @@ export function Home() {
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col">
+    <div className="min-h-[calc(100dvh-4rem)] flex flex-col">
       {/* Hero Section */}
       <div className="bg-primary text-primary-foreground py-20 px-4 relative overflow-hidden shrink-0">
         {flagUrl && (

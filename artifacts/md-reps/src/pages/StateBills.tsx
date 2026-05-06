@@ -66,14 +66,14 @@ export function StateBills() {
   }
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col bg-muted/20">
-      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
+    <div className="min-h-[calc(100dvh-4rem)] flex flex-col bg-muted/20">
+      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col flex-1">
         <div className="mb-8 shrink-0">
           <h1 className="text-4xl font-black mb-2">{stateName} State Bills</h1>
           <p className="text-muted-foreground">Bills being considered in the {stateName} legislature</p>
         </div>
 
-        <div className="flex items-center gap-4 mb-6 shrink-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6 shrink-0">
           <Select value={chamber} onValueChange={handleChamberChange}>
             <SelectTrigger className="w-56">
               <SelectValue placeholder="Filter by chamber" />

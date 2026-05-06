@@ -303,7 +303,7 @@ function FinanceTab({ name, state }: { name: string; state?: string }) {
 
         {!searchLoading && !financeLoading && candidateId && financeData && (
           <>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 { label: "Total Raised", value: formatMoney(financeData.totalRaised) },
                 { label: "Total Spent", value: formatMoney(financeData.totalSpent) },
@@ -369,8 +369,8 @@ export function FederalRepDetail() {
   });
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col bg-muted/20">
-      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
+    <div className="min-h-[calc(100dvh-4rem)] flex flex-col bg-muted/20">
+      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col flex-1">
         <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors shrink-0">
           <ChevronLeft className="h-4 w-4" /> Back to search
         </Link>
@@ -413,10 +413,10 @@ export function FederalRepDetail() {
 
             <Tabs defaultValue="bills" className="flex flex-col flex-1 min-h-0">
               <TabsList className="w-full mb-6 shrink-0">
-                <TabsTrigger value="bills" className="flex-1 gap-1.5"><FileText className="h-4 w-4" />Bills</TabsTrigger>
-                <TabsTrigger value="votes" className="flex-1 gap-1.5"><Vote className="h-4 w-4" />Votes</TabsTrigger>
-                <TabsTrigger value="committees" className="flex-1 gap-1.5"><Users className="h-4 w-4" />Committees</TabsTrigger>
-                <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" />Finance</TabsTrigger>
+                <TabsTrigger value="bills" className="flex-1 gap-1.5"><FileText className="h-4 w-4" /><span className="hidden sm:inline">Bills</span></TabsTrigger>
+                <TabsTrigger value="votes" className="flex-1 gap-1.5"><Vote className="h-4 w-4" /><span className="hidden sm:inline">Votes</span></TabsTrigger>
+                <TabsTrigger value="committees" className="flex-1 gap-1.5"><Users className="h-4 w-4" /><span className="hidden sm:inline">Committees</span></TabsTrigger>
+                <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" /><span className="hidden sm:inline">Finance</span></TabsTrigger>
               </TabsList>
 
               <TabsContent value="bills" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><BillsList bioguideId={bioguideId} memberName={member.name} /></TabsContent>
