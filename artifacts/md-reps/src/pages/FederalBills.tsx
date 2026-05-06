@@ -28,8 +28,8 @@ export function FederalBills() {
   };
 
   return (
-    <div className="min-h-[calc(100dvh-4rem)] flex flex-col bg-muted/20">
-      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col flex-1">
+    <div className="h-[calc(100dvh-4rem)] flex flex-col bg-muted/20">
+      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
         <div className="mb-8 shrink-0">
           <h1 className="text-4xl font-black mb-2">Federal Bills</h1>
           <p className="text-muted-foreground">Bills currently being considered in the U.S. Congress</p>
