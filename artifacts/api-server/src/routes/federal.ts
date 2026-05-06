@@ -853,6 +853,7 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
       policyArea: bill.policyArea?.name ?? null,
       subjects: bill.subjects ?? [],
       url: bill.url ?? null,
+      textUrl: textUrl ?? null,
       raw: bill,
       searchVector: sql`to_tsvector('english', coalesce(${bill.title ?? ""}, '') || ' ' || coalesce(${billType + " " + billNumber}, '') || ' ' || coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
     }).onConflictDoUpdate({
@@ -866,6 +867,7 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
         policyArea: bill.policyArea?.name ?? null,
         subjects: bill.subjects ?? [],
         url: bill.url ?? null,
+        textUrl: textUrl ?? null,
         raw: bill,
         fetchedAt: new Date(),
         searchVector: sql`to_tsvector('english', coalesce(${bill.title ?? ""}, '') || ' ' || coalesce(${billType + " " + billNumber}, '') || ' ' || coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,

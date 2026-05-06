@@ -18,6 +18,7 @@ export const stateBillsTable = pgTable("state_bills", {
   summary: text("summary"),
   subjects: text("subjects").array(),
   url: text("url"),
+  textUrl: text("text_url"),
   jurisdiction: text("jurisdiction").notNull(),
   raw: jsonb("raw"),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
@@ -40,6 +41,7 @@ export const insertStateBillSchema = z.object({
   summary: z.string().optional(),
   subjects: z.array(z.string()).optional(),
   url: z.string().optional(),
+  textUrl: z.string().optional(),
   jurisdiction: z.string(),
   raw: z.any().optional(),
 });

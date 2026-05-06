@@ -17,6 +17,7 @@ export const federalBillsTable = pgTable("federal_bills", {
   policyArea: text("policy_area"),
   subjects: text("subjects").array(),
   url: text("url"),
+  textUrl: text("text_url"),
   raw: jsonb("raw"),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
   searchVector: tsvector("search_vector"),
@@ -37,6 +38,7 @@ export const insertFederalBillSchema = z.object({
   policyArea: z.string().optional(),
   subjects: z.array(z.string()).optional(),
   url: z.string().optional(),
+  textUrl: z.string().optional(),
   raw: z.any().optional(),
 });
 export type InsertFederalBill = z.infer<typeof insertFederalBillSchema>;
