@@ -243,6 +243,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/BillsListResponse"
 
+  /federal/bills/search:
+    get:
+      operationId: searchFederalBills
+      tags: [federal]
+      summary: Search federal bills by full-text query
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillsListResponse"
+
   /federal/bills/{congress}/{billType}/{billNumber}:
     get:
       operationId: getFederalBillDetail
@@ -419,6 +448,40 @@ paths:
       responses:
         "200":
           description: State bills list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateBillsListResponse"
+
+  /state/bills/search:
+    get:
+      operationId: searchStateBills
+      tags: [state]
+      summary: Search state bills by full-text query
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: jurisdiction
+          in: query
+          schema:
+            type: string
+            default: md
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Search results
           content:
             application/json:
               schema:

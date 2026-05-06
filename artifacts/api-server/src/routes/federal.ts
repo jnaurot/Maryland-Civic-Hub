@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { XMLParser } from "fast-xml-parser";
-import { db, normalizeVoteCast } from "@workspace/db";
+import { db, normalizeVoteCast, federalBillsTable } from "@workspace/db";
 import { houseVotesTable, houseVoteRecordsTable, senateRollCallVotesTable, senatorVotePositionsTable, senatorIdentitiesTable } from "@workspace/db";
 import {
   GetFederalMemberParams,
@@ -753,6 +753,36 @@ router.get("/federal/bills", async (req, res) => {
       return dateB - dateA;
     });
 
+    // Upsert into cache for search
+    for (const bill of bills) {
+      const subjectsText = Array.isArray(bill.subjects) ? bill.subjects.join(" ") : "";
+      await db.insert(federalBillsTable).values({
+        id: bill.id,
+        title: bill.title,
+        number: bill.number ?? null,
+        congress: bill.congress ?? null,
+        introducedDate: bill.introducedDate ?? null,
+        summary: null,
+        policyArea: bill.policyArea ?? null,
+        subjects: bill.subjects ?? [],
+        url: bill.url ?? null,
+        raw: null,
+        searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.number}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+      }).onConflictDoUpdate({
+        target: federalBillsTable.id,
+        set: {
+          title: bill.title,
+          number: bill.number ?? null,
+          status: bill.status ?? null,
+          policyArea: bill.policyArea ?? null,
+          subjects: bill.subjects ?? [],
+          url: bill.url ?? null,
+          fetchedAt: new Date(),
+          searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.number}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+        },
+      });
+    }
+
     return res.json({ bills, totalCount: data.pagination?.count, offset });
   } catch (err) {
     req.log.error({ err }, "Error fetching federal bills");
@@ -812,6 +842,37 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
       ?? latestText?.formats?.[0]?.url
       ?? undefined;
 
+    // Cache for search
+    const subjectsText = Array.isArray(bill.subjects) ? bill.subjects.join(" ") : "";
+    await db.insert(federalBillsTable).values({
+      id: `${congress}-${billType}-${billNumber}`,
+      title: bill.title ?? "Untitled",
+      number: `${billType} ${billNumber}`,
+      congress: String(congress),
+      introducedDate: bill.introducedDate ?? null,
+      summary: summary ? summary.replace(/<[^>]*>/g, "") : null,
+      policyArea: bill.policyArea?.name ?? null,
+      subjects: bill.subjects ?? [],
+      url: bill.url ?? null,
+      raw: bill,
+      searchVector: sql`to_tsvector('english', coalesce(${bill.title ?? ""}, '') || ' ' || coalesce(${billType + " " + billNumber}, '') || ' ' || coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+    }).onConflictDoUpdate({
+      target: federalBillsTable.id,
+      set: {
+        title: bill.title ?? "Untitled",
+        number: `${billType} ${billNumber}`,
+        congress: String(congress),
+        introducedDate: bill.introducedDate ?? null,
+        summary: summary ? summary.replace(/<[^>]*>/g, "") : null,
+        policyArea: bill.policyArea?.name ?? null,
+        subjects: bill.subjects ?? [],
+        url: bill.url ?? null,
+        raw: bill,
+        fetchedAt: new Date(),
+        searchVector: sql`to_tsvector('english', coalesce(${bill.title ?? ""}, '') || ' ' || coalesce(${billType + " " + billNumber}, '') || ' ' || coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+      },
+    });
+
     return res.json({
       id: `${congress}-${billType}-${billNumber}`,
       title: bill.title ?? "Untitled",
@@ -838,6 +899,53 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching bill detail");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get("/federal/bills/search", async (req, res) => {
+  const q = req.query.q;
+  const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  const offset = Number(req.query.offset ?? 0);
+
+  if (!q || typeof q !== "string") {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
+
+  try {
+    const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
+    const conditions = [sql`${federalBillsTable.searchVector} @@ ${searchQuery}`];
+
+    const rows = await db
+      .select()
+      .from(federalBillsTable)
+      .where(and(...conditions))
+      .orderBy(sql`ts_rank(${federalBillsTable.searchVector}, ${searchQuery}) desc`)
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(federalBillsTable)
+      .where(and(...conditions));
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+
+    const bills = rows.map((b) => ({
+      id: b.id,
+      title: b.title,
+      number: b.number,
+      congress: b.congress,
+      introducedDate: b.introducedDate,
+      summary: b.summary,
+      policyArea: b.policyArea,
+      subjects: b.subjects,
+      url: b.url,
+    }));
+
+    return res.json({ bills, totalCount, offset });
+  } catch (err) {
+    req.log.error({ err }, "Error searching federal bills");
     return res.status(500).json({ error: String(err) });
   }
 });

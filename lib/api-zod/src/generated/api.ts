@@ -301,6 +301,40 @@ export const GetFederalBillsResponse = zod.object({
 });
 
 /**
+ * @summary Search federal bills by full-text query
+ */
+export const searchFederalBillsQueryOffsetDefault = 0;
+export const searchFederalBillsQueryLimitDefault = 20;
+
+export const SearchFederalBillsQueryParams = zod.object({
+  q: zod.coerce.string(),
+  offset: zod.coerce.number().default(searchFederalBillsQueryOffsetDefault),
+  limit: zod.coerce.number().default(searchFederalBillsQueryLimitDefault),
+});
+
+export const SearchFederalBillsResponse = zod.object({
+  bills: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      number: zod.string().optional(),
+      congress: zod.string().optional(),
+      introducedDate: zod.string().optional(),
+      latestAction: zod.string().optional(),
+      latestActionDate: zod.string().optional(),
+      sponsors: zod.array(zod.string()).optional(),
+      url: zod.string().optional(),
+      status: zod.string().optional(),
+      chamber: zod.string().optional(),
+      policyArea: zod.string().optional(),
+      subjects: zod.array(zod.string()).optional(),
+    }),
+  ),
+  totalCount: zod.number().optional(),
+  offset: zod.number().optional(),
+});
+
+/**
  * @summary Get detailed info about a specific federal bill
  */
 export const GetFederalBillDetailParams = zod.object({
@@ -522,6 +556,43 @@ export const GetStateBillsQueryParams = zod.object({
 });
 
 export const GetStateBillsResponse = zod.object({
+  bills: zod.array(
+    zod.object({
+      id: zod.string(),
+      identifier: zod.string().optional(),
+      title: zod.string(),
+      session: zod.string().optional(),
+      chamber: zod.string().optional(),
+      status: zod.string().optional(),
+      introducedDate: zod.string().optional(),
+      latestAction: zod.string().optional(),
+      latestActionDate: zod.string().optional(),
+      sponsors: zod.array(zod.string()).optional(),
+      url: zod.string().optional(),
+      subjects: zod.array(zod.string()).optional(),
+    }),
+  ),
+  totalCount: zod.number().optional(),
+  offset: zod.number().optional(),
+});
+
+/**
+ * @summary Search state bills by full-text query
+ */
+export const searchStateBillsQueryJurisdictionDefault = `md`;
+export const searchStateBillsQueryOffsetDefault = 0;
+export const searchStateBillsQueryLimitDefault = 20;
+
+export const SearchStateBillsQueryParams = zod.object({
+  q: zod.coerce.string(),
+  jurisdiction: zod.coerce
+    .string()
+    .default(searchStateBillsQueryJurisdictionDefault),
+  offset: zod.coerce.number().default(searchStateBillsQueryOffsetDefault),
+  limit: zod.coerce.number().default(searchStateBillsQueryLimitDefault),
+});
+
+export const SearchStateBillsResponse = zod.object({
   bills: zod.array(
     zod.object({
       id: zod.string(),

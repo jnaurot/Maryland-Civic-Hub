@@ -25,3 +25,5 @@ export * from "./senator_identities";
 export * from "./state_vote_records";
 export * from "./state_legislators";
 export * from "./provider_status";
+export * from "./state_bills";
+export * from "./federal_bills";

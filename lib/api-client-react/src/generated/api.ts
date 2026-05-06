@@ -38,6 +38,8 @@ import type {
   HouseVotesListResponse,
   RepresentativesResponse,
   SearchCandidateFinanceParams,
+  SearchFederalBillsParams,
+  SearchStateBillsParams,
   SenateVotesListResponse,
   StateBillDetail,
   StateBillsListResponse,
@@ -986,6 +988,103 @@ export function useGetFederalBills<
 }
 
 /**
+ * @summary Search federal bills by full-text query
+ */
+export const getSearchFederalBillsUrl = (params: SearchFederalBillsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/federal/bills/search?${stringifiedParams}`
+    : `/api/federal/bills/search`;
+};
+
+export const searchFederalBills = async (
+  params: SearchFederalBillsParams,
+  options?: RequestInit,
+): Promise<BillsListResponse> => {
+  return customFetch<BillsListResponse>(getSearchFederalBillsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getSearchFederalBillsQueryKey = (
+  params?: SearchFederalBillsParams,
+) => {
+  return [`/api/federal/bills/search`, ...(params ? [params] : [])] as const;
+};
+
+export const getSearchFederalBillsQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchFederalBills>>,
+  TError = ErrorType<unknown>,
+>(
+  params: SearchFederalBillsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchFederalBills>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getSearchFederalBillsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof searchFederalBills>>
+  > = ({ signal }) => searchFederalBills(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchFederalBills>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchFederalBillsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchFederalBills>>
+>;
+export type SearchFederalBillsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Search federal bills by full-text query
+ */
+
+export function useSearchFederalBills<
+  TData = Awaited<ReturnType<typeof searchFederalBills>>,
+  TError = ErrorType<unknown>,
+>(
+  params: SearchFederalBillsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchFederalBills>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getSearchFederalBillsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Get detailed info about a specific federal bill
  */
 export const getGetFederalBillDetailUrl = (
@@ -1604,6 +1703,103 @@ export function useGetStateBills<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetStateBillsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Search state bills by full-text query
+ */
+export const getSearchStateBillsUrl = (params: SearchStateBillsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/state/bills/search?${stringifiedParams}`
+    : `/api/state/bills/search`;
+};
+
+export const searchStateBills = async (
+  params: SearchStateBillsParams,
+  options?: RequestInit,
+): Promise<StateBillsListResponse> => {
+  return customFetch<StateBillsListResponse>(getSearchStateBillsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getSearchStateBillsQueryKey = (
+  params?: SearchStateBillsParams,
+) => {
+  return [`/api/state/bills/search`, ...(params ? [params] : [])] as const;
+};
+
+export const getSearchStateBillsQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchStateBills>>,
+  TError = ErrorType<unknown>,
+>(
+  params: SearchStateBillsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchStateBills>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getSearchStateBillsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof searchStateBills>>
+  > = ({ signal }) => searchStateBills(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchStateBills>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchStateBillsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchStateBills>>
+>;
+export type SearchStateBillsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Search state bills by full-text query
+ */
+
+export function useSearchStateBills<
+  TData = Awaited<ReturnType<typeof searchStateBills>>,
+  TError = ErrorType<unknown>,
+>(
+  params: SearchStateBillsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchStateBills>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getSearchStateBillsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

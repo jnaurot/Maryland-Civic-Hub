@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { db, normalizeVoteCast, normalizeStateVotePosition, stateVoteRecordsTable } from "@workspace/db";
+import { db, normalizeVoteCast, normalizeStateVotePosition, stateVoteRecordsTable, stateBillsTable } from "@workspace/db";
 import {
   GetStateMemberBillsQueryParams,
   GetStateMemberVotesQueryParams,
@@ -291,6 +291,37 @@ router.get("/state/bills", async (req, res) => {
       return dateB - dateA;
     });
 
+    // Upsert into cache for search
+    for (const bill of bills) {
+      const subjectsText = Array.isArray(bill.subjects) ? bill.subjects.join(" ") : "";
+      await db.insert(stateBillsTable).values({
+        id: bill.id,
+        identifier: bill.identifier ?? null,
+        title: bill.title,
+        session: bill.session ?? null,
+        chamber: bill.chamber ?? null,
+        status: bill.status ?? null,
+        introducedDate: bill.introducedDate ?? null,
+        summary: null,
+        subjects: bill.subjects ?? [],
+        url: bill.url ?? null,
+        jurisdiction,
+        raw: null,
+        searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.identifier}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+      }).onConflictDoUpdate({
+        target: stateBillsTable.id,
+        set: {
+          title: bill.title,
+          identifier: bill.identifier ?? null,
+          status: bill.status ?? null,
+          subjects: bill.subjects ?? [],
+          url: bill.url ?? null,
+          fetchedAt: new Date(),
+          searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.identifier}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+        },
+      });
+    }
+
     return res.json({ bills, totalCount: data.pagination?.total_items, offset });
   } catch (err) {
     req.log.error({ err }, "Error fetching state bills");
@@ -317,6 +348,39 @@ router.get("/state/bills/:billId", async (req, res) => {
     }
     const data = await res2.json() as any;
     const latestAction = data.actions?.[data.actions.length - 1];
+    const subjects = Array.isArray(data.subject) ? data.subject : (data.subject ? [data.subject] : []);
+    const subjectsText = subjects.join(" ");
+
+    // Cache for search
+    await db.insert(stateBillsTable).values({
+      id: data.id ?? billId,
+      identifier: data.identifier ?? null,
+      title: data.title ?? "Untitled",
+      session: data.legislative_session ?? null,
+      chamber: data.from_organization?.classification ?? null,
+      status: latestAction?.description ?? null,
+      introducedDate: data.first_action_date ?? data.created_at?.split("T")[0] ?? null,
+      summary: data.abstract ?? null,
+      subjects,
+      url: data.openstates_url ?? null,
+      jurisdiction: data.jurisdiction?.name ?? data.jurisdiction ?? "",
+      raw: data,
+      searchVector: sql`to_tsvector('english', coalesce(${data.title ?? ""}, '') || ' ' || coalesce(${data.identifier ?? ""}, '') || ' ' || coalesce(${data.abstract ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+    }).onConflictDoUpdate({
+      target: stateBillsTable.id,
+      set: {
+        title: data.title ?? "Untitled",
+        identifier: data.identifier ?? null,
+        status: latestAction?.description ?? null,
+        summary: data.abstract ?? null,
+        subjects,
+        url: data.openstates_url ?? null,
+        jurisdiction: data.jurisdiction?.name ?? data.jurisdiction ?? "",
+        raw: data,
+        fetchedAt: new Date(),
+        searchVector: sql`to_tsvector('english', coalesce(${data.title ?? ""}, '') || ' ' || coalesce(${data.identifier ?? ""}, '') || ' ' || coalesce(${data.abstract ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+      },
+    });
 
     return res.json({
       id: data.id ?? billId,
@@ -352,10 +416,61 @@ router.get("/state/bills/:billId", async (req, res) => {
       })) ?? [],
       url: data.openstates_url,
       textUrl: data.openstates_url,
-      subjects: Array.isArray(data.subject) ? data.subject : (data.subject ? [data.subject] : undefined),
+      subjects,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching state bill detail");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get("/state/bills/search", async (req, res) => {
+  const q = req.query.q;
+  const jurisdiction = req.query.jurisdiction as string | undefined;
+  const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  const offset = Number(req.query.offset ?? 0);
+
+  if (!q || typeof q !== "string") {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
+
+  try {
+    const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
+    const conditions = [sql`${stateBillsTable.searchVector} @@ ${searchQuery}`];
+    if (jurisdiction) conditions.push(eq(stateBillsTable.jurisdiction, jurisdiction));
+
+    const rows = await db
+      .select()
+      .from(stateBillsTable)
+      .where(and(...conditions))
+      .orderBy(sql`ts_rank(${stateBillsTable.searchVector}, ${searchQuery}) desc`)
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stateBillsTable)
+      .where(and(...conditions));
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+
+    const bills = rows.map((b) => ({
+      id: b.id,
+      identifier: b.identifier,
+      title: b.title,
+      session: b.session,
+      chamber: b.chamber,
+      status: b.status,
+      introducedDate: b.introducedDate,
+      summary: b.summary,
+      subjects: b.subjects,
+      url: b.url,
+      jurisdiction: b.jurisdiction,
+    }));
+
+    return res.json({ bills, totalCount, offset });
+  } catch (err) {
+    req.log.error({ err }, "Error searching state bills");
     return res.status(500).json({ error: String(err) });
   }
 });

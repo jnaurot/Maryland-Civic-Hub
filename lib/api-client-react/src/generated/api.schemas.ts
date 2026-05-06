@@ -429,6 +429,12 @@ export const GetFederalBillsChamber = {
   both: "both",
 } as const;
 
+export type SearchFederalBillsParams = {
+  q: string;
+  offset?: number;
+  limit?: number;
+};
+
 export type GetStateMemberBillsParams = {
   type?: GetStateMemberBillsType;
   jurisdiction?: string;
@@ -476,6 +482,13 @@ export const GetStateBillsChamber = {
   upper: "upper",
   lower: "lower",
 } as const;
+
+export type SearchStateBillsParams = {
+  q: string;
+  jurisdiction?: string;
+  offset?: number;
+  limit?: number;
+};
 
 export type GetCandidateFinanceParams = {
   cycle?: number;
