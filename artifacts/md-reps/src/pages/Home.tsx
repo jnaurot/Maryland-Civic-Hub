@@ -232,7 +232,7 @@ export function Home() {
                   <>
                     {federal.length > 0 && (
                       <section>
-                        <h2 className="text-3xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted/30 z-10">Federal Representatives</h2>
+                        <h2 className="text-3xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted z-10">Federal Representatives</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {federal.map(renderRepCard)}
                         </div>
@@ -241,7 +241,7 @@ export function Home() {
 
                     {state.length > 0 && (
                       <section>
-                        <div className="flex items-center justify-between border-b pb-2 mb-6 sticky top-0 bg-muted/30 z-10">
+                        <div className="flex items-center justify-between border-b pb-2 mb-6 sticky top-0 bg-muted z-10">
                           <h2 className="text-3xl font-black">State Representatives</h2>
                           {data?.stateRepCache?.stale && (
                             <div className="flex items-center gap-1.5 text-sm text-amber-700">
@@ -258,7 +258,7 @@ export function Home() {
 
                     {local.length > 0 && (
                       <section>
-                        <h2 className="text-3xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted/30 z-10">Local Representatives</h2>
+                        <h2 className="text-3xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted z-10">Local Representatives</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {local.map(renderRepCard)}
                         </div>
@@ -274,7 +274,7 @@ export function Home() {
             <div className="space-y-16">
               {stateMembersData.representatives && stateMembersData.representatives.length > 0 && (
                 <section>
-                  <h2 className="text-3xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted/30 z-10">Federal Representatives</h2>
+                  <h2 className="text-3xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted z-10">Federal Representatives</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {stateMembersData.representatives.map(renderRepCard)}
                   </div>
