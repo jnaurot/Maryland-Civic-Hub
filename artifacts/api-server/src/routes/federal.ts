@@ -22,7 +22,7 @@ const router = Router();
 const CONGRESS_API_KEY = process.env.CONGRESS_API_KEY;
 const BASE = "https://api.congress.gov/v3";
 
-async function congressFetch(path: string, params: Record<string, string | number> = {}) {
+async function congressFetch(path: string, params: Record<string, string | number> = {}, logger?: any) {
   if (!CONGRESS_API_KEY) throw new Error("CONGRESS_API_KEY not configured");
   const url = new URL(`${BASE}${path}`);
   url.searchParams.set("api_key", CONGRESS_API_KEY);
@@ -30,6 +30,7 @@ async function congressFetch(path: string, params: Record<string, string | numbe
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
   }
+  logger?.info({ url: url.toString(), source: "congress.gov" }, "Fetching from Congress.gov");
   const res = await fetch(url.toString());
   if (!res.ok) {
     const text = await res.text();
@@ -126,7 +127,8 @@ router.get("/federal/members/:bioguideId", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
 
   try {
-    const data = await congressFetch(`/member/${parsed.data.bioguideId}`);
+    req.log.info({ bioguideId: parsed.data.bioguideId, source: "congress.gov" }, "Fetching federal member from Congress.gov");
+    const data = await congressFetch(`/member/${parsed.data.bioguideId}`, {}, req.log);
     const m = data.member ?? {};
     return res.json({
       bioguideId: m.bioguideId ?? parsed.data.bioguideId,
@@ -158,7 +160,7 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
 
   try {
     const endpoint = type === "sponsored" ? "sponsored-legislation" : "cosponsored-legislation";
-    const data = await congressFetch(`/member/${bioguideId}/${endpoint}`, { offset, limit });
+    const data = await congressFetch(`/member/${bioguideId}/${endpoint}`, { offset, limit }, req.log);
     const key = type === "sponsored" ? "sponsoredLegislation" : "cosponsoredLegislation";
     const allItems: any[] = data[key] ?? data.bills ?? [];
     // Filter out amendments (they have amendmentNumber and null type)
@@ -665,7 +667,7 @@ router.get("/federal/members/:bioguideId/committees", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
 
   try {
-    const data = await congressFetch(`/member/${parsed.data.bioguideId}`);
+    const data = await congressFetch(`/member/${parsed.data.bioguideId}`, {}, req.log);
     const memberData = data.member ?? {};
     const committeeAssignments = normalizeTermsItem(memberData);
 
@@ -689,7 +691,7 @@ router.get("/federal/members/:bioguideId/committees", async (req, res) => {
         try {
           if (c.committeeCode) {
             const chamber = c.chamber?.toLowerCase().includes("senate") ? "senate" : "house";
-            const membersData = await congressFetch(`/committee/${chamber}/${c.committeeCode}/members`, { limit: 20 });
+            const membersData = await congressFetch(`/committee/${chamber}/${c.committeeCode}/members`, { limit: 20 }, req.log);
             const members = (membersData.committeeMember ?? []).map((m: any) => ({
               name: m.name ?? "",
               party: m.party,
@@ -729,7 +731,7 @@ router.get("/federal/bills", async (req, res) => {
       params.chamber = chamber.charAt(0).toUpperCase() + chamber.slice(1);
     }
 
-    const data = await congressFetch(`/bill/${currentCongress}`, params);
+    const data = await congressFetch(`/bill/${currentCongress}`, params, req.log);
     const bills = (data.bills ?? []).map((b: any) => ({
       id: `${b.congress}-${b.type}-${b.number}`,
       title: b.title ?? "Untitled",
@@ -752,6 +754,8 @@ router.get("/federal/bills", async (req, res) => {
       const dateB = b.latestActionDate ? new Date(b.latestActionDate).getTime() : 0;
       return dateB - dateA;
     });
+
+    req.log.info({ count: bills.length, source: "congress.gov" }, "Fetched federal bills from Congress.gov");
 
     // Upsert into cache for search
     for (const bill of bills) {
@@ -797,12 +801,12 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
 
   try {
     const [billData, cosponsorsData, committeesData, actionsData, summaryData, textData] = await Promise.allSettled([
-      congressFetch(`/bill/${congress}/${billType}/${billNumber}`),
-      congressFetch(`/bill/${congress}/${billType}/${billNumber}/cosponsors`, { limit: 50 }),
-      congressFetch(`/bill/${congress}/${billType}/${billNumber}/committees`),
-      congressFetch(`/bill/${congress}/${billType}/${billNumber}/actions`, { limit: 20 }),
-      congressFetch(`/bill/${congress}/${billType}/${billNumber}/summaries`),
-      congressFetch(`/bill/${congress}/${billType}/${billNumber}/text`),
+      congressFetch(`/bill/${congress}/${billType}/${billNumber}`, {}, req.log),
+      congressFetch(`/bill/${congress}/${billType}/${billNumber}/cosponsors`, { limit: 50 }, req.log),
+      congressFetch(`/bill/${congress}/${billType}/${billNumber}/committees`, {}, req.log),
+      congressFetch(`/bill/${congress}/${billType}/${billNumber}/actions`, { limit: 20 }, req.log),
+      congressFetch(`/bill/${congress}/${billType}/${billNumber}/summaries`, {}, req.log),
+      congressFetch(`/bill/${congress}/${billType}/${billNumber}/text`, {}, req.log),
     ]);
 
     const bill = billData.status === "fulfilled" ? (billData.value.bill ?? {}) : {};
@@ -840,6 +844,8 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
     const textUrl = latestText?.formats?.find((f: any) => f.type === "PDF")?.url
       ?? latestText?.formats?.[0]?.url
       ?? undefined;
+
+    req.log.info({ billId: `${congress}-${billType}-${billNumber}`, source: "congress.gov" }, "Fetched federal bill detail from Congress.gov");
 
     // Cache for search
     const subjectsText = Array.isArray(bill.subjects) ? bill.subjects.join(" ") : "";
@@ -914,6 +920,7 @@ router.get("/federal/bills/search", async (req, res) => {
   }
 
   try {
+    req.log.info({ q, source: "db" }, "Searching federal bills from DB cache");
     const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
     const conditions = [sql`${federalBillsTable.searchVector} @@ ${searchQuery}`];
 

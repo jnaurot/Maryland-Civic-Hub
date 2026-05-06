@@ -65,6 +65,7 @@ router.get("/state/members/:memberId", async (req, res) => {
 
   try {
     const result = await getStateLegislator(memberId, req.log);
+    req.log.info({ memberId, source: result.cache.source }, "State member request served");
     return res.json(result);
   } catch (err) {
     req.log.error({ err }, "Error fetching state member");
@@ -211,9 +212,11 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
       );
 
     if (Number(existing[0]?.count ?? 0) === 0) {
-      req.log.info({ memberId, jurisdiction }, "No state vote records in DB; triggering ingestion");
+      req.log.info({ memberId, jurisdiction, source: "openstates" }, "No state vote records in DB; triggering ingestion");
       const { inserted, scannedBills } = await ingestStateVotesForMember({ jurisdiction, memberId });
-      req.log.info({ memberId, jurisdiction, inserted, scannedBills }, "State vote ingestion complete");
+      req.log.info({ memberId, jurisdiction, inserted, scannedBills, source: "openstates" }, "State vote ingestion complete");
+    } else {
+      req.log.info({ memberId, jurisdiction, count: Number(existing[0]?.count ?? 0), source: "db" }, "Serving state votes from DB");
     }
 
     // Build filter conditions
@@ -281,6 +284,7 @@ router.get("/state/bills", async (req, res) => {
     };
     if (chamber) params.chamber = chamber;
 
+    req.log.info({ jurisdiction, page: Math.floor(offset / limit) + 1, source: "openstates" }, "Fetching state bills from OpenStates");
     const data = await openStatesFetch("/bills", params);
     const bills = (data.results ?? []).map(mapStateBill);
 
@@ -335,6 +339,7 @@ router.get("/state/bills/:billId", async (req, res) => {
   if (!billId) return res.status(400).json({ error: "billId required" });
 
   try {
+    req.log.info({ billId, source: "openstates" }, "Fetching state bill detail from OpenStates");
     const url = new URL(`${BASE}/bills/${billId}`);
     url.searchParams.set("include", "votes");
     url.searchParams.append("include", "sponsorships");
@@ -437,6 +442,7 @@ router.get("/state/bills/search", async (req, res) => {
   }
 
   try {
+    req.log.info({ q, jurisdiction, source: "db" }, "Searching state bills from DB cache");
     const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
     const conditions = [sql`${stateBillsTable.searchVector} @@ ${searchQuery}`];
     if (jurisdiction) conditions.push(eq(stateBillsTable.jurisdiction, jurisdiction));

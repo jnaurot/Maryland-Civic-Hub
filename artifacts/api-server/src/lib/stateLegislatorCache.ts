@@ -155,6 +155,7 @@ export async function getStateLegislator(
   if (cached) {
     const stale = isStale(cached);
     if (!stale) {
+      logger?.info({ legislatorId: id, source: "db" }, "Serving legislator from cache");
       return {
         legislator: mapOpenStatesPerson(cached.raw ?? cached),
         cache: { source: "db", stale: false, fetchedAt: cached.fetchedAt.toISOString() },
@@ -163,13 +164,14 @@ export async function getStateLegislator(
     // Stale cache exists. Try to refresh if not rate limited.
     if (!(await isRateLimited())) {
       try {
+        logger?.info({ legislatorId: id, source: "openstates" }, "Refreshing stale legislator from OpenStates");
         const fresh = await fetchStateLegislatorFromOpenStates(id);
         return {
           legislator: fresh,
           cache: { source: "openstates", stale: false, fetchedAt: new Date().toISOString() },
         };
       } catch (err) {
-        logger?.warn({ err, legislatorId: id }, "Failed to refresh stale legislator; returning cached data");
+        logger?.warn({ err, legislatorId: id, source: "db" }, "Failed to refresh stale legislator; returning cached data");
         return {
           legislator: mapOpenStatesPerson(cached.raw ?? cached),
           cache: {
@@ -182,6 +184,7 @@ export async function getStateLegislator(
       }
     }
     // Rate limited → return stale cache with warning
+    logger?.warn({ legislatorId: id, source: "db" }, "Rate limited; returning stale legislator cache");
     return {
       legislator: mapOpenStatesPerson(cached.raw ?? cached),
       cache: {
@@ -199,6 +202,7 @@ export async function getStateLegislator(
   }
 
   try {
+    logger?.info({ legislatorId: id, source: "openstates" }, "Cache miss; fetching legislator from OpenStates");
     const fresh = await fetchStateLegislatorFromOpenStates(id);
     return {
       legislator: fresh,
@@ -425,6 +429,7 @@ export async function getDistrictLegislators(
       new Date(r.fetchedAt).getTime() < new Date(min.fetchedAt).getTime() ? r : min,
       cachedRows[0]
     );
+    logger?.info({ jurisdiction, count: cachedRows.length, source: "db", stale: anyStale }, "Serving district legislators from cache");
     return {
       legislators: cachedRows.map((r) => mapOpenStatesPerson(r.raw ?? r)),
       cache: {
@@ -436,6 +441,7 @@ export async function getDistrictLegislators(
   }
 
   // Cache miss → fetch from OpenStates
+  logger?.info({ jurisdiction, senateDistrict, houseDistrict, source: "openstates" }, "Cache miss; fetching district legislators from OpenStates");
   const fetched = await fetchAndCacheDistrictLegislators(jurisdiction, senateDistrict, houseDistrict, logger);
   return {
     legislators: fetched,
