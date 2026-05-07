@@ -110,22 +110,11 @@ function computePolicyAreas(
   const total = rows.reduce((sum, r) => sum + Number(r.count), 0);
   if (total === 0) return [];
 
-  const top = rows.slice(0, 5).map((r) => ({
+  return rows.map((r) => ({
     name: r.name ?? "Unknown",
     count: Number(r.count),
     pct: Math.round((Number(r.count) / total) * 100),
   }));
-
-  const otherCount = rows.slice(5).reduce((sum, r) => sum + Number(r.count), 0);
-  if (otherCount > 0) {
-    top.push({
-      name: "Other",
-      count: otherCount,
-      pct: Math.round((otherCount / total) * 100),
-    });
-  }
-
-  return top;
 }
 
 async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {

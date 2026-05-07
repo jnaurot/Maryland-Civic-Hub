@@ -523,7 +523,7 @@ export function FederalRepDetail() {
                             <span className="text-xs text-muted-foreground font-medium">
                               {billRole === "cosponsored" ? "Top Support Areas" : "Top Sponsored Issues"}:
                             </span>
-                            {billSummaryData.policyAreas.slice(0, 3).filter(p => p.name && p.name !== "Other").map((area) => (
+                            {billSummaryData.policyAreas.slice(0, 5).filter(p => p.name && p.name !== "Other").map((area) => (
                               <Badge key={area.name} variant="outline" className="text-xs bg-primary/5 border-primary/20">
                                 {area.name}
                               </Badge>
