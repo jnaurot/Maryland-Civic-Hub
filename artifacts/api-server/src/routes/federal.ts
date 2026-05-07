@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { XMLParser } from "fast-xml-parser";
-import { db, normalizeVoteCast, federalBillsTable, federalMembersTable, federalMemberBillRolesTable, federalMemberBillCacheStatusTable } from "@workspace/db";
+import { db, normalizeVoteCast, federalBillsTable, federalMembersTable, federalMemberBillRolesTable, federalMemberBillCacheStatusTable, federalCommitteesTable, federalMemberCommitteesTable } from "@workspace/db";
 import { houseVotesTable, houseVoteRecordsTable, senateRollCallVotesTable, senatorVotePositionsTable, senatorIdentitiesTable } from "@workspace/db";
 import {
   GetFederalMemberParams,
@@ -104,6 +104,118 @@ function isStale(row: typeof federalMembersTable.$inferSelect): boolean {
   return Date.now() - new Date(row.fetchedAt).getTime() > STALE_THRESHOLD_MS;
 }
 
+// House Clerk XML comcode -> committee name mapping (standing + select committees, 119th Congress)
+const HOUSE_COMMITTEE_NAMES: Record<string, string> = {
+  AG00: "Committee on Agriculture",
+  AP00: "Committee on Appropriations",
+  AS00: "Committee on Armed Services",
+  BA00: "Committee on Financial Services",
+  BU00: "Committee on the Budget",
+  ED00: "Committee on Education and the Workforce",
+  FA00: "Committee on Foreign Affairs",
+  GO00: "Committee on Oversight and Government Reform",
+  HA00: "Committee on House Administration",
+  HM00: "Committee on Homeland Security",
+  IF00: "Committee on Energy and Commerce",
+  IG00: "Permanent Select Committee on Intelligence",
+  JU00: "Committee on the Judiciary",
+  PW00: "Committee on Transportation and Infrastructure",
+  RU00: "Committee on Rules",
+  SM00: "Committee on Small Business",
+  SO00: "Committee on Ethics",
+  SY00: "Committee on Science, Space, and Technology",
+  VR00: "Committee on Veterans' Affairs",
+  WM00: "Committee on Ways and Means",
+  EC00: "Joint Economic Committee",
+  IT00: "Joint Committee on Taxation",
+  JL00: "Joint Committee on the Library",
+  JP00: "Joint Committee on Printing",
+  ZL00: "Select Committee on the Strategic Competition Between the U.S. and the Chinese Communist Party",
+  ZR00: "Select Subcommittee on the Weaponization of the Federal Government",
+};
+
+async function fetchHouseCommitteesFromClerkXml(): Promise<Map<string, string[]>> {
+  const res = await fetch("https://clerk.house.gov/xml/lists/MemberData.xml", { headers: { "User-Agent": "CivicHub/1.0" } });
+  if (!res.ok) throw new Error(`House Clerk XML error ${res.status}`);
+  const xml = await res.text();
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+  const obj = parser.parse(xml);
+
+  const memberMap = new Map<string, string[]>();
+  const members = obj?.MemberData?.members?.member ?? [];
+  for (const m of Array.isArray(members) ? members : [members]) {
+    const bioguideId = m?.memberInfo?.bioguideID ?? m?.["member-info"]?.bioguideID;
+    if (!bioguideId) continue;
+    const assignments: string[] = [];
+    const committeeAssignments = m?.committeeAssignments ?? m?.["committee-assignments"];
+    const committees = committeeAssignments?.committee ?? [];
+    for (const c of Array.isArray(committees) ? committees : [committees]) {
+      const code = c?.["@_comcode"];
+      if (code) assignments.push(code);
+    }
+    memberMap.set(bioguideId, assignments);
+  }
+  return memberMap;
+}
+
+async function fetchSenateCommitteesFromXml(bioguideId: string): Promise<Array<{ code: string; name: string }>> {
+  // Senate committee XMLs are per-committee. To avoid fetching all ~20 committee XMLs
+  // on every request, we fetch the Senate contact XML to get all senator names, then
+  // try to match the requested senator against committee rosters.
+  // NOTE: This is a best-effort approach. The Senate XML does not include bioguideIds.
+
+  // Step 1: Get the senator's name from our cached member data
+  const rows = await db.select().from(federalMembersTable).where(eq(federalMembersTable.bioguideId, bioguideId)).limit(1);
+  const memberName = rows[0]?.name;
+  if (!memberName) return [];
+
+  const lastName = memberName.split(" ").pop()?.toLowerCase() ?? "";
+
+  // Step 2: Fetch Senate contact XML to get all senator names for matching
+  const contactRes = await fetch("https://www.senate.gov/general/contact_information/senators_cfm.xml", { headers: { "User-Agent": "CivicHub/1.0" } });
+  if (!contactRes.ok) return [];
+  const contactXml = await contactRes.text();
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+  const contactObj = parser.parse(contactXml);
+
+  const senators = contactObj?.contact_information?.member ?? [];
+  let targetLastName = "";
+  for (const s of Array.isArray(senators) ? senators : [senators]) {
+    const id = s?.bioguide_id;
+    if (id === bioguideId) {
+      targetLastName = (s?.last_name ?? "").toLowerCase().trim();
+      break;
+    }
+  }
+  if (!targetLastName) targetLastName = lastName;
+
+  // Step 3: Fetch all Senate committee XMLs and search for the senator
+  const committeeCodes = ["SSEG", "SSBK", "SSAF", "SSAP", "SSAS", "SSBU", "SSCM", "SSEG", "SSFI", "SSFR", "SSGA", "SSHR", "SSHS", "SSJU", "SSRA", "SSSB", "SSVA", "SSCM", "SLET"];
+  const results: Array<{ code: string; name: string }> = [];
+
+  for (const code of committeeCodes) {
+    try {
+      const res = await fetch(`https://www.senate.gov/general/committee_membership/committee_memberships_${code}.xml`, { headers: { "User-Agent": "CivicHub/1.0" } });
+      if (!res.ok) continue;
+      const xml = await res.text();
+      const obj = parser.parse(xml);
+      const committeeName = obj?.committee_membership?.committees?.committee_name ?? "";
+      const members = obj?.committee_membership?.committees?.members?.member ?? [];
+      for (const m of Array.isArray(members) ? members : [members]) {
+        const memberLastName = (m?.name?.last ?? "").toLowerCase().trim();
+        if (memberLastName === targetLastName) {
+          results.push({ code, name: committeeName });
+          break;
+        }
+      }
+    } catch {
+      // ignore individual committee fetch failures
+    }
+  }
+
+  return results;
+}
+
 function computePolicyAreas(
   rows: Array<{ name: string | null; count: string | number }>
 ): Array<{ name: string; count: number; pct: number }> {
@@ -156,6 +268,51 @@ async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
       fetchedAt: new Date(),
     },
   });
+
+  // Ingest committee assignments from official XML sources
+  try {
+    const chamber = mapped.chamber?.toLowerCase() ?? "";
+    let assignments: Array<{ code: string; name: string }> = [];
+
+    if (chamber.includes("house")) {
+      const houseMap = await fetchHouseCommitteesFromClerkXml();
+      const codes = houseMap.get(mapped.bioguideId || bioguideId) ?? [];
+      assignments = codes.map((code) => ({
+        code,
+        name: HOUSE_COMMITTEE_NAMES[code] ?? `Committee ${code}`,
+      }));
+    } else if (chamber.includes("senate")) {
+      assignments = await fetchSenateCommitteesFromXml(mapped.bioguideId || bioguideId);
+    }
+
+    // Upsert committees and member assignments
+    for (const a of assignments) {
+      await db.insert(federalCommitteesTable).values({
+        id: a.code,
+        name: a.name,
+        chamber: mapped.chamber ?? null,
+        fetchedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: federalCommitteesTable.id,
+        set: { name: a.name, chamber: mapped.chamber ?? null, fetchedAt: new Date() },
+      });
+      await db.insert(federalMemberCommitteesTable).values({
+        bioguideId: mapped.bioguideId || bioguideId,
+        committeeId: a.code,
+        fetchedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: [federalMemberCommitteesTable.bioguideId, federalMemberCommitteesTable.committeeId],
+        set: { fetchedAt: new Date() },
+      });
+    }
+
+    // Mark committee data as fetched even if empty (prevents repeated XML fetches)
+    await db.update(federalMembersTable)
+      .set({ committeeFetchedAt: new Date() })
+      .where(eq(federalMembersTable.bioguideId, mapped.bioguideId || bioguideId));
+  } catch (err) {
+    logger?.warn({ err, bioguideId }, "Failed to ingest committee assignments from XML");
+  }
 
   return mapped;
 }
@@ -1069,47 +1226,93 @@ router.get("/federal/members/:bioguideId/committees", async (req, res) => {
   const parsed = GetFederalMemberCommitteesParams.safeParse(req.params);
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
 
-  try {
-    const data = await congressFetch(`/member/${parsed.data.bioguideId}`, {}, req.log);
-    const memberData = data.member ?? {};
-    const committeeAssignments = normalizeTermsItem(memberData);
+  const { bioguideId } = parsed.data;
 
-    // Get unique committee assignments from most recent terms
-    const committeeMap = new Map<string, any>();
-    for (const term of committeeAssignments) {
-      for (const c of term.committees ?? []) {
-        if (!committeeMap.has(c.name)) {
-          committeeMap.set(c.name, {
-            name: c.name,
-            chamber: term.chamber,
-            committeeCode: c.systemCode,
-          });
-        }
-      }
+  try {
+    // Option A: serve from DB cache (member profile only — no committee rosters)
+    const cachedRows = await db
+      .select({
+        name: federalCommitteesTable.name,
+        chamber: federalCommitteesTable.chamber,
+        committeeCode: federalCommitteesTable.id,
+      })
+      .from(federalMemberCommitteesTable)
+      .innerJoin(federalCommitteesTable, eq(federalMemberCommitteesTable.committeeId, federalCommitteesTable.id))
+      .where(eq(federalMemberCommitteesTable.bioguideId, bioguideId));
+
+    if (cachedRows.length > 0) {
+      req.log.info({ bioguideId, source: "db" }, "Serving member committees from cache");
+      return res.json({
+        committees: cachedRows.map((r) => ({
+          name: r.name,
+          chamber: r.chamber ?? undefined,
+          committeeCode: r.committeeCode,
+        })),
+      });
     }
 
-    // Fetch committee members for each committee
-    const committees = await Promise.all(
-      Array.from(committeeMap.values()).slice(0, 5).map(async (c) => {
-        try {
-          if (c.committeeCode) {
-            const chamber = c.chamber?.toLowerCase().includes("senate") ? "senate" : "house";
-            const membersData = await congressFetch(`/committee/${chamber}/${c.committeeCode}/members`, { limit: 20 }, req.log);
-            const members = (membersData.committeeMember ?? []).map((m: any) => ({
-              name: m.name ?? "",
-              party: m.party,
-              state: m.state,
-              rank: m.rank,
-              bioguideId: m.bioguideId,
-            }));
-            return { ...c, members };
-          }
-        } catch {
-          // ignore
-        }
-        return c;
-      })
-    );
+    // Check if we already fetched committees and found none (prevents repeated XML fetches)
+    const memberRows = await db.select().from(federalMembersTable).where(eq(federalMembersTable.bioguideId, bioguideId)).limit(1);
+    if (memberRows[0]?.committeeFetchedAt) {
+      req.log.info({ bioguideId, source: "db" }, "Committee data already fetched; no assignments found");
+      return res.json({ committees: [] });
+    }
+
+    // Cache miss: fetch from official XML sources
+    req.log.info({ bioguideId, source: "house_clerk|senate" }, "Cache miss; fetching member committees from official XML");
+
+    const chamber = memberRows[0]?.chamber?.toLowerCase() ?? "";
+    let committees: Array<{ name: string; chamber?: string; committeeCode: string }> = [];
+
+    if (chamber.includes("house")) {
+      const houseMap = await fetchHouseCommitteesFromClerkXml();
+      const codes = houseMap.get(bioguideId) ?? [];
+      committees = codes.map((code) => ({
+        name: HOUSE_COMMITTEE_NAMES[code] ?? `Committee ${code}`,
+        chamber: memberRows[0]?.chamber ?? undefined,
+        committeeCode: code,
+      }));
+    } else if (chamber.includes("senate")) {
+      const senateAssignments = await fetchSenateCommitteesFromXml(bioguideId);
+      committees = senateAssignments.map((a) => ({
+        name: a.name,
+        chamber: memberRows[0]?.chamber ?? undefined,
+        committeeCode: a.code,
+      }));
+    }
+
+    // Cache the results
+    for (const c of committees) {
+      await db.insert(federalCommitteesTable).values({
+        id: c.committeeCode,
+        name: c.name,
+        chamber: c.chamber ?? null,
+        fetchedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: federalCommitteesTable.id,
+        set: { name: c.name, chamber: c.chamber ?? null, fetchedAt: new Date() },
+      });
+      await db.insert(federalMemberCommitteesTable).values({
+        bioguideId,
+        committeeId: c.committeeCode,
+        fetchedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: [federalMemberCommitteesTable.bioguideId, federalMemberCommitteesTable.committeeId],
+        set: { fetchedAt: new Date() },
+      });
+    }
+
+    // Mark that we've checked committees (even if empty, to prevent repeated fetches)
+    await db.update(federalMembersTable)
+      .set({ committeeFetchedAt: new Date() })
+      .where(eq(federalMembersTable.bioguideId, bioguideId));
+
+    // NOTE: Option B (full committee rosters with all members) is not implemented.
+    // The current endpoint returns this member's assignments only. To add member
+    // rosters, fetch committee member lists from official sources, cache in a
+    // `federal_committee_members` table, and join here. That would require
+    // storing rank/role per member and keeping rosters fresh when membership
+    // changes.
 
     return res.json({ committees });
   } catch (err) {

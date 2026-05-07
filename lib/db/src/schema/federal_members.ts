@@ -16,6 +16,7 @@ export const federalMembersTable = pgTable("federal_members", {
   nextElection: text("next_election"),
   raw: jsonb("raw"),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
+  committeeFetchedAt: timestamp("committee_fetched_at", { withTimezone: true }),
 }, (table) => [
   uniqueIndex("federal_members_bioguide_id_idx").on(table.bioguideId),
   index("idx_federal_members_state").on(table.state),
