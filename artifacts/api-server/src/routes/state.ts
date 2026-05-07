@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { eq, and, desc, sql } from "drizzle-orm";
-import { db, normalizeVoteCast, normalizeStateVotePosition, stateVoteRecordsTable, stateBillsTable } from "@workspace/db";
+import { eq, and, or, desc, sql } from "drizzle-orm";
+import { db, normalizeVoteCast, normalizeStateVotePosition, stateVoteRecordsTable, stateBillsTable, stateLegislatorsTable } from "@workspace/db";
 import {
   GetStateMemberBillsQueryParams,
   GetStateMemberVotesQueryParams,
@@ -92,7 +92,7 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
   if (!memberId || !queryParsed.success) return res.status(400).json({ error: "Invalid params" });
 
   try {
-    const { jurisdiction, offset, limit } = queryParsed.data;
+    const { jurisdiction, offset, limit, q } = queryParsed.data;
     const page = Math.floor(offset / limit) + 1;
     const data = await openStatesFetch("/bills", {
       jurisdiction,
@@ -100,7 +100,17 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
       page,
       sponsor_id: memberId,
     });
-    const bills = (data.results ?? []).map(mapStateBill);
+    let bills = (data.results ?? []).map(mapStateBill);
+
+    // In-memory search filter (OpenStates does not support per-member text search)
+    if (q) {
+      const query = q.toLowerCase();
+      bills = bills.filter((b: any) =>
+        (b.title ?? "").toLowerCase().includes(query) ||
+        (b.identifier ?? "").toLowerCase().includes(query)
+      );
+    }
+
     return res.json({ bills, totalCount: data.pagination?.total_items, offset });
   } catch (err) {
     req.log.error({ err }, "Error fetching state member bills");
@@ -198,7 +208,12 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
   if (!memberId || !queryParsed.success) return res.status(400).json({ error: "Invalid params" });
 
   try {
-    const { jurisdiction, offset, limit, filter } = queryParsed.data;
+    const { jurisdiction, offset, limit, filter, q } = queryParsed.data;
+
+    // Build text search condition
+    const searchCondition = q
+      ? sql`${stateVoteRecordsTable.billTitle} ILIKE ${`%${q}%`}`
+      : undefined;
 
     // Check if we have any persisted vote records for this member
     const existing = await db
@@ -207,7 +222,8 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
       .where(
         and(
           eq(stateVoteRecordsTable.jurisdiction, jurisdiction),
-          eq(stateVoteRecordsTable.legislatorId, memberId)
+          eq(stateVoteRecordsTable.legislatorId, memberId),
+          ...(searchCondition ? [searchCondition] : [])
         )
       );
 
@@ -220,7 +236,7 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
     }
 
     // Build filter conditions
-    const baseConditions = [
+    const baseConditions: any[] = [
       eq(stateVoteRecordsTable.jurisdiction, jurisdiction),
       eq(stateVoteRecordsTable.legislatorId, memberId),
     ];
@@ -229,6 +245,7 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
     else if (filter === "nay") baseConditions.push(eq(stateVoteRecordsTable.position, "Nay"));
     else if (filter === "present") baseConditions.push(eq(stateVoteRecordsTable.position, "Present"));
     else if (filter === "not-voting") baseConditions.push(eq(stateVoteRecordsTable.position, "Not Voting"));
+    if (searchCondition) baseConditions.push(searchCondition);
 
     // Fetch paginated votes
     const rows = await db
@@ -479,6 +496,62 @@ router.get("/state/bills/search", async (req, res) => {
     return res.json({ bills, totalCount, offset });
   } catch (err) {
     req.log.error({ err }, "Error searching state bills");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get("/state/members/search", async (req, res) => {
+  const q = req.query.q;
+  const jurisdiction = req.query.jurisdiction as string | undefined;
+  const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  const offset = Number(req.query.offset ?? 0);
+
+  if (!q || typeof q !== "string") {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
+
+  try {
+    req.log.info({ q, jurisdiction, source: "db" }, "Searching state legislators from DB cache");
+    const searchPattern = `%${q}%`;
+    const conditions: any[] = [
+      or(
+        sql`${stateLegislatorsTable.name} ILIKE ${searchPattern}`,
+        sql`${stateLegislatorsTable.party} ILIKE ${searchPattern}`
+      ),
+    ];
+
+    if (jurisdiction) {
+      conditions.push(eq(stateLegislatorsTable.jurisdiction, jurisdiction));
+    }
+
+    const rows = await db
+      .select()
+      .from(stateLegislatorsTable)
+      .where(and(...conditions))
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stateLegislatorsTable)
+      .where(and(...conditions));
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+
+    const members = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      party: r.party,
+      chamber: r.chamber,
+      district: r.district,
+      jurisdiction: r.jurisdiction,
+      photoUrl: r.photoUrl,
+      state: r.state,
+    }));
+
+    return res.json({ members, totalCount, offset });
+  } catch (err) {
+    req.log.error({ err }, "Error searching state legislators");
     return res.status(500).json({ error: String(err) });
   }
 });

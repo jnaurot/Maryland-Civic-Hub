@@ -36,7 +36,9 @@ import {
   MoreHorizontal,
   RefreshCw,
   AlertTriangle,
+  Search,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 function partyColor(party?: string) {
   if (!party) return "bg-gray-100 text-gray-700";
@@ -74,21 +76,32 @@ function formatMoney(n?: number) {
 function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: string; jurisdiction?: string; memberName?: string }) {
   const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
   const [offset, setOffset] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const limit = 20;
 
-  const { data, isLoading } = useGetStateMemberBills(memberId, { type, jurisdiction, offset, limit }, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberBillsQueryKey(memberId, { type, jurisdiction, offset, limit }) }
+  const queryParams = { type, jurisdiction, offset, limit, q: searchQuery || undefined };
+  const { data, isLoading } = useGetStateMemberBills(memberId, queryParams, {
+    query: { enabled: !!memberId, queryKey: getGetStateMemberBillsQueryKey(memberId, queryParams) }
   });
 
   const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/state/${memberId}`)}&name=${encodeURIComponent(memberName)}` : "";
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center shrink-0 pb-4">
+      <div className="flex justify-between items-center shrink-0 pb-4 gap-2 flex-wrap">
         <div className="flex gap-2">
           <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => { setType("sponsored"); setOffset(0); }}>Sponsored</Button>
           <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
         </div>
+      </div>
+      <div className="relative shrink-0 pb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search bills..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setOffset(0); }}
+          className="pl-9"
+        />
       </div>
 
       <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2 shrink-0">
@@ -136,10 +149,12 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
 function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdiction?: string }) {
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState<"all" | "yea" | "nay" | "present" | "not-voting">("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const limit = 20;
 
-  const { data, isLoading } = useGetStateMemberVotes(memberId, { jurisdiction, offset, limit, filter }, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberVotesQueryKey(memberId, { jurisdiction, offset, limit, filter }) }
+  const queryParams = { jurisdiction, offset, limit, filter, q: searchQuery || undefined };
+  const { data, isLoading } = useGetStateMemberVotes(memberId, queryParams, {
+    query: { enabled: !!memberId, queryKey: getGetStateMemberVotesQueryKey(memberId, queryParams) }
   });
 
   const voteFilters: { value: typeof filter; label: string }[] = [
@@ -152,6 +167,15 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
 
   return (
     <div className="flex flex-col h-full">
+      <div className="relative shrink-0 pb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search votes..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setOffset(0); }}
+          className="pl-9"
+        />
+      </div>
       <div className="flex flex-wrap gap-2 shrink-0 pb-4">
         {voteFilters.map((f) => (
           <Button

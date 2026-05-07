@@ -31,7 +31,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/hooks/use-toast";
-import { ExternalLink, ChevronLeft, Users, FileText, Vote, DollarSign, MoreHorizontal, RefreshCw, AlertTriangle } from "lucide-react";
+import { ExternalLink, ChevronLeft, Users, FileText, Vote, DollarSign, MoreHorizontal, RefreshCw, AlertTriangle, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { RepNameLink } from "@/components/RepNameLink";
 
 function partyColor(party?: string) {
@@ -101,17 +102,19 @@ function PolicyAreaChart({ policyAreas, type, fullyIngested }: { policyAreas?: A
 function BillsList({ bioguideId, memberName, billRole, onBillRoleChange }: { bioguideId: string; memberName?: string; billRole: "sponsored" | "cosponsored"; onBillRoleChange: (role: "sponsored" | "cosponsored") => void }) {
   const [billView, setBillView] = useState<"list" | "breakdown">("list");
   const [offset, setOffset] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const limit = 20;
 
-  const { data, isLoading } = useGetFederalMemberBills(bioguideId, { type: billRole, offset, limit }, {
-    query: { enabled: !!bioguideId, queryKey: getGetFederalMemberBillsQueryKey(bioguideId, { type: billRole, offset, limit }) }
+  const queryParams = { type: billRole, offset, limit, q: searchQuery || undefined };
+  const { data, isLoading } = useGetFederalMemberBills(bioguideId, queryParams, {
+    query: { enabled: !!bioguideId, queryKey: getGetFederalMemberBillsQueryKey(bioguideId, queryParams) }
   });
 
   const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/federal/${bioguideId}`)}&name=${encodeURIComponent(memberName)}` : "";
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center shrink-0 pb-4">
+      <div className="flex justify-between items-center shrink-0 pb-4 gap-2 flex-wrap">
         <div className="flex gap-2">
           <Button size="sm" variant={billRole === "sponsored" ? "default" : "outline"} onClick={() => { onBillRoleChange("sponsored"); setOffset(0); }}>Sponsored</Button>
           <Button size="sm" variant={billRole === "cosponsored" ? "default" : "outline"} onClick={() => { onBillRoleChange("cosponsored"); setOffset(0); }}>Cosponsored</Button>
@@ -120,6 +123,15 @@ function BillsList({ bioguideId, memberName, billRole, onBillRoleChange }: { bio
           <Button size="sm" variant={billView === "list" ? "default" : "outline"} onClick={() => setBillView("list")}>List</Button>
           <Button size="sm" variant={billView === "breakdown" ? "default" : "outline"} onClick={() => setBillView("breakdown")}>Breakdown</Button>
         </div>
+      </div>
+      <div className="relative shrink-0 pb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search bills..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setOffset(0); }}
+          className="pl-9"
+        />
       </div>
 
       {billView === "list" ? (
@@ -189,46 +201,44 @@ function BillsList({ bioguideId, memberName, billRole, onBillRoleChange }: { bio
 }
 
 function VotesList({ bioguideId, memberChamber }: { bioguideId: string; memberChamber?: string }) {
-  console.log("[VotesList] MOUNTED — bioguideId:", bioguideId, "memberChamber:", memberChamber);
-
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState<"all" | "yea" | "nay" | "present" | "not-voting">("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const limit = 20;
 
   const normalizedChamber = memberChamber?.toLowerCase().trim() ?? "";
   const isSenator = normalizedChamber === "senate";
   const isHouse = normalizedChamber === "" || normalizedChamber.includes("house");
-  console.log("[VotesList] isSenator:", isSenator, "isHouse:", isHouse);
+
+  const houseParams = { offset, limit, filter, q: searchQuery || undefined };
+  const senateParams = { offset, limit, filter, q: searchQuery || undefined };
 
   const houseQuery = useGetFederalMemberHouseVotes(
     bioguideId,
-    { offset, limit, filter },
+    houseParams,
     {
       query: {
         enabled: !!bioguideId && isHouse,
-        queryKey: getGetFederalMemberHouseVotesQueryKey(bioguideId, { offset, limit, filter }),
+        queryKey: getGetFederalMemberHouseVotesQueryKey(bioguideId, houseParams),
       },
     }
   );
 
   const senateQuery = useGetFederalMemberSenateVotes(
     bioguideId,
-    { offset, limit, filter },
+    senateParams,
     {
       query: {
         enabled: !!bioguideId && isSenator,
-        queryKey: getGetFederalMemberSenateVotesQueryKey(bioguideId, { offset, limit, filter }),
+        queryKey: getGetFederalMemberSenateVotesQueryKey(bioguideId, senateParams),
       },
     }
   );
 
   const data = isSenator ? senateQuery.data : houseQuery.data;
   const isLoading = isSenator ? senateQuery.isLoading : houseQuery.isLoading;
-  const error = isSenator ? senateQuery.error : houseQuery.error;
-  const status = isSenator ? senateQuery.status : houseQuery.status;
   const totalCount = data?.totalCount ?? 0;
   const votes = data?.votes ?? [];
-  console.log("[VotesList] data:", data, "isLoading:", isLoading, "status:", status, "error:", error, "totalCount:", totalCount, "votes.length:", votes.length);
 
   const voteFilters: { value: typeof filter; label: string }[] = [
     { value: "all", label: "All" },
@@ -240,6 +250,15 @@ function VotesList({ bioguideId, memberChamber }: { bioguideId: string; memberCh
 
   return (
     <div className="flex flex-col h-full">
+      <div className="relative shrink-0 pb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search votes..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setOffset(0); }}
+          className="pl-9"
+        />
+      </div>
       <div className="flex flex-wrap gap-2 shrink-0 pb-4">
         {voteFilters.map((f) => (
           <Button

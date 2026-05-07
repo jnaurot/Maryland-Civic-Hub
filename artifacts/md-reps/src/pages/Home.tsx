@@ -5,6 +5,14 @@ import {
   getGetRepresentativesByAddressQueryKey,
   useGetFederalStateMembers,
   getGetFederalStateMembersQueryKey,
+  useSearchFederalBills,
+  getSearchFederalBillsQueryKey,
+  useSearchStateBills,
+  getSearchStateBillsQueryKey,
+  useSearchFederalMembers,
+  getSearchFederalMembersQueryKey,
+  useSearchStateMembers,
+  getSearchStateMembersQueryKey,
 } from "@workspace/api-client-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,16 +20,51 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, AlertTriangle } from "lucide-react";
+import { Search, AlertTriangle, FileText } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { US_STATES, getStateName, getStateFlagUrl } from "@/lib/states";
 import type { Representative } from "@workspace/api-client-react";
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 
 export function Home() {
   const { selectedState, setSelectedState, lastSearchedAddress, setLastSearchedAddress } = useAppState();
   const [homeDropdownState, setHomeDropdownState] = useState(lastSearchedAddress ? "" : (selectedState ?? ""));
   const [addressInput, setAddressInput] = useState(lastSearchedAddress ?? "");
   const [searchAddress, setSearchAddress] = useState(lastSearchedAddress ?? "");
+  const [textQuery, setTextQuery] = useState("");
+  const [activeTextQuery, setActiveTextQuery] = useState("");
+  const [textInputFocused, setTextInputFocused] = useState(false);
+  const debouncedTextQuery = useDebounce(textQuery.trim(), 250);
+
+  const acLimit = 5;
+  const acEnabled = !!debouncedTextQuery && textInputFocused;
+  const acQuery = { q: debouncedTextQuery, limit: acLimit };
+  const { data: acFederalBills } = useSearchFederalBills(acQuery, {
+    query: { enabled: acEnabled, queryKey: ["autocomplete", "federalBills", acQuery] as const },
+  });
+  const { data: acStateBills } = useSearchStateBills(acQuery, {
+    query: { enabled: acEnabled, queryKey: ["autocomplete", "stateBills", acQuery] as const },
+  });
+  const { data: acFederalMembers } = useSearchFederalMembers(acQuery, {
+    query: { enabled: acEnabled, queryKey: ["autocomplete", "federalMembers", acQuery] as const },
+  });
+  const { data: acStateMembers } = useSearchStateMembers(acQuery, {
+    query: { enabled: acEnabled, queryKey: ["autocomplete", "stateMembers", acQuery] as const },
+  });
+
+  const hasAcResults =
+    (acFederalBills?.bills?.length ?? 0) > 0 ||
+    (acStateBills?.bills?.length ?? 0) > 0 ||
+    (acFederalMembers?.members?.length ?? 0) > 0 ||
+    (acStateMembers?.members?.length ?? 0) > 0;
 
   const { data, isLoading, error } = useGetRepresentativesByAddress(
     { address: searchAddress },
@@ -59,11 +102,47 @@ export function Home() {
       setLastSearchedAddress(trimmed);
       setHomeDropdownState("");
       setSelectedState(null);
+      setActiveTextQuery("");
     } else {
       setSearchAddress("");
       setLastSearchedAddress(null);
+      setActiveTextQuery("");
     }
   };
+
+  const handleTextSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = textQuery.trim();
+    if (trimmed) {
+      setActiveTextQuery(trimmed);
+      setSearchAddress("");
+      setLastSearchedAddress(null);
+    } else {
+      setActiveTextQuery("");
+    }
+  };
+
+  const textSearchLimit = 5;
+  const textSearchParams = { q: activeTextQuery, limit: textSearchLimit };
+  const { data: federalBillsSearch, isLoading: fbLoading } = useSearchFederalBills(textSearchParams, {
+    query: { enabled: !!activeTextQuery, queryKey: getSearchFederalBillsQueryKey(textSearchParams) },
+  });
+  const { data: stateBillsSearch, isLoading: sbLoading } = useSearchStateBills(textSearchParams, {
+    query: { enabled: !!activeTextQuery, queryKey: getSearchStateBillsQueryKey(textSearchParams) },
+  });
+  const { data: federalMembersSearch, isLoading: fmLoading } = useSearchFederalMembers(textSearchParams, {
+    query: { enabled: !!activeTextQuery, queryKey: getSearchFederalMembersQueryKey(textSearchParams) },
+  });
+  const { data: stateMembersSearch, isLoading: smLoading } = useSearchStateMembers(textSearchParams, {
+    query: { enabled: !!activeTextQuery, queryKey: getSearchStateMembersQueryKey(textSearchParams) },
+  });
+
+  const textSearchLoading = fbLoading || sbLoading || fmLoading || smLoading;
+  const hasTextResults =
+    (federalBillsSearch?.bills?.length ?? 0) > 0 ||
+    (stateBillsSearch?.bills?.length ?? 0) > 0 ||
+    (federalMembersSearch?.members?.length ?? 0) > 0 ||
+    (stateMembersSearch?.members?.length ?? 0) > 0;
 
   const activeStateCode = data?.stateCode?.toUpperCase() ?? selectedState ?? null;
   const activeStateName = getStateName(activeStateCode) ?? "your area";
@@ -75,6 +154,163 @@ export function Home() {
     if (party.toLowerCase().includes("republican")) return "bg-[#DC2626] text-white";
     return "bg-gray-200 text-gray-800";
   };
+
+  function renderTextSearchResults() {
+    if (textSearchLoading) {
+      return (
+        <div className="text-center py-20">
+          <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-lg text-muted-foreground">Searching bills and representatives...</p>
+        </div>
+      );
+    }
+
+    if (!hasTextResults) {
+      return (
+        <div className="text-center py-20 text-muted-foreground">
+          <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
+            <Search className="h-10 w-10 opacity-50" />
+          </div>
+          <h2 className="text-2xl font-semibold mb-2">No results found</h2>
+          <p className="max-w-md mx-auto">Try a different search term.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-12">
+        {(federalMembersSearch?.members?.length ?? 0) > 0 && (
+          <section>
+            <div className="flex items-center justify-between border-b pb-2 mb-4 sticky top-0 bg-muted z-10">
+              <h2 className="text-2xl font-black">Federal Representatives</h2>
+              <Badge variant="secondary">{federalMembersSearch?.totalCount}</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {federalMembersSearch?.members?.map((member) => (
+                <Link key={member.bioguideId} href={`/rep/federal/${member.bioguideId}`} className="block group">
+                  <Card className="h-full transition-all duration-200 hover:shadow-md hover:border-accent">
+                    <CardHeader className="flex flex-row items-center gap-4 pb-2">
+                      <Avatar className="h-14 w-14 border-2 border-muted">
+                        <AvatarImage src={member.photoUrl} alt={member.name} className="object-cover object-top" />
+                        <AvatarFallback>{member.name?.substring(0, 2)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col">
+                        <h3 className="font-bold text-base group-hover:text-accent transition-colors">{member.name}</h3>
+                        <p className="text-sm text-muted-foreground">{member.chamber}{member.district ? `, District ${member.district}` : ""}</p>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {member.party && <Badge className={`${getPartyColor(member.party)} hover:${getPartyColor(member.party)} font-medium text-xs`}>{member.party}</Badge>}
+                        {member.state && <Badge variant="outline" className="text-xs">{member.state}</Badge>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {(stateMembersSearch?.members?.length ?? 0) > 0 && (
+          <section>
+            <div className="flex items-center justify-between border-b pb-2 mb-4 sticky top-0 bg-muted z-10">
+              <h2 className="text-2xl font-black">State Representatives</h2>
+              <Badge variant="secondary">{stateMembersSearch?.totalCount}</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {stateMembersSearch?.members?.map((member) => (
+                <Link key={member.id} href={`/rep/state/${encodeURIComponent(member.id)}`} className="block group">
+                  <Card className="h-full transition-all duration-200 hover:shadow-md hover:border-accent">
+                    <CardHeader className="flex flex-row items-center gap-4 pb-2">
+                      <Avatar className="h-14 w-14 border-2 border-muted">
+                        <AvatarImage src={member.photoUrl} alt={member.name} className="object-cover object-top" />
+                        <AvatarFallback>{member.name?.substring(0, 2)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col">
+                        <h3 className="font-bold text-base group-hover:text-accent transition-colors">{member.name}</h3>
+                        <p className="text-sm text-muted-foreground">{member.chamber}{member.district ? `, District ${member.district}` : ""}</p>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {member.party && <Badge className={`${getPartyColor(member.party)} hover:${getPartyColor(member.party)} font-medium text-xs`}>{member.party}</Badge>}
+                        {member.jurisdiction && <Badge variant="outline" className="text-xs">{member.jurisdiction}</Badge>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {(federalBillsSearch?.bills?.length ?? 0) > 0 && (
+          <section>
+            <div className="flex items-center justify-between border-b pb-2 mb-4 sticky top-0 bg-muted z-10">
+              <h2 className="text-2xl font-black">Federal Bills</h2>
+              <Badge variant="secondary">{federalBillsSearch?.totalCount}</Badge>
+            </div>
+            <div className="space-y-3">
+              {federalBillsSearch?.bills?.map((bill) => (
+                <Link key={bill.id} href={(bill.number && bill.congress)
+                  ? `/bills/federal/${bill.congress}/${bill.number.split(" ")[0]?.toLowerCase()}/${bill.number.split(" ")[1]}`
+                  : "#"}
+                  className="block group"
+                >
+                  <Card className="hover:border-primary transition-colors cursor-pointer">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            {bill.number && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.number}</Badge>}
+                            {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
+                          </div>
+                          <p className="font-medium text-sm line-clamp-2">{bill.title}</p>
+                          {bill.latestAction && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{bill.latestAction}</p>}
+                        </div>
+                        {bill.introducedDate && <span className="text-xs text-muted-foreground shrink-0">{bill.introducedDate}</span>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {(stateBillsSearch?.bills?.length ?? 0) > 0 && (
+          <section>
+            <div className="flex items-center justify-between border-b pb-2 mb-4 sticky top-0 bg-muted z-10">
+              <h2 className="text-2xl font-black">State Bills</h2>
+              <Badge variant="secondary">{stateBillsSearch?.totalCount}</Badge>
+            </div>
+            <div className="space-y-3">
+              {stateBillsSearch?.bills?.map((bill) => (
+                <Link key={bill.id} href={`/bills/state/${encodeURIComponent(bill.id)}`} className="block group">
+                  <Card className="hover:border-primary transition-colors cursor-pointer">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            {bill.identifier && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.identifier}</Badge>}
+                            {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
+                          </div>
+                          <p className="font-medium text-sm line-clamp-2">{bill.title}</p>
+                          {bill.latestAction && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{bill.latestAction}</p>}
+                        </div>
+                        {bill.introducedDate && <span className="text-xs text-muted-foreground shrink-0">{bill.introducedDate}</span>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    );
+  }
 
   const groupReps = (reps?: Representative[]) => {
     const safeReps = Array.isArray(reps) ? reps : [];
@@ -143,45 +379,157 @@ export function Home() {
             Discover who represents you at the federal, state, and local levels. Track their bills, votes, and campaign finance.
           </p>
 
-          <form onSubmit={handleSearch} className="flex flex-col gap-4 max-w-xl mx-auto">
-            <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col gap-4 max-w-xl mx-auto">
+            <form onSubmit={handleSearch} className="flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-grow">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Enter your address..."
+                    className="pl-10 h-14 text-lg bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
+                    value={addressInput}
+                    onChange={(e) => setAddressInput(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" size="lg" className="h-14 px-8 text-lg font-bold bg-accent text-accent-foreground hover:bg-accent/90 rounded-xl shadow-lg">
+                  Search
+                </Button>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-sm text-primary-foreground/70">Or select a state:</span>
+                <Select
+                  value={homeDropdownState}
+                  onValueChange={(v) => {
+                    setHomeDropdownState(v);
+                    setSelectedState(v || null);
+                    setAddressInput("");
+                    setSearchAddress("");
+                    setLastSearchedAddress(null);
+                    setActiveTextQuery("");
+                  }}
+                >
+                  <SelectTrigger className="w-56 bg-background text-foreground border-0 shadow-lg rounded-xl">
+                    <SelectValue placeholder="Select a state" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {US_STATES.map((s) => (
+                      <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </form>
+            <div className="relative py-2">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-primary-foreground/20" />
+              </div>
+              <span className="relative px-2 text-xs text-primary-foreground/60 uppercase tracking-wide mx-auto bg-primary">or</span>
+            </div>
+            <form onSubmit={handleTextSearch} className="relative flex flex-col sm:flex-row gap-3">
               <div className="relative flex-grow">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground z-10" />
                 <Input
                   type="text"
-                  placeholder="Enter your address..."
-                  className="pl-10 h-14 text-lg bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
-                  value={addressInput}
-                  onChange={(e) => setAddressInput(e.target.value)}
+                  placeholder="Search bills & representatives..."
+                  className="pl-10 h-12 text-lg bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent relative z-10"
+                  value={textQuery}
+                  onChange={(e) => setTextQuery(e.target.value)}
+                  onFocus={() => setTextInputFocused(true)}
+                  onBlur={() => setTimeout(() => setTextInputFocused(false), 150)}
                 />
+                {textInputFocused && hasAcResults && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-popover border rounded-xl shadow-xl z-50 max-h-[60vh] overflow-y-auto text-left">
+                    {(acFederalMembers?.members?.length ?? 0) > 0 && (
+                      <div className="py-2">
+                        <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Federal Representatives</p>
+                        {acFederalMembers?.members?.map((m) => (
+                          <Link key={m.bioguideId} href={`/rep/federal/${m.bioguideId}`} className="flex items-center gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            <Avatar className="h-8 w-8 border">
+                              <AvatarImage src={m.photoUrl} alt={m.name} />
+                              <AvatarFallback className="text-xs">{m.name?.substring(0, 2)}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{m.name}</p>
+                              <p className="text-xs text-muted-foreground">{m.chamber}{m.district ? `, District ${m.district}` : ""} · {m.state}</p>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    {(acStateMembers?.members?.length ?? 0) > 0 && (
+                      <div className="py-2 border-t">
+                        <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Representatives</p>
+                        {acStateMembers?.members?.map((m) => (
+                          <Link key={m.id} href={`/rep/state/${encodeURIComponent(m.id)}`} className="flex items-center gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            <Avatar className="h-8 w-8 border">
+                              <AvatarImage src={m.photoUrl} alt={m.name} />
+                              <AvatarFallback className="text-xs">{m.name?.substring(0, 2)}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{m.name}</p>
+                              <p className="text-xs text-muted-foreground">{m.chamber}{m.district ? `, District ${m.district}` : ""} · {m.jurisdiction}</p>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    {(acFederalBills?.bills?.length ?? 0) > 0 && (
+                      <div className="py-2 border-t">
+                        <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Federal Bills</p>
+                        {acFederalBills?.bills?.map((b) => (
+                          <Link key={b.id} href={(b.number && b.congress)
+                            ? `/bills/federal/${b.congress}/${b.number.split(" ")[0]?.toLowerCase()}/${b.number.split(" ")[1]}`
+                            : "#"}
+                            className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{b.title}</p>
+                              <p className="text-xs text-muted-foreground">{b.number ?? b.id}</p>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    {(acStateBills?.bills?.length ?? 0) > 0 && (
+                      <div className="py-2 border-t">
+                        <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Bills</p>
+                        {acStateBills?.bills?.map((b) => (
+                          <Link key={b.id} href={`/bills/state/${encodeURIComponent(b.id)}`} className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{b.title}</p>
+                              <p className="text-xs text-muted-foreground">{b.identifier ?? b.id}</p>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    <div className="border-t px-4 py-2">
+                      <button
+                        type="submit"
+                        className="text-sm text-accent font-medium hover:underline"
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        Search for "{debouncedTextQuery}"
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-              <Button type="submit" size="lg" className="h-14 px-8 text-lg font-bold bg-accent text-accent-foreground hover:bg-accent/90 rounded-xl shadow-lg">
+              <Button type="submit" size="lg" className="h-12 px-6 text-lg font-bold bg-accent text-accent-foreground hover:bg-accent/90 rounded-xl shadow-lg">
                 Search
               </Button>
-            </div>
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-sm text-primary-foreground/70">Or select a state:</span>
-              <Select
-                value={homeDropdownState}
-                onValueChange={(v) => {
-                  setHomeDropdownState(v);
-                  setSelectedState(v || null);
-                  setAddressInput("");
-                  setSearchAddress("");
-                  setLastSearchedAddress(null);
-                }}
-              >
-                <SelectTrigger className="w-56 bg-background text-foreground border-0 shadow-lg rounded-xl">
-                  <SelectValue placeholder="Select a state" />
-                </SelectTrigger>
-                <SelectContent>
-                  {US_STATES.map((s) => (
-                    <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -283,7 +631,9 @@ export function Home() {
             </div>
           )}
 
-          {!isLoading && !stateMembersLoading && !error && !data && !stateMembersData && (
+          {activeTextQuery && renderTextSearchResults()}
+
+          {!activeTextQuery && !isLoading && !stateMembersLoading && !error && !data && !stateMembersData && (
             <div className="text-center py-20 text-muted-foreground">
               <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
                 <Search className="h-10 w-10 opacity-50" />

@@ -371,6 +371,18 @@ export interface FinanceSearchResponse {
   candidates: FinanceCandidate[];
 }
 
+export interface FederalMembersSearchResponse {
+  members: FederalMemberDetail[];
+  totalCount?: number;
+  offset?: number;
+}
+
+export interface StateMembersSearchResponse {
+  members: StateMemberDetail[];
+  totalCount?: number;
+  offset?: number;
+}
+
 export type GetRepresentativesByAddressParams = {
   address: string;
 };
@@ -379,10 +391,20 @@ export type GetFederalStateMembersParams = {
   state: string;
 };
 
+export type SearchFederalMembersParams = {
+  q: string;
+  offset?: number;
+  limit?: number;
+};
+
 export type GetFederalMemberBillsParams = {
   type?: GetFederalMemberBillsType;
   offset?: number;
   limit?: number;
+  /**
+   * Search query to filter bills by title, number, or subject
+   */
+  q?: string;
 };
 
 export type GetFederalMemberBillsType =
@@ -409,6 +431,10 @@ export type GetFederalMemberHouseVotesParams = {
   offset?: number;
   limit?: number;
   filter?: GetFederalMemberHouseVotesFilter;
+  /**
+   * Search query to filter votes by title, legislation, or question
+   */
+  q?: string;
 };
 
 export type GetFederalMemberHouseVotesFilter =
@@ -426,6 +452,10 @@ export type GetFederalMemberSenateVotesParams = {
   offset?: number;
   limit?: number;
   filter?: GetFederalMemberSenateVotesFilter;
+  /**
+   * Search query to filter votes by title, document, or question
+   */
+  q?: string;
 };
 
 export type GetFederalMemberSenateVotesFilter =
@@ -460,11 +490,22 @@ export type SearchFederalBillsParams = {
   limit?: number;
 };
 
+export type SearchStateMembersParams = {
+  q: string;
+  jurisdiction?: string;
+  offset?: number;
+  limit?: number;
+};
+
 export type GetStateMemberBillsParams = {
   type?: GetStateMemberBillsType;
   jurisdiction?: string;
   offset?: number;
   limit?: number;
+  /**
+   * Search query to filter bills by title or identifier
+   */
+  q?: string;
 };
 
 export type GetStateMemberBillsType =
@@ -480,6 +521,10 @@ export type GetStateMemberVotesParams = {
   offset?: number;
   limit?: number;
   filter?: GetStateMemberVotesFilter;
+  /**
+   * Search query to filter votes by bill title
+   */
+  q?: string;
 };
 
 export type GetStateMemberVotesFilter =

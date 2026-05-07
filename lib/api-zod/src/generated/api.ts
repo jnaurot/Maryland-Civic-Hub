@@ -151,6 +151,39 @@ export const RefreshFederalMemberResponse = zod.object({
 });
 
 /**
+ * @summary Search federal members by name, state, or party
+ */
+export const searchFederalMembersQueryOffsetDefault = 0;
+export const searchFederalMembersQueryLimitDefault = 20;
+
+export const SearchFederalMembersQueryParams = zod.object({
+  q: zod.coerce.string(),
+  offset: zod.coerce.number().default(searchFederalMembersQueryOffsetDefault),
+  limit: zod.coerce.number().default(searchFederalMembersQueryLimitDefault),
+});
+
+export const SearchFederalMembersResponse = zod.object({
+  members: zod.array(
+    zod.object({
+      bioguideId: zod.string(),
+      name: zod.string(),
+      party: zod.string().optional(),
+      state: zod.string().optional(),
+      chamber: zod.string().optional(),
+      district: zod.string().optional(),
+      phone: zod.string().optional(),
+      website: zod.string().optional(),
+      photoUrl: zod.string().optional(),
+      terms: zod.number().optional(),
+      inOffice: zod.boolean().optional(),
+      nextElection: zod.string().optional(),
+    }),
+  ),
+  totalCount: zod.number().optional(),
+  offset: zod.number().optional(),
+});
+
+/**
  * @summary Get bills sponsored or cosponsored by a federal member
  */
 export const GetFederalMemberBillsParams = zod.object({
@@ -167,6 +200,10 @@ export const GetFederalMemberBillsQueryParams = zod.object({
     .default(getFederalMemberBillsQueryTypeDefault),
   offset: zod.coerce.number().default(getFederalMemberBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getFederalMemberBillsQueryLimitDefault),
+  q: zod.coerce
+    .string()
+    .optional()
+    .describe("Search query to filter bills by title, number, or subject"),
 });
 
 export const GetFederalMemberBillsResponse = zod.object({
@@ -269,6 +306,12 @@ export const GetFederalMemberHouseVotesQueryParams = zod.object({
   filter: zod
     .enum(["all", "yea", "nay", "present", "not-voting"])
     .default(getFederalMemberHouseVotesQueryFilterDefault),
+  q: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Search query to filter votes by title, legislation, or question",
+    ),
 });
 
 export const GetFederalMemberHouseVotesResponse = zod.object({
@@ -309,6 +352,10 @@ export const GetFederalMemberSenateVotesQueryParams = zod.object({
   filter: zod
     .enum(["all", "yea", "nay", "present", "not-voting"])
     .default(getFederalMemberSenateVotesQueryFilterDefault),
+  q: zod.coerce
+    .string()
+    .optional()
+    .describe("Search query to filter votes by title, document, or question"),
 });
 
 export const GetFederalMemberSenateVotesResponse = zod.object({
@@ -544,6 +591,39 @@ export const GetStateMemberResponse = zod.object({
 });
 
 /**
+ * @summary Search state legislators by name or party
+ */
+export const searchStateMembersQueryOffsetDefault = 0;
+export const searchStateMembersQueryLimitDefault = 20;
+
+export const SearchStateMembersQueryParams = zod.object({
+  q: zod.coerce.string(),
+  jurisdiction: zod.coerce.string().optional(),
+  offset: zod.coerce.number().default(searchStateMembersQueryOffsetDefault),
+  limit: zod.coerce.number().default(searchStateMembersQueryLimitDefault),
+});
+
+export const SearchStateMembersResponse = zod.object({
+  members: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      party: zod.string().optional(),
+      chamber: zod.string().optional(),
+      district: zod.string().optional(),
+      email: zod.string().optional(),
+      phone: zod.string().optional(),
+      photoUrl: zod.string().optional(),
+      openstatesUrl: zod.string().optional(),
+      state: zod.string().optional(),
+      jurisdiction: zod.string().optional(),
+    }),
+  ),
+  totalCount: zod.number().optional(),
+  offset: zod.number().optional(),
+});
+
+/**
  * @summary Force refresh a state legislator from OpenStates
  */
 export const RefreshStateMemberParams = zod.object({
@@ -593,6 +673,10 @@ export const GetStateMemberBillsQueryParams = zod.object({
     .default(getStateMemberBillsQueryJurisdictionDefault),
   offset: zod.coerce.number().default(getStateMemberBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getStateMemberBillsQueryLimitDefault),
+  q: zod.coerce
+    .string()
+    .optional()
+    .describe("Search query to filter bills by title or identifier"),
 });
 
 export const GetStateMemberBillsResponse = zod.object({
@@ -637,6 +721,10 @@ export const GetStateMemberVotesQueryParams = zod.object({
   filter: zod
     .enum(["all", "yea", "nay", "present", "not-voting"])
     .default(getStateMemberVotesQueryFilterDefault),
+  q: zod.coerce
+    .string()
+    .optional()
+    .describe("Search query to filter votes by bill title"),
 });
 
 export const GetStateMemberVotesResponse = zod.object({

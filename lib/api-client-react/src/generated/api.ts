@@ -21,6 +21,7 @@ import type {
   BillsListResponse,
   CommitteesListResponse,
   FederalMemberDetailResponse,
+  FederalMembersSearchResponse,
   FederalStateMembersResponse,
   FinanceResponse,
   FinanceSearchResponse,
@@ -40,11 +41,14 @@ import type {
   RepresentativesResponse,
   SearchCandidateFinanceParams,
   SearchFederalBillsParams,
+  SearchFederalMembersParams,
   SearchStateBillsParams,
+  SearchStateMembersParams,
   SenateVotesListResponse,
   StateBillDetail,
   StateBillsListResponse,
   StateMemberDetailResponse,
+  StateMembersSearchResponse,
   StateVotesListResponse,
 } from "./api.schemas";
 
@@ -519,6 +523,109 @@ export const useRefreshFederalMember = <
 > => {
   return useMutation(getRefreshFederalMemberMutationOptions(options));
 };
+
+/**
+ * @summary Search federal members by name, state, or party
+ */
+export const getSearchFederalMembersUrl = (
+  params: SearchFederalMembersParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/federal/members/search?${stringifiedParams}`
+    : `/api/federal/members/search`;
+};
+
+export const searchFederalMembers = async (
+  params: SearchFederalMembersParams,
+  options?: RequestInit,
+): Promise<FederalMembersSearchResponse> => {
+  return customFetch<FederalMembersSearchResponse>(
+    getSearchFederalMembersUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getSearchFederalMembersQueryKey = (
+  params?: SearchFederalMembersParams,
+) => {
+  return [`/api/federal/members/search`, ...(params ? [params] : [])] as const;
+};
+
+export const getSearchFederalMembersQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchFederalMembers>>,
+  TError = ErrorType<unknown>,
+>(
+  params: SearchFederalMembersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchFederalMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getSearchFederalMembersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof searchFederalMembers>>
+  > = ({ signal }) =>
+    searchFederalMembers(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchFederalMembers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchFederalMembersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchFederalMembers>>
+>;
+export type SearchFederalMembersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Search federal members by name, state, or party
+ */
+
+export function useSearchFederalMembers<
+  TData = Awaited<ReturnType<typeof searchFederalMembers>>,
+  TError = ErrorType<unknown>,
+>(
+  params: SearchFederalMembersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchFederalMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getSearchFederalMembersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get bills sponsored or cosponsored by a federal member
@@ -1464,6 +1571,106 @@ export function useGetStateMember<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetStateMemberQueryOptions(memberId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Search state legislators by name or party
+ */
+export const getSearchStateMembersUrl = (params: SearchStateMembersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/state/members/search?${stringifiedParams}`
+    : `/api/state/members/search`;
+};
+
+export const searchStateMembers = async (
+  params: SearchStateMembersParams,
+  options?: RequestInit,
+): Promise<StateMembersSearchResponse> => {
+  return customFetch<StateMembersSearchResponse>(
+    getSearchStateMembersUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getSearchStateMembersQueryKey = (
+  params?: SearchStateMembersParams,
+) => {
+  return [`/api/state/members/search`, ...(params ? [params] : [])] as const;
+};
+
+export const getSearchStateMembersQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchStateMembers>>,
+  TError = ErrorType<unknown>,
+>(
+  params: SearchStateMembersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchStateMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getSearchStateMembersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof searchStateMembers>>
+  > = ({ signal }) => searchStateMembers(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchStateMembers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchStateMembersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchStateMembers>>
+>;
+export type SearchStateMembersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Search state legislators by name or party
+ */
+
+export function useSearchStateMembers<
+  TData = Awaited<ReturnType<typeof searchStateMembers>>,
+  TError = ErrorType<unknown>,
+>(
+  params: SearchStateMembersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchStateMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getSearchStateMembersQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
 import { XMLParser } from "fast-xml-parser";
 import { db, normalizeVoteCast, federalBillsTable, federalMembersTable, federalMemberBillRolesTable, federalMemberBillCacheStatusTable, federalCommitteesTable, federalMemberCommitteesTable } from "@workspace/db";
 import { houseVotesTable, houseVoteRecordsTable, senateRollCallVotesTable, senatorVotePositionsTable, senatorIdentitiesTable } from "@workspace/db";
@@ -556,17 +556,24 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
   if (!paramsParsed.success || !queryParsed.success) return res.status(400).json({ error: "Invalid params" });
 
   const { bioguideId } = paramsParsed.data;
-  const { type, offset, limit } = queryParsed.data;
+  const { type, offset, limit, q } = queryParsed.data;
   const role = type === "sponsored" ? "sponsor" : "cosponsor";
 
   try {
+    // Build search condition if q is provided
+    const searchCondition = q
+      ? sql`${federalBillsTable.searchVector} @@ websearch_to_tsquery('english', ${q})`
+      : undefined;
+
     // Check if we have cached bills for this member+role
     const cachedCountResult = await db
       .select({ count: sql<number>`count(*)` })
       .from(federalMemberBillRolesTable)
+      .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
       .where(and(
         eq(federalMemberBillRolesTable.bioguideId, bioguideId),
-        eq(federalMemberBillRolesTable.role, role)
+        eq(federalMemberBillRolesTable.role, role),
+        ...(searchCondition ? [searchCondition] : [])
       ));
 
     const cachedCount = Number(cachedCountResult[0]?.count ?? 0);
@@ -595,7 +602,8 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
       .where(and(
         eq(federalMemberBillRolesTable.bioguideId, bioguideId),
-        eq(federalMemberBillRolesTable.role, role)
+        eq(federalMemberBillRolesTable.role, role),
+        ...(searchCondition ? [searchCondition] : [])
       ))
       .orderBy(desc(federalBillsTable.introducedDate))
       .limit(limit)
@@ -604,9 +612,11 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
     const totalResult = await db
       .select({ count: sql<number>`count(*)` })
       .from(federalMemberBillRolesTable)
+      .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
       .where(and(
         eq(federalMemberBillRolesTable.bioguideId, bioguideId),
-        eq(federalMemberBillRolesTable.role, role)
+        eq(federalMemberBillRolesTable.role, role),
+        ...(searchCondition ? [searchCondition] : [])
       ));
 
     const totalCount = Number(totalResult[0]?.count ?? 0);
@@ -868,7 +878,7 @@ router.get("/federal/members/:bioguideId/house-votes", async (req, res) => {
   if (!paramsParsed.success || !queryParsed.success) return res.status(400).json({ error: "Invalid params" });
 
   const { bioguideId } = paramsParsed.data;
-  const { offset, limit, filter } = queryParsed.data;
+  const { offset, limit, filter, q } = queryParsed.data;
 
   try {
     // Determine current congress/session for discovery
@@ -876,12 +886,28 @@ router.get("/federal/members/:bioguideId/house-votes", async (req, res) => {
     const currentCongress = Math.floor((currentYear - 1789) / 2) + 1;
     const currentSession = currentYear % 2 === 1 ? 1 : 2;
 
+    // Build text search condition
+    const searchPattern = q ? `%${q}%` : undefined;
+    const buildSearchCondition = () => {
+      if (!searchPattern) return undefined;
+      return or(
+        sql`${houseVotesTable.voteQuestion} ILIKE ${searchPattern}`,
+        sql`${houseVotesTable.voteDescription} ILIKE ${searchPattern}`,
+        sql`${houseVotesTable.legislationType} ILIKE ${searchPattern}`,
+        sql`${houseVotesTable.legislationNumber} ILIKE ${searchPattern}`
+      );
+    };
+    const searchCondition = buildSearchCondition();
+
     // Check how many total votes exist for this member
     const countResult = await db
       .select({ count: sql<number>`count(*)` })
       .from(houseVoteRecordsTable)
       .innerJoin(houseVotesTable, eq(houseVoteRecordsTable.voteId, houseVotesTable.id))
-      .where(eq(houseVoteRecordsTable.bioguideId, bioguideId));
+      .where(and(
+        eq(houseVoteRecordsTable.bioguideId, bioguideId),
+        ...(searchCondition ? [searchCondition] : [])
+      ));
 
     const totalInDb = Number(countResult[0]?.count ?? 0);
 
@@ -895,11 +921,12 @@ router.get("/federal/members/:bioguideId/house-votes", async (req, res) => {
     }
 
     // Build filter condition
-    const filterConditions = [eq(houseVoteRecordsTable.bioguideId, bioguideId)];
+    const filterConditions: any[] = [eq(houseVoteRecordsTable.bioguideId, bioguideId)];
     if (filter === "yea") filterConditions.push(eq(houseVoteRecordsTable.voteCast, "Yea"));
     if (filter === "nay") filterConditions.push(eq(houseVoteRecordsTable.voteCast, "Nay"));
     if (filter === "present") filterConditions.push(eq(houseVoteRecordsTable.voteCast, "Present"));
     if (filter === "not-voting") filterConditions.push(eq(houseVoteRecordsTable.voteCast, "Not Voting"));
+    if (searchCondition) filterConditions.push(searchCondition);
 
     // Fetch paginated votes
     const votes = await db
@@ -1130,17 +1157,30 @@ router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
   }
 
   const { bioguideId } = paramsParsed.data;
-  const { offset, limit, filter } = queryParsed.data;
+  const { offset, limit, filter, q } = queryParsed.data;
 
   try {
     const currentYear = new Date().getFullYear();
     const currentCongress = Math.floor((currentYear - 1789) / 2) + 1;
     const currentSession = currentYear % 2 === 1 ? 1 : 2;
 
+    // Build text search condition
+    const searchPattern = q ? `%${q}%` : undefined;
+    const buildSearchCondition = () => {
+      if (!searchPattern) return undefined;
+      return or(
+        sql`${senateRollCallVotesTable.voteQuestion} ILIKE ${searchPattern}`,
+        sql`${senateRollCallVotesTable.voteTitle} ILIKE ${searchPattern}`,
+        sql`${senateRollCallVotesTable.documentType} ILIKE ${searchPattern}`,
+        sql`${senateRollCallVotesTable.documentNumber} ILIKE ${searchPattern}`
+      );
+    };
+    const searchCondition = buildSearchCondition();
+
     const lisMemberId = await resolveLisMemberId(bioguideId);
     console.log("[senate-votes] resolved lisMemberId:", lisMemberId);
 
-    const baseConditions = lisMemberId
+    const baseConditions: any[] = lisMemberId
       ? [eq(senatorVotePositionsTable.lisMemberId, lisMemberId)]
       : [];
 
@@ -1162,7 +1202,7 @@ router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
       .select({ count: sql<number>`count(*)` })
       .from(senatorVotePositionsTable)
       .innerJoin(senateRollCallVotesTable, eq(senatorVotePositionsTable.voteId, senateRollCallVotesTable.id))
-      .where(and(...baseConditions));
+      .where(and(...baseConditions, ...(searchCondition ? [searchCondition] : [])));
 
     const totalInDb = Number(countResult[0]?.count ?? 0);
     console.log("[senate-votes] total votes in DB for member:", totalInDb);
@@ -1178,6 +1218,7 @@ router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
     if (filter === "nay") filterConditions.push(eq(senatorVotePositionsTable.voteCast, "Nay"));
     if (filter === "present") filterConditions.push(eq(senatorVotePositionsTable.voteCast, "Present"));
     if (filter === "not-voting") filterConditions.push(inArray(senatorVotePositionsTable.voteCast, ["Not Voting", "Absent"]));
+    if (searchCondition) filterConditions.push(searchCondition);
 
     const votes = await db
       .select({
@@ -1561,6 +1602,53 @@ router.get("/federal/bills/search", async (req, res) => {
     return res.json({ bills, totalCount, offset });
   } catch (err) {
     req.log.error({ err }, "Error searching federal bills");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get("/federal/members/search", async (req, res) => {
+  const q = req.query.q;
+  const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  const offset = Number(req.query.offset ?? 0);
+
+  if (!q || typeof q !== "string") {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
+
+  try {
+    req.log.info({ q, source: "db" }, "Searching federal members from DB cache");
+    const searchPattern = `%${q}%`;
+
+    const rows = await db
+      .select()
+      .from(federalMembersTable)
+      .where(
+        or(
+          sql`${federalMembersTable.name} ILIKE ${searchPattern}`,
+          sql`${federalMembersTable.state} ILIKE ${searchPattern}`,
+          sql`${federalMembersTable.party} ILIKE ${searchPattern}`
+        )
+      )
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(federalMembersTable)
+      .where(
+        or(
+          sql`${federalMembersTable.name} ILIKE ${searchPattern}`,
+          sql`${federalMembersTable.state} ILIKE ${searchPattern}`,
+          sql`${federalMembersTable.party} ILIKE ${searchPattern}`
+        )
+      );
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+    const members = rows.map(mapDbRowToMember);
+
+    return res.json({ members, totalCount, offset });
+  } catch (err) {
+    req.log.error({ err }, "Error searching federal members");
     return res.status(500).json({ error: String(err) });
   }
 });

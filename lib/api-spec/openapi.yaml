@@ -108,6 +108,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/FederalMemberDetailResponse"
 
+  /federal/members/search:
+    get:
+      operationId: searchFederalMembers
+      tags: [federal]
+      summary: Search federal members by name, state, or party
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FederalMembersSearchResponse"
+
   /federal/members/{bioguideId}/bills:
     get:
       operationId: getFederalMemberBills
@@ -135,6 +164,11 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search query to filter bills by title, number, or subject
       responses:
         "200":
           description: Bills list
@@ -200,6 +234,11 @@ paths:
             type: string
             enum: [all, yea, nay, present, not-voting]
             default: all
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search query to filter votes by title, legislation, or question
       responses:
         "200":
           description: House votes list
@@ -235,6 +274,11 @@ paths:
             type: string
             enum: [all, yea, nay, present, not-voting]
             default: all
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search query to filter votes by title, document, or question
       responses:
         "200":
           description: Senate votes list
@@ -369,6 +413,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/StateMemberDetailResponse"
 
+  /state/members/search:
+    get:
+      operationId: searchStateMembers
+      tags: [state]
+      summary: Search state legislators by name or party
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: jurisdiction
+          in: query
+          schema:
+            type: string
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateMembersSearchResponse"
+
   /state/members/{memberId}/refresh:
     post:
       operationId: refreshStateMember
@@ -420,6 +497,11 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search query to filter bills by title or identifier
       responses:
         "200":
           description: State bills list
@@ -460,6 +542,11 @@ paths:
             type: string
             enum: [all, yea, nay, present, not-voting]
             default: all
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search query to filter votes by bill title
       responses:
         "200":
           description: State votes list
@@ -1270,3 +1357,29 @@ components:
           items:
             $ref: "#/components/schemas/FinanceCandidate"
       required: [candidates]
+
+    FederalMembersSearchResponse:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/FederalMemberDetail"
+        totalCount:
+          type: integer
+        offset:
+          type: integer
+      required: [members]
+
+    StateMembersSearchResponse:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/StateMemberDetail"
+        totalCount:
+          type: integer
+        offset:
+          type: integer
+      required: [members]
