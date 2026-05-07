@@ -27,3 +27,4 @@ export * from "./state_legislators";
 export * from "./provider_status";
 export * from "./state_bills";
 export * from "./federal_bills";
+export * from "./federal_members";

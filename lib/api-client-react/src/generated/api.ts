@@ -20,7 +20,7 @@ import type {
   BillDetail,
   BillsListResponse,
   CommitteesListResponse,
-  FederalMemberDetail,
+  FederalMemberDetailResponse,
   FederalStateMembersResponse,
   FinanceResponse,
   FinanceSearchResponse,
@@ -350,11 +350,14 @@ export const getGetFederalMemberUrl = (bioguideId: string) => {
 export const getFederalMember = async (
   bioguideId: string,
   options?: RequestInit,
-): Promise<FederalMemberDetail> => {
-  return customFetch<FederalMemberDetail>(getGetFederalMemberUrl(bioguideId), {
-    ...options,
-    method: "GET",
-  });
+): Promise<FederalMemberDetailResponse> => {
+  return customFetch<FederalMemberDetailResponse>(
+    getGetFederalMemberUrl(bioguideId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
 };
 
 export const getGetFederalMemberQueryKey = (bioguideId: string) => {
@@ -428,6 +431,93 @@ export function useGetFederalMember<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Force refresh a federal member from Congress.gov
+ */
+export const getRefreshFederalMemberUrl = (bioguideId: string) => {
+  return `/api/federal/members/${bioguideId}/refresh`;
+};
+
+export const refreshFederalMember = async (
+  bioguideId: string,
+  options?: RequestInit,
+): Promise<FederalMemberDetailResponse> => {
+  return customFetch<FederalMemberDetailResponse>(
+    getRefreshFederalMemberUrl(bioguideId),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getRefreshFederalMemberMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshFederalMember>>,
+    TError,
+    { bioguideId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof refreshFederalMember>>,
+  TError,
+  { bioguideId: string },
+  TContext
+> => {
+  const mutationKey = ["refreshFederalMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof refreshFederalMember>>,
+    { bioguideId: string }
+  > = (props) => {
+    const { bioguideId } = props ?? {};
+
+    return refreshFederalMember(bioguideId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RefreshFederalMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof refreshFederalMember>>
+>;
+
+export type RefreshFederalMemberMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Force refresh a federal member from Congress.gov
+ */
+export const useRefreshFederalMember = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshFederalMember>>,
+    TError,
+    { bioguideId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof refreshFederalMember>>,
+  TError,
+  { bioguideId: string },
+  TContext
+> => {
+  return useMutation(getRefreshFederalMemberMutationOptions(options));
+};
 
 /**
  * @summary Get bills sponsored or cosponsored by a federal member

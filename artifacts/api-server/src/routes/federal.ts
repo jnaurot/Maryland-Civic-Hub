@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { XMLParser } from "fast-xml-parser";
-import { db, normalizeVoteCast, federalBillsTable } from "@workspace/db";
+import { db, normalizeVoteCast, federalBillsTable, federalMembersTable } from "@workspace/db";
 import { houseVotesTable, houseVoteRecordsTable, senateRollCallVotesTable, senatorVotePositionsTable, senatorIdentitiesTable } from "@workspace/db";
 import {
   GetFederalMemberParams,
@@ -18,6 +18,8 @@ import {
 } from "@workspace/api-zod";
 
 const router = Router();
+
+const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 
 const CONGRESS_API_KEY = process.env.CONGRESS_API_KEY;
 const BASE = "https://api.congress.gov/v3";
@@ -61,6 +63,88 @@ function getLastName(name: string): string {
   }
   const parts = name.trim().split(/\s+/);
   return parts[parts.length - 1]?.toLowerCase() ?? "";
+}
+
+function normalizeMemberFromRaw(m: any) {
+  return {
+    bioguideId: m.bioguideId ?? "",
+    name: m.directOrderName ?? m.invertedOrderName ?? "",
+    party: m.partyHistory?.[0]?.partyName,
+    state: m.state,
+    chamber: normalizeTermsItem(m).slice(-1)[0]?.chamber ?? undefined,
+    district: m.district != null ? String(m.district) : undefined,
+    phone: m.officeAddress,
+    website: m.officialWebsiteUrl,
+    photoUrl: m.depiction?.imageUrl,
+    terms: normalizeTermsItem(m).length,
+    inOffice: m.currentMember,
+    nextElection: m.nextElection,
+  };
+}
+
+function mapDbRowToMember(row: typeof federalMembersTable.$inferSelect) {
+  const raw = (row.raw ?? {}) as any;
+  return {
+    bioguideId: row.bioguideId,
+    name: row.name,
+    party: row.party ?? undefined,
+    state: row.state ?? undefined,
+    chamber: row.chamber ?? undefined,
+    district: row.district ?? undefined,
+    phone: row.phone ?? undefined,
+    website: row.website ?? undefined,
+    photoUrl: row.photoUrl ?? undefined,
+    terms: raw.terms != null ? Number(raw.terms) : undefined,
+    inOffice: raw.inOffice != null ? raw.inOffice === true || raw.inOffice === "true" : undefined,
+    nextElection: row.nextElection ?? undefined,
+  };
+}
+
+function isStale(row: typeof federalMembersTable.$inferSelect): boolean {
+  return Date.now() - new Date(row.fetchedAt).getTime() > STALE_THRESHOLD_MS;
+}
+
+async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
+  logger?.info({ bioguideId, source: "congress.gov" }, "Fetching federal member from Congress.gov");
+  const data = await congressFetch(`/member/${bioguideId}`, {}, logger);
+  const m = data.member ?? {};
+  const mapped = normalizeMemberFromRaw(m);
+
+  await db.insert(federalMembersTable).values({
+    bioguideId: mapped.bioguideId || bioguideId,
+    name: mapped.name,
+    party: mapped.party ?? null,
+    state: mapped.state ?? null,
+    chamber: mapped.chamber ?? null,
+    district: mapped.district ?? null,
+    phone: mapped.phone ?? null,
+    website: mapped.website ?? null,
+    photoUrl: mapped.photoUrl ?? null,
+    terms: mapped.terms != null ? String(mapped.terms) : null,
+    inOffice: mapped.inOffice != null ? String(mapped.inOffice) : null,
+    nextElection: mapped.nextElection ?? null,
+    raw: m,
+    fetchedAt: new Date(),
+  }).onConflictDoUpdate({
+    target: federalMembersTable.bioguideId,
+    set: {
+      name: mapped.name,
+      party: mapped.party ?? null,
+      state: mapped.state ?? null,
+      chamber: mapped.chamber ?? null,
+      district: mapped.district ?? null,
+      phone: mapped.phone ?? null,
+      website: mapped.website ?? null,
+      photoUrl: mapped.photoUrl ?? null,
+      terms: mapped.terms != null ? String(mapped.terms) : null,
+      inOffice: mapped.inOffice != null ? String(mapped.inOffice) : null,
+      nextElection: mapped.nextElection ?? null,
+      raw: m,
+      fetchedAt: new Date(),
+    },
+  });
+
+  return mapped;
 }
 
 router.get("/federal/state-members", async (req, res) => {
@@ -126,26 +210,76 @@ router.get("/federal/members/:bioguideId", async (req, res) => {
   const parsed = GetFederalMemberParams.safeParse(req.params);
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
 
+  const bioguideId = parsed.data.bioguideId;
+
   try {
-    req.log.info({ bioguideId: parsed.data.bioguideId, source: "congress.gov" }, "Fetching federal member from Congress.gov");
-    const data = await congressFetch(`/member/${parsed.data.bioguideId}`, {}, req.log);
-    const m = data.member ?? {};
+    const rows = await db.select().from(federalMembersTable).where(eq(federalMembersTable.bioguideId, bioguideId)).limit(1);
+    const cached = rows[0];
+
+    if (cached) {
+      const stale = isStale(cached);
+      if (!stale) {
+        req.log.info({ bioguideId, source: "db" }, "Serving federal member from cache");
+        return res.json({
+          member: mapDbRowToMember(cached),
+          cache: { source: "db", stale: false, fetchedAt: cached.fetchedAt.toISOString() },
+        });
+      }
+      // Stale cache — try to refresh
+      try {
+        req.log.info({ bioguideId, source: "congress.gov" }, "Refreshing stale federal member from Congress.gov");
+        const fresh = await fetchAndCacheFederalMember(bioguideId, req.log);
+        return res.json({
+          member: fresh,
+          cache: { source: "congress.gov", stale: false, fetchedAt: new Date().toISOString() },
+        });
+      } catch (err) {
+        req.log.warn({ err, bioguideId, source: "db" }, "Failed to refresh stale federal member; returning cached data");
+        return res.json({
+          member: mapDbRowToMember(cached),
+          cache: { source: "db", stale: true, fetchedAt: cached.fetchedAt.toISOString(), refreshFailed: true },
+        });
+      }
+    }
+
+    // Cache miss
+    req.log.info({ bioguideId, source: "congress.gov" }, "Cache miss; fetching federal member from Congress.gov");
+    const fresh = await fetchAndCacheFederalMember(bioguideId, req.log);
     return res.json({
-      bioguideId: m.bioguideId ?? parsed.data.bioguideId,
-      name: m.directOrderName ?? m.invertedOrderName ?? "",
-      party: m.partyHistory?.[0]?.partyName,
-      state: m.state,
-      chamber: normalizeTermsItem(m).slice(-1)[0]?.chamber ?? undefined,
-      district: m.district != null ? String(m.district) : undefined,
-      phone: m.officeAddress,
-      website: m.officialWebsiteUrl,
-      photoUrl: m.depiction?.imageUrl,
-      terms: normalizeTermsItem(m).length,
-      inOffice: m.currentMember,
-      nextElection: m.nextElection,
+      member: fresh,
+      cache: { source: "congress.gov", stale: false, fetchedAt: new Date().toISOString() },
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching federal member");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/federal/members/:bioguideId/refresh", async (req, res) => {
+  const parsed = GetFederalMemberParams.safeParse(req.params);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
+
+  const bioguideId = parsed.data.bioguideId;
+
+  try {
+    req.log.info({ bioguideId, source: "congress.gov" }, "Force refreshing federal member from Congress.gov");
+    const fresh = await fetchAndCacheFederalMember(bioguideId, req.log);
+    return res.json({
+      member: fresh,
+      cache: { source: "congress.gov", stale: false, fetchedAt: new Date().toISOString() },
+    });
+  } catch (err) {
+    // On failure, return cached data if available
+    const rows = await db.select().from(federalMembersTable).where(eq(federalMembersTable.bioguideId, bioguideId)).limit(1);
+    const cached = rows[0];
+    if (cached) {
+      req.log.warn({ err, bioguideId, source: "db" }, "Refresh failed; returning cached federal member");
+      return res.json({
+        member: mapDbRowToMember(cached),
+        cache: { source: "db", stale: isStale(cached), fetchedAt: cached.fetchedAt.toISOString(), refreshFailed: true },
+      });
+    }
+    req.log.error({ err }, "Error refreshing federal member");
     return res.status(500).json({ error: String(err) });
   }
 });
@@ -177,6 +311,7 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       url: b.url,
       status: b.latestAction?.text,
       chamber: b.originChamber,
+      policyArea: b.policyArea?.name ?? undefined,
     }));
 
     // Sort by latest action date descending
@@ -745,7 +880,7 @@ router.get("/federal/bills", async (req, res) => {
       status: b.latestAction?.text,
       chamber: b.originChamber,
       policyArea: b.policyArea?.name ?? undefined,
-      subjects: b.subjects?.count ? undefined : undefined,
+      subjects: b.subjects?.item ?? (Array.isArray(b.subjects) ? b.subjects : undefined),
     }));
 
     // Ensure most current first by latest action date
@@ -847,8 +982,9 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
 
     req.log.info({ billId: `${congress}-${billType}-${billNumber}`, source: "congress.gov" }, "Fetched federal bill detail from Congress.gov");
 
-    // Cache for search
-    const subjectsText = Array.isArray(bill.subjects) ? bill.subjects.join(" ") : "";
+    // Normalize subjects from Congress.gov nested structure (may be { item: [...] })
+    const billSubjects = bill.subjects?.item ?? (Array.isArray(bill.subjects) ? bill.subjects : []);
+    const subjectsText = billSubjects.join(" ");
     await db.insert(federalBillsTable).values({
       id: `${congress}-${billType}-${billNumber}`,
       title: bill.title ?? "Untitled",
@@ -857,7 +993,7 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
       introducedDate: bill.introducedDate ?? null,
       summary: summary ? summary.replace(/<[^>]*>/g, "") : null,
       policyArea: bill.policyArea?.name ?? null,
-      subjects: bill.subjects ?? [],
+      subjects: billSubjects,
       url: bill.url ?? null,
       textUrl: textUrl ?? null,
       raw: bill,
@@ -871,7 +1007,7 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
         introducedDate: bill.introducedDate ?? null,
         summary: summary ? summary.replace(/<[^>]*>/g, "") : null,
         policyArea: bill.policyArea?.name ?? null,
-        subjects: bill.subjects ?? [],
+        subjects: billSubjects,
         url: bill.url ?? null,
         textUrl: textUrl ?? null,
         raw: bill,

@@ -98,18 +98,56 @@ export const GetFederalMemberParams = zod.object({
 });
 
 export const GetFederalMemberResponse = zod.object({
-  bioguideId: zod.string(),
-  name: zod.string(),
-  party: zod.string().optional(),
-  state: zod.string().optional(),
-  chamber: zod.string().optional(),
-  district: zod.string().optional(),
-  phone: zod.string().optional(),
-  website: zod.string().optional(),
-  photoUrl: zod.string().optional(),
-  terms: zod.number().optional(),
-  inOffice: zod.boolean().optional(),
-  nextElection: zod.string().optional(),
+  member: zod.object({
+    bioguideId: zod.string(),
+    name: zod.string(),
+    party: zod.string().optional(),
+    state: zod.string().optional(),
+    chamber: zod.string().optional(),
+    district: zod.string().optional(),
+    phone: zod.string().optional(),
+    website: zod.string().optional(),
+    photoUrl: zod.string().optional(),
+    terms: zod.number().optional(),
+    inOffice: zod.boolean().optional(),
+    nextElection: zod.string().optional(),
+  }),
+  cache: zod.object({
+    source: zod.enum(["db", "openstates"]),
+    stale: zod.boolean(),
+    fetchedAt: zod.string(),
+    refreshFailed: zod.boolean().optional(),
+  }),
+});
+
+/**
+ * @summary Force refresh a federal member from Congress.gov
+ */
+export const RefreshFederalMemberParams = zod.object({
+  bioguideId: zod.coerce.string(),
+});
+
+export const RefreshFederalMemberResponse = zod.object({
+  member: zod.object({
+    bioguideId: zod.string(),
+    name: zod.string(),
+    party: zod.string().optional(),
+    state: zod.string().optional(),
+    chamber: zod.string().optional(),
+    district: zod.string().optional(),
+    phone: zod.string().optional(),
+    website: zod.string().optional(),
+    photoUrl: zod.string().optional(),
+    terms: zod.number().optional(),
+    inOffice: zod.boolean().optional(),
+    nextElection: zod.string().optional(),
+  }),
+  cache: zod.object({
+    source: zod.enum(["db", "openstates"]),
+    stale: zod.boolean(),
+    fetchedAt: zod.string(),
+    refreshFailed: zod.boolean().optional(),
+  }),
 });
 
 /**

@@ -235,6 +235,11 @@ export interface FederalMemberDetail {
   nextElection?: string;
 }
 
+export interface FederalMemberDetailResponse {
+  member: FederalMemberDetail;
+  cache: CacheMeta;
+}
+
 export interface StateMemberDetail {
   id: string;
   name: string;

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams, Link } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetFederalMember,
   useGetFederalMemberBills,
@@ -8,6 +9,7 @@ import {
   useGetFederalMemberCommittees,
   useSearchCandidateFinance,
   useGetCandidateFinance,
+  useRefreshFederalMember,
   getGetFederalMemberQueryKey,
   getGetFederalMemberBillsQueryKey,
   getGetFederalMemberHouseVotesQueryKey,
@@ -22,7 +24,14 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, ChevronLeft, Users, FileText, Vote, DollarSign } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "@/hooks/use-toast";
+import { ExternalLink, ChevronLeft, Users, FileText, Vote, DollarSign, MoreHorizontal, RefreshCw, AlertTriangle } from "lucide-react";
 import { RepNameLink } from "@/components/RepNameLink";
 
 function partyColor(party?: string) {
@@ -58,6 +67,64 @@ function formatMoney(n?: number) {
   return `$${n}`;
 }
 
+function policyAreaBreakdown(bills: Array<{ policyArea?: string }>) {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const bill of bills) {
+    const area = bill.policyArea?.trim();
+    if (!area) continue;
+    counts.set(area, (counts.get(area) ?? 0) + 1);
+    total++;
+  }
+  if (total === 0) return null;
+
+  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  const top = sorted.slice(0, 5);
+  const otherCount = sorted.slice(5).reduce((sum, [, c]) => sum + c, 0);
+
+  const result = top.map(([name, count]) => ({
+    name,
+    count,
+    pct: Math.round((count / total) * 100),
+  }));
+
+  if (otherCount > 0) {
+    result.push({
+      name: "Other",
+      count: otherCount,
+      pct: Math.round((otherCount / total) * 100),
+    });
+  }
+
+  return { total, items: result };
+}
+
+function PolicyAreaChart({ bills }: { bills: Array<{ policyArea?: string }> }) {
+  const breakdown = policyAreaBreakdown(bills);
+  if (!breakdown) return null;
+
+  return (
+    <div className="shrink-0 mb-4">
+      <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Policy Areas</p>
+      <div className="space-y-1.5">
+        {breakdown.items.map((item) => (
+          <div key={item.name} className="flex items-center gap-2">
+            <span className="text-xs w-24 truncate shrink-0" title={item.name}>{item.name}</span>
+            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full"
+                style={{ width: `${item.pct}%` }}
+              />
+            </div>
+            <span className="text-xs text-muted-foreground w-8 text-right">{item.pct}%</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-1">Based on {breakdown.total} bills with policy areas</p>
+    </div>
+  );
+}
+
 function BillsList({ bioguideId, memberName }: { bioguideId: string; memberName?: string }) {
   const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
   const [offset, setOffset] = useState(0);
@@ -75,6 +142,10 @@ function BillsList({ bioguideId, memberName }: { bioguideId: string; memberName?
         <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => { setType("sponsored"); setOffset(0); }}>Sponsored</Button>
         <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
       </div>
+
+      {!isLoading && data?.bills && data.bills.length > 0 && (
+        <PolicyAreaChart bills={data.bills} />
+      )}
 
       <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
         {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
@@ -363,10 +434,33 @@ function FinanceTab({ name, state }: { name: string; state?: string }) {
 
 export function FederalRepDetail() {
   const { bioguideId } = useParams<{ bioguideId: string }>();
+  const queryClient = useQueryClient();
 
-  const { data: member, isLoading } = useGetFederalMember(bioguideId, {
-    query: { enabled: !!bioguideId, queryKey: getGetFederalMemberQueryKey(bioguideId) }
+  const memberQueryKey = [...getGetFederalMemberQueryKey(bioguideId), "v2"];
+
+  const { data: memberData, isLoading } = useGetFederalMember(bioguideId, {
+    query: { enabled: !!bioguideId, queryKey: memberQueryKey }
   });
+
+  const member = memberData?.member;
+  const cache = memberData?.cache;
+
+  const refreshMutation = useRefreshFederalMember({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Refreshed", description: "Member data has been updated." });
+        queryClient.invalidateQueries({ queryKey: memberQueryKey });
+      },
+      onError: (err: any) => {
+        toast({ title: "Refresh failed", description: err?.message || "Could not refresh from Congress.gov.", variant: "destructive" });
+      },
+    },
+  });
+
+  const handleRefresh = () => {
+    if (!bioguideId) return;
+    refreshMutation.mutate({ bioguideId });
+  };
 
   return (
     <div className="h-[calc(100dvh-4rem)] flex flex-col bg-muted/20">
@@ -382,6 +476,26 @@ export function FederalRepDetail() {
           </div>
         ) : member ? (
           <>
+            {cache?.stale && (
+              <div className="mb-4 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span className="flex-1">Data may be outdated.</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto py-1 px-2 text-amber-700 hover:text-amber-800 hover:bg-amber-100"
+                  onClick={handleRefresh}
+                  disabled={refreshMutation.isPending}
+                >
+                  {refreshMutation.isPending ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Refresh"
+                  )}
+                </Button>
+              </div>
+            )}
+
             <Card className="mb-6 shrink-0">
               <CardContent className="p-6">
                 <div className="flex flex-col sm:flex-row items-start gap-6">
@@ -390,22 +504,39 @@ export function FederalRepDetail() {
                     <AvatarFallback className="text-2xl">{member.name?.substring(0, 2)}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
-                    <h1 className="text-3xl font-black mb-2">{member.name}</h1>
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {member.party && <Badge className={partyColor(member.party)}>{member.party}</Badge>}
-                      {member.chamber && <Badge variant="outline">{member.chamber}</Badge>}
-                      {member.state && <Badge variant="secondary">{member.state}</Badge>}
-                      {member.district && <Badge variant="secondary">District {member.district}</Badge>}
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h1 className="text-3xl font-black mb-2">{member.name}</h1>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {member.party && <Badge className={partyColor(member.party)}>{member.party}</Badge>}
+                          {member.chamber && <Badge variant="outline">{member.chamber}</Badge>}
+                          {member.state && <Badge variant="secondary">{member.state}</Badge>}
+                          {member.district && <Badge variant="secondary">District {member.district}</Badge>}
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                          {member.phone && <span>{member.phone}</span>}
+                          {member.nextElection && <span>Next election: {member.nextElection}</span>}
+                        </div>
+                        {member.website && (
+                          <a href={member.website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2">
+                            Official Website <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="shrink-0">
+                            <MoreHorizontal className="h-5 w-5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={handleRefresh} disabled={refreshMutation.isPending}>
+                            <RefreshCw className={`h-4 w-4 mr-2 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+                            Refresh data
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                      {member.phone && <span>{member.phone}</span>}
-                      {member.nextElection && <span>Next election: {member.nextElection}</span>}
-                    </div>
-                    {member.website && (
-                      <a href={member.website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2">
-                        Official Website <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
                   </div>
                 </div>
               </CardContent>

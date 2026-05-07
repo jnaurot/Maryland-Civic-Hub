@@ -87,7 +87,26 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/FederalMemberDetail"
+                $ref: "#/components/schemas/FederalMemberDetailResponse"
+
+  /federal/members/{bioguideId}/refresh:
+    post:
+      operationId: refreshFederalMember
+      tags: [federal]
+      summary: Force refresh a federal member from Congress.gov
+      parameters:
+        - name: bioguideId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Refreshed federal member details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FederalMemberDetailResponse"
 
   /federal/members/{bioguideId}/bills:
     get:
@@ -942,6 +961,15 @@ components:
         nextElection:
           type: string
       required: [bioguideId, name]
+
+    FederalMemberDetailResponse:
+      type: object
+      properties:
+        member:
+          $ref: "#/components/schemas/FederalMemberDetail"
+        cache:
+          $ref: "#/components/schemas/CacheMeta"
+      required: [member, cache]
 
     StateMemberDetail:
       type: object
