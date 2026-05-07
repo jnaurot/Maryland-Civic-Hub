@@ -122,10 +122,18 @@ export interface BillDetail {
   subjects?: string[];
 }
 
+export type BillsListResponsePolicyAreasItem = {
+  name?: string;
+  count?: number;
+  pct?: number;
+};
+
 export interface BillsListResponse {
   bills: Bill[];
   totalCount?: number;
   offset?: number;
+  policyAreas?: BillsListResponsePolicyAreasItem[];
+  fullyIngested?: boolean;
 }
 
 export interface VoteRecord {
@@ -384,6 +392,18 @@ export const GetFederalMemberBillsType = {
   sponsored: "sponsored",
   cosponsored: "cosponsored",
 } as const;
+
+export type RefreshFederalMemberBillsBodyType =
+  (typeof RefreshFederalMemberBillsBodyType)[keyof typeof RefreshFederalMemberBillsBodyType];
+
+export const RefreshFederalMemberBillsBodyType = {
+  sponsored: "sponsored",
+  cosponsored: "cosponsored",
+} as const;
+
+export type RefreshFederalMemberBillsBody = {
+  type?: RefreshFederalMemberBillsBodyType;
+};
 
 export type GetFederalMemberHouseVotesParams = {
   offset?: number;

@@ -1,0 +1,17 @@
+import { pgTable, text, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+
+export const federalMemberBillCacheStatusTable = pgTable("federal_member_bill_cache_status", {
+  bioguideId: text("bioguide_id").notNull(),
+  role: text("role").notNull(),
+  congress: text("congress"),
+  fullyIngested: boolean("fully_ingested").default(false).notNull(),
+  localCount: integer("local_count").default(0).notNull(),
+  lastFetchedAt: timestamp("last_fetched_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("idx_federal_member_bill_cache_status_lookup").on(table.bioguideId, table.role),
+]);
+
+export const insertFederalMemberBillCacheStatusSchema = createInsertSchema(federalMemberBillCacheStatusTable).omit({ lastFetchedAt: true });
+export type InsertFederalMemberBillCacheStatus = import("zod/v4").infer<typeof insertFederalMemberBillCacheStatusSchema>;
+export type FederalMemberBillCacheStatus = typeof federalMemberBillCacheStatusTable.$inferSelect;

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { XMLParser } from "fast-xml-parser";
-import { db, normalizeVoteCast, federalBillsTable, federalMembersTable } from "@workspace/db";
+import { db, normalizeVoteCast, federalBillsTable, federalMembersTable, federalMemberBillRolesTable, federalMemberBillCacheStatusTable } from "@workspace/db";
 import { houseVotesTable, houseVoteRecordsTable, senateRollCallVotesTable, senatorVotePositionsTable, senatorIdentitiesTable } from "@workspace/db";
 import {
   GetFederalMemberParams,
@@ -102,6 +102,30 @@ function mapDbRowToMember(row: typeof federalMembersTable.$inferSelect) {
 
 function isStale(row: typeof federalMembersTable.$inferSelect): boolean {
   return Date.now() - new Date(row.fetchedAt).getTime() > STALE_THRESHOLD_MS;
+}
+
+function computePolicyAreas(
+  rows: Array<{ name: string | null; count: string | number }>
+): Array<{ name: string; count: number; pct: number }> {
+  const total = rows.reduce((sum, r) => sum + Number(r.count), 0);
+  if (total === 0) return [];
+
+  const top = rows.slice(0, 5).map((r) => ({
+    name: r.name ?? "Unknown",
+    count: Number(r.count),
+    pct: Math.round((Number(r.count) / total) * 100),
+  }));
+
+  const otherCount = rows.slice(5).reduce((sum, r) => sum + Number(r.count), 0);
+  if (otherCount > 0) {
+    top.push({
+      name: "Other",
+      count: otherCount,
+      pct: Math.round((otherCount / total) * 100),
+    });
+  }
+
+  return top;
 }
 
 async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
@@ -284,6 +308,98 @@ router.post("/federal/members/:bioguideId/refresh", async (req, res) => {
   }
 });
 
+async function ingestFederalMemberBills(bioguideId: string, role: "sponsor" | "cosponsor", logger?: any) {
+  const endpoint = role === "sponsor" ? "sponsored-legislation" : "cosponsored-legislation";
+  const key = role === "sponsor" ? "sponsoredLegislation" : "cosponsoredLegislation";
+
+  let page = 1;
+  let hasMore = true;
+  let totalIngested = 0;
+
+  while (hasMore) {
+    logger?.info({ bioguideId, role, page, source: "congress.gov" }, "Ingesting member bills from Congress.gov");
+    const data = await congressFetch(`/member/${bioguideId}/${endpoint}`, { offset: (page - 1) * 20, limit: 20 }, logger);
+    const allItems: any[] = data[key] ?? data.bills ?? [];
+    const billItems = allItems.filter((b: any) => b.type !== null && b.type !== undefined);
+
+    if (billItems.length === 0) {
+      hasMore = false;
+      break;
+    }
+
+    for (const b of billItems) {
+      const billId = b.number ? `${b.congress}-${b.type?.toLowerCase()}-${b.number}` : String(Math.random());
+      const subjects = b.subjects?.item ?? (Array.isArray(b.subjects) ? b.subjects : []);
+      const subjectsText = Array.isArray(subjects) ? subjects.join(" ") : "";
+
+      await db.insert(federalBillsTable).values({
+        id: billId,
+        title: b.title ?? "Untitled",
+        number: b.type && b.number ? `${b.type} ${b.number}` : b.billNumber,
+        congress: String(b.congress),
+        introducedDate: b.introducedDate ?? null,
+        summary: null,
+        latestAction: b.latestAction?.text ?? null,
+        chamber: b.originChamber ?? null,
+        policyArea: b.policyArea?.name ?? null,
+        subjects: subjects ?? [],
+        url: b.url ?? null,
+        raw: null,
+        searchVector: sql`to_tsvector('english', coalesce(${b.title ?? ""}, '') || ' ' || coalesce(${b.type + " " + b.number}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+      }).onConflictDoUpdate({
+        target: federalBillsTable.id,
+        set: {
+          title: b.title ?? "Untitled",
+          number: b.type && b.number ? `${b.type} ${b.number}` : b.billNumber,
+          congress: String(b.congress),
+          introducedDate: b.introducedDate ?? null,
+          latestAction: b.latestAction?.text ?? null,
+          chamber: b.originChamber ?? null,
+          policyArea: b.policyArea?.name ?? null,
+          subjects: subjects ?? [],
+          url: b.url ?? null,
+          fetchedAt: new Date(),
+          searchVector: sql`to_tsvector('english', coalesce(${b.title ?? ""}, '') || ' ' || coalesce(${b.type + " " + b.number}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+        },
+      });
+
+      await db.insert(federalMemberBillRolesTable).values({
+        bioguideId,
+        billId,
+        congress: String(b.congress),
+        role,
+        fetchedAt: new Date(),
+      }).onConflictDoNothing();
+
+      totalIngested++;
+    }
+
+    const totalExpected = data.pagination?.count ?? 0;
+    hasMore = totalIngested < totalExpected && billItems.length >= 20;
+    page++;
+  }
+
+  logger?.info({ bioguideId, role, totalIngested, source: "db" }, "Member bill ingestion complete");
+
+  // Write cache status
+  await db.insert(federalMemberBillCacheStatusTable).values({
+    bioguideId,
+    role,
+    fullyIngested: true,
+    localCount: totalIngested,
+    lastFetchedAt: new Date(),
+  }).onConflictDoUpdate({
+    target: [federalMemberBillCacheStatusTable.bioguideId, federalMemberBillCacheStatusTable.role],
+    set: {
+      fullyIngested: true,
+      localCount: totalIngested,
+      lastFetchedAt: new Date(),
+    },
+  });
+
+  return totalIngested;
+}
+
 router.get("/federal/members/:bioguideId/bills", async (req, res) => {
   const paramsParsed = GetFederalMemberBillsParams.safeParse(req.params);
   const queryParsed = GetFederalMemberBillsQueryParams.safeParse(req.query);
@@ -291,43 +407,199 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
 
   const { bioguideId } = paramsParsed.data;
   const { type, offset, limit } = queryParsed.data;
+  const role = type === "sponsored" ? "sponsor" : "cosponsor";
 
   try {
-    const endpoint = type === "sponsored" ? "sponsored-legislation" : "cosponsored-legislation";
-    const data = await congressFetch(`/member/${bioguideId}/${endpoint}`, { offset, limit }, req.log);
-    const key = type === "sponsored" ? "sponsoredLegislation" : "cosponsoredLegislation";
-    const allItems: any[] = data[key] ?? data.bills ?? [];
-    // Filter out amendments (they have amendmentNumber and null type)
-    const billItems = allItems.filter((b: any) => b.type !== null && b.type !== undefined);
-    const bills = billItems.map((b: any) => ({
-      id: b.number ? `${b.congress}-${b.type?.toLowerCase()}-${b.number}` : String(Math.random()),
-      title: b.title ?? "Untitled",
-      number: b.type && b.number ? `${b.type} ${b.number}` : b.billNumber,
-      congress: String(b.congress),
-      introducedDate: b.introducedDate,
-      latestAction: b.latestAction?.text,
-      latestActionDate: b.latestAction?.actionDate,
-      sponsors: b.sponsors?.map((s: any) => s.fullName ?? s.name) ?? [],
-      url: b.url,
-      status: b.latestAction?.text,
-      chamber: b.originChamber,
-      policyArea: b.policyArea?.name ?? undefined,
+    // Check if we have cached bills for this member+role
+    const cachedCountResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(federalMemberBillRolesTable)
+      .where(and(
+        eq(federalMemberBillRolesTable.bioguideId, bioguideId),
+        eq(federalMemberBillRolesTable.role, role)
+      ));
+
+    const cachedCount = Number(cachedCountResult[0]?.count ?? 0);
+
+    if (cachedCount === 0) {
+      req.log.info({ bioguideId, role, source: "congress.gov" }, "No cached member bills; triggering ingestion");
+      await ingestFederalMemberBills(bioguideId, role, req.log);
+    } else {
+      req.log.info({ bioguideId, role, cachedCount, source: "db" }, "Serving member bills from cache");
+    }
+
+    // Fetch paginated bills from DB
+    const rows = await db
+      .select({
+        id: federalBillsTable.id,
+        title: federalBillsTable.title,
+        number: federalBillsTable.number,
+        congress: federalBillsTable.congress,
+        introducedDate: federalBillsTable.introducedDate,
+        latestAction: federalBillsTable.latestAction,
+        policyArea: federalBillsTable.policyArea,
+        url: federalBillsTable.url,
+        chamber: federalBillsTable.chamber,
+      })
+      .from(federalMemberBillRolesTable)
+      .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
+      .where(and(
+        eq(federalMemberBillRolesTable.bioguideId, bioguideId),
+        eq(federalMemberBillRolesTable.role, role)
+      ))
+      .orderBy(desc(federalBillsTable.introducedDate))
+      .limit(limit)
+      .offset(offset);
+
+    const totalResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(federalMemberBillRolesTable)
+      .where(and(
+        eq(federalMemberBillRolesTable.bioguideId, bioguideId),
+        eq(federalMemberBillRolesTable.role, role)
+      ));
+
+    const totalCount = Number(totalResult[0]?.count ?? 0);
+
+    // Compute policy area breakdown from full cached set
+    const policyAreaRows = await db
+      .select({
+        name: federalBillsTable.policyArea,
+        count: sql<number>`count(*)`,
+      })
+      .from(federalMemberBillRolesTable)
+      .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
+      .where(and(
+        eq(federalMemberBillRolesTable.bioguideId, bioguideId),
+        eq(federalMemberBillRolesTable.role, role),
+        sql`${federalBillsTable.policyArea} is not null`
+      ))
+      .groupBy(federalBillsTable.policyArea)
+      .orderBy(sql`count(*) desc`);
+
+    const policyAreas = computePolicyAreas(policyAreaRows);
+
+    const bills = rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      number: r.number,
+      congress: r.congress,
+      introducedDate: r.introducedDate,
+      latestAction: r.latestAction,
+      policyArea: r.policyArea ?? undefined,
+      url: r.url,
+      chamber: r.chamber,
     }));
 
-    // Sort by latest action date descending
-    bills.sort((a: any, b: any) => {
-      const dateA = a.latestActionDate ? new Date(a.latestActionDate).getTime() : 0;
-      const dateB = b.latestActionDate ? new Date(b.latestActionDate).getTime() : 0;
-      return dateB - dateA;
-    });
+    // Check cache status
+    const cacheStatusRows = await db
+      .select()
+      .from(federalMemberBillCacheStatusTable)
+      .where(and(
+        eq(federalMemberBillCacheStatusTable.bioguideId, bioguideId),
+        eq(federalMemberBillCacheStatusTable.role, role)
+      ))
+      .limit(1);
+    const fullyIngested = cacheStatusRows[0]?.fullyIngested ?? false;
 
     return res.json({
       bills,
-      totalCount: data.pagination?.count,
+      totalCount,
       offset,
+      policyAreas,
+      fullyIngested,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching member bills");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/federal/members/:bioguideId/bills/refresh", async (req, res) => {
+  const paramsParsed = GetFederalMemberBillsParams.safeParse(req.params);
+  const body = req.body;
+  if (!paramsParsed.success) return res.status(400).json({ error: "Invalid params" });
+
+  const { bioguideId } = paramsParsed.data;
+  const type = body?.type === "cosponsored" ? "cosponsored" : "sponsored";
+  const role = type === "sponsored" ? "sponsor" : "cosponsor";
+
+  try {
+    req.log.info({ bioguideId, role, source: "congress.gov" }, "Force refreshing member bills from Congress.gov");
+    const totalIngested = await ingestFederalMemberBills(bioguideId, role, req.log);
+
+    // Fetch first page from DB for immediate response
+    const rows = await db
+      .select({
+        id: federalBillsTable.id,
+        title: federalBillsTable.title,
+        number: federalBillsTable.number,
+        congress: federalBillsTable.congress,
+        introducedDate: federalBillsTable.introducedDate,
+        latestAction: federalBillsTable.latestAction,
+        policyArea: federalBillsTable.policyArea,
+        url: federalBillsTable.url,
+        chamber: federalBillsTable.chamber,
+      })
+      .from(federalMemberBillRolesTable)
+      .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
+      .where(and(
+        eq(federalMemberBillRolesTable.bioguideId, bioguideId),
+        eq(federalMemberBillRolesTable.role, role)
+      ))
+      .orderBy(desc(federalBillsTable.introducedDate))
+      .limit(20)
+      .offset(0);
+
+    const totalResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(federalMemberBillRolesTable)
+      .where(and(
+        eq(federalMemberBillRolesTable.bioguideId, bioguideId),
+        eq(federalMemberBillRolesTable.role, role)
+      ));
+
+    const totalCount = Number(totalResult[0]?.count ?? 0);
+
+    const policyAreaRows = await db
+      .select({
+        name: federalBillsTable.policyArea,
+        count: sql<number>`count(*)`,
+      })
+      .from(federalMemberBillRolesTable)
+      .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
+      .where(and(
+        eq(federalMemberBillRolesTable.bioguideId, bioguideId),
+        eq(federalMemberBillRolesTable.role, role),
+        sql`${federalBillsTable.policyArea} is not null`
+      ))
+      .groupBy(federalBillsTable.policyArea)
+      .orderBy(sql`count(*) desc`);
+
+    const policyAreas = computePolicyAreas(policyAreaRows);
+
+    const bills = rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      number: r.number,
+      congress: r.congress,
+      introducedDate: r.introducedDate,
+      latestAction: r.latestAction,
+      policyArea: r.policyArea ?? undefined,
+      url: r.url,
+      chamber: r.chamber,
+    }));
+
+    return res.json({
+      bills,
+      totalCount,
+      offset: 0,
+      policyAreas,
+      fullyIngested: true,
+      refreshed: true,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Error refreshing member bills");
     return res.status(500).json({ error: String(err) });
   }
 });

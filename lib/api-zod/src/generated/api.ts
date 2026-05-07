@@ -189,6 +189,63 @@ export const GetFederalMemberBillsResponse = zod.object({
   ),
   totalCount: zod.number().optional(),
   offset: zod.number().optional(),
+  policyAreas: zod
+    .array(
+      zod.object({
+        name: zod.string().optional(),
+        count: zod.number().optional(),
+        pct: zod.number().optional(),
+      }),
+    )
+    .optional(),
+  fullyIngested: zod.boolean().optional(),
+});
+
+/**
+ * @summary Force refresh bills for a federal member
+ */
+export const RefreshFederalMemberBillsParams = zod.object({
+  bioguideId: zod.coerce.string(),
+});
+
+export const refreshFederalMemberBillsBodyTypeDefault = `sponsored`;
+
+export const RefreshFederalMemberBillsBody = zod.object({
+  type: zod
+    .enum(["sponsored", "cosponsored"])
+    .default(refreshFederalMemberBillsBodyTypeDefault),
+});
+
+export const RefreshFederalMemberBillsResponse = zod.object({
+  bills: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      number: zod.string().optional(),
+      congress: zod.string().optional(),
+      introducedDate: zod.string().optional(),
+      latestAction: zod.string().optional(),
+      latestActionDate: zod.string().optional(),
+      sponsors: zod.array(zod.string()).optional(),
+      url: zod.string().optional(),
+      status: zod.string().optional(),
+      chamber: zod.string().optional(),
+      policyArea: zod.string().optional(),
+      subjects: zod.array(zod.string()).optional(),
+    }),
+  ),
+  totalCount: zod.number().optional(),
+  offset: zod.number().optional(),
+  policyAreas: zod
+    .array(
+      zod.object({
+        name: zod.string().optional(),
+        count: zod.number().optional(),
+        pct: zod.number().optional(),
+      }),
+    )
+    .optional(),
+  fullyIngested: zod.boolean().optional(),
 });
 
 /**
@@ -336,6 +393,16 @@ export const GetFederalBillsResponse = zod.object({
   ),
   totalCount: zod.number().optional(),
   offset: zod.number().optional(),
+  policyAreas: zod
+    .array(
+      zod.object({
+        name: zod.string().optional(),
+        count: zod.number().optional(),
+        pct: zod.number().optional(),
+      }),
+    )
+    .optional(),
+  fullyIngested: zod.boolean().optional(),
 });
 
 /**
@@ -370,6 +437,16 @@ export const SearchFederalBillsResponse = zod.object({
   ),
   totalCount: zod.number().optional(),
   offset: zod.number().optional(),
+  policyAreas: zod
+    .array(
+      zod.object({
+        name: zod.string().optional(),
+        count: zod.number().optional(),
+        pct: zod.number().optional(),
+      }),
+    )
+    .optional(),
+  fullyIngested: zod.boolean().optional(),
 });
 
 /**

@@ -36,6 +36,7 @@ import type {
   GetStateMemberVotesParams,
   HealthStatus,
   HouseVotesListResponse,
+  RefreshFederalMemberBillsBody,
   RepresentativesResponse,
   SearchCandidateFinanceParams,
   SearchFederalBillsParams,
@@ -48,7 +49,7 @@ import type {
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -639,6 +640,97 @@ export function useGetFederalMemberBills<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Force refresh bills for a federal member
+ */
+export const getRefreshFederalMemberBillsUrl = (bioguideId: string) => {
+  return `/api/federal/members/${bioguideId}/bills/refresh`;
+};
+
+export const refreshFederalMemberBills = async (
+  bioguideId: string,
+  refreshFederalMemberBillsBody?: RefreshFederalMemberBillsBody,
+  options?: RequestInit,
+): Promise<BillsListResponse> => {
+  return customFetch<BillsListResponse>(
+    getRefreshFederalMemberBillsUrl(bioguideId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(refreshFederalMemberBillsBody),
+    },
+  );
+};
+
+export const getRefreshFederalMemberBillsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshFederalMemberBills>>,
+    TError,
+    { bioguideId: string; data: BodyType<RefreshFederalMemberBillsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof refreshFederalMemberBills>>,
+  TError,
+  { bioguideId: string; data: BodyType<RefreshFederalMemberBillsBody> },
+  TContext
+> => {
+  const mutationKey = ["refreshFederalMemberBills"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof refreshFederalMemberBills>>,
+    { bioguideId: string; data: BodyType<RefreshFederalMemberBillsBody> }
+  > = (props) => {
+    const { bioguideId, data } = props ?? {};
+
+    return refreshFederalMemberBills(bioguideId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RefreshFederalMemberBillsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof refreshFederalMemberBills>>
+>;
+export type RefreshFederalMemberBillsMutationBody =
+  BodyType<RefreshFederalMemberBillsBody>;
+export type RefreshFederalMemberBillsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Force refresh bills for a federal member
+ */
+export const useRefreshFederalMemberBills = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshFederalMemberBills>>,
+    TError,
+    { bioguideId: string; data: BodyType<RefreshFederalMemberBillsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof refreshFederalMemberBills>>,
+  TError,
+  { bioguideId: string; data: BodyType<RefreshFederalMemberBillsBody> },
+  TContext
+> => {
+  return useMutation(getRefreshFederalMemberBillsMutationOptions(options));
+};
 
 /**
  * @summary Get House roll call vote records for a federal member

@@ -28,3 +28,5 @@ export * from "./provider_status";
 export * from "./state_bills";
 export * from "./federal_bills";
 export * from "./federal_members";
+export * from "./federal_member_bill_roles";
+export * from "./federal_member_bill_cache_status";

@@ -304,12 +304,15 @@ export function StateRepDetail() {
   const member = memberData?.legislator;
   const cache = memberData?.cache;
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const refreshMutation = useRefreshStateMember({
     mutation: {
       onSuccess: () => {
         toast({
           title: "Refreshed",
           description: "Legislator data has been updated.",
+          duration: 5000,
         });
       },
       onError: (err: any) => {
@@ -317,6 +320,7 @@ export function StateRepDetail() {
           title: "Refresh failed",
           description: err?.message || "Could not refresh from OpenStates.",
           variant: "destructive",
+          duration: 5000,
         });
       },
     },
@@ -328,12 +332,14 @@ export function StateRepDetail() {
         title: "Data may be outdated",
         description: "Could not refresh from OpenStates. Showing cached data.",
         variant: "destructive",
+        duration: 5000,
       });
     }
   }, [cache?.refreshFailed]);
 
-  const handleRefresh = () => {
+  const handleRefresh = (e?: React.MouseEvent | React.SyntheticEvent) => {
     if (!apiMemberId) return;
+    e?.preventDefault?.();
     refreshMutation.mutate({ memberId: apiMemberId });
   };
 
@@ -397,14 +403,14 @@ export function StateRepDetail() {
                           </a>
                         )}
                       </div>
-                      <DropdownMenu>
+                      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="shrink-0">
                             <MoreHorizontal className="h-5 w-5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={handleRefresh} disabled={refreshMutation.isPending}>
+                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setMenuOpen(false); handleRefresh(); }} disabled={refreshMutation.isPending}>
                             <RefreshCw className={`h-4 w-4 mr-2 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
                             Refresh data
                           </DropdownMenuItem>

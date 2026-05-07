@@ -67,47 +67,20 @@ function formatMoney(n?: number) {
   return `$${n}`;
 }
 
-function policyAreaBreakdown(bills: Array<{ policyArea?: string }>) {
-  const counts = new Map<string, number>();
-  let total = 0;
-  for (const bill of bills) {
-    const area = bill.policyArea?.trim();
-    if (!area) continue;
-    counts.set(area, (counts.get(area) ?? 0) + 1);
-    total++;
-  }
-  if (total === 0) return null;
+function PolicyAreaChart({ policyAreas, type, fullyIngested }: { policyAreas?: Array<{ name?: string; count?: number; pct?: number }>; type?: "sponsored" | "cosponsored"; fullyIngested?: boolean }) {
+  if (!policyAreas || policyAreas.length === 0) return null;
 
-  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  const top = sorted.slice(0, 5);
-  const otherCount = sorted.slice(5).reduce((sum, [, c]) => sum + c, 0);
-
-  const result = top.map(([name, count]) => ({
-    name,
-    count,
-    pct: Math.round((count / total) * 100),
-  }));
-
-  if (otherCount > 0) {
-    result.push({
-      name: "Other",
-      count: otherCount,
-      pct: Math.round((otherCount / total) * 100),
-    });
-  }
-
-  return { total, items: result };
-}
-
-function PolicyAreaChart({ bills }: { bills: Array<{ policyArea?: string }> }) {
-  const breakdown = policyAreaBreakdown(bills);
-  if (!breakdown) return null;
+  const total = policyAreas.reduce((sum, item) => sum + (item.count ?? 0), 0);
+  const label = type === "cosponsored" ? "Cosponsored Bill Support" : "Sponsored Bill Focus";
 
   return (
     <div className="shrink-0 mb-4">
-      <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Policy Areas</p>
+      <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">{label}</p>
+      {type === "cosponsored" && (
+        <p className="text-[10px] text-muted-foreground mb-2">Cosponsored bills may reflect party support patterns more than personal legislative priorities.</p>
+      )}
       <div className="space-y-1.5">
-        {breakdown.items.map((item) => (
+        {policyAreas.map((item) => (
           <div key={item.name} className="flex items-center gap-2">
             <span className="text-xs w-24 truncate shrink-0" title={item.name}>{item.name}</span>
             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
@@ -120,7 +93,7 @@ function PolicyAreaChart({ bills }: { bills: Array<{ policyArea?: string }> }) {
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-muted-foreground mt-1">Based on {breakdown.total} bills with policy areas</p>
+      <p className="text-[10px] text-muted-foreground mt-1">Based on {total} bills with policy areas{fullyIngested === false && " — partial data"}</p>
     </div>
   );
 }
@@ -143,8 +116,8 @@ function BillsList({ bioguideId, memberName }: { bioguideId: string; memberName?
         <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
       </div>
 
-      {!isLoading && data?.bills && data.bills.length > 0 && (
-        <PolicyAreaChart bills={data.bills} />
+      {!isLoading && data?.policyAreas && data.policyAreas.length > 0 && (
+        <PolicyAreaChart policyAreas={data.policyAreas} type={type} fullyIngested={data?.fullyIngested} />
       )}
 
       <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
@@ -445,20 +418,23 @@ export function FederalRepDetail() {
   const member = memberData?.member;
   const cache = memberData?.cache;
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const refreshMutation = useRefreshFederalMember({
     mutation: {
       onSuccess: () => {
-        toast({ title: "Refreshed", description: "Member data has been updated." });
+        toast({ title: "Refreshed", description: "Member data has been updated.", duration: 5000 });
         queryClient.invalidateQueries({ queryKey: memberQueryKey });
       },
       onError: (err: any) => {
-        toast({ title: "Refresh failed", description: err?.message || "Could not refresh from Congress.gov.", variant: "destructive" });
+        toast({ title: "Refresh failed", description: err?.message || "Could not refresh from Congress.gov.", variant: "destructive", duration: 5000 });
       },
     },
   });
 
-  const handleRefresh = () => {
+  const handleRefresh = (e?: React.MouseEvent | React.SyntheticEvent) => {
     if (!bioguideId) return;
+    e?.preventDefault?.();
     refreshMutation.mutate({ bioguideId });
   };
 
@@ -523,14 +499,14 @@ export function FederalRepDetail() {
                           </a>
                         )}
                       </div>
-                      <DropdownMenu>
+                      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="shrink-0">
                             <MoreHorizontal className="h-5 w-5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={handleRefresh} disabled={refreshMutation.isPending}>
+                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setMenuOpen(false); handleRefresh(); }} disabled={refreshMutation.isPending}>
                             <RefreshCw className={`h-4 w-4 mr-2 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
                             Refresh data
                           </DropdownMenuItem>

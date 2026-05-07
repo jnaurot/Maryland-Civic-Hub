@@ -143,6 +143,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/BillsListResponse"
 
+  /federal/members/{bioguideId}/bills/refresh:
+    post:
+      operationId: refreshFederalMemberBills
+      tags: [federal]
+      summary: Force refresh bills for a federal member
+      parameters:
+        - name: bioguideId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [sponsored, cosponsored]
+                  default: sponsored
+      responses:
+        "200":
+          description: Refreshed bills list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillsListResponse"
+
   /federal/members/{bioguideId}/house-votes:
     get:
       operationId: getFederalMemberHouseVotes
@@ -784,6 +814,19 @@ components:
           type: integer
         offset:
           type: integer
+        policyAreas:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              count:
+                type: integer
+              pct:
+                type: integer
+        fullyIngested:
+          type: boolean
       required: [bills]
 
     VoteRecord:

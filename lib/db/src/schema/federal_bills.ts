@@ -14,6 +14,8 @@ export const federalBillsTable = pgTable("federal_bills", {
   congress: text("congress"),
   introducedDate: text("introduced_date"),
   summary: text("summary"),
+  latestAction: text("latest_action"),
+  chamber: text("chamber"),
   policyArea: text("policy_area"),
   subjects: text("subjects").array(),
   url: text("url"),
