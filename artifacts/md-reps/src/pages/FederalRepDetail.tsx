@@ -93,34 +93,41 @@ function PolicyAreaChart({ policyAreas, type, fullyIngested }: { policyAreas?: A
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-muted-foreground mt-1">Based on {total} bills with policy areas{fullyIngested === false && " — partial data"}</p>
+      <p className="text-[10px] text-muted-foreground mt-1">Based on {total} bills with policy areas.</p>
     </div>
   );
 }
 
-function BillsList({ bioguideId, memberName }: { bioguideId: string; memberName?: string }) {
-  const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
+function BillsList({ bioguideId, memberName, billRole, onBillRoleChange }: { bioguideId: string; memberName?: string; billRole: "sponsored" | "cosponsored"; onBillRoleChange: (role: "sponsored" | "cosponsored") => void }) {
+  const [billView, setBillView] = useState<"list" | "breakdown">("list");
   const [offset, setOffset] = useState(0);
   const limit = 20;
 
-  const { data, isLoading } = useGetFederalMemberBills(bioguideId, { type, offset, limit }, {
-    query: { enabled: !!bioguideId, queryKey: getGetFederalMemberBillsQueryKey(bioguideId, { type, offset, limit }) }
+  const { data, isLoading } = useGetFederalMemberBills(bioguideId, { type: billRole, offset, limit }, {
+    query: { enabled: !!bioguideId, queryKey: getGetFederalMemberBillsQueryKey(bioguideId, { type: billRole, offset, limit }) }
   });
 
   const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/federal/${bioguideId}`)}&name=${encodeURIComponent(memberName)}` : "";
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex gap-2 shrink-0 pb-4">
-        <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => { setType("sponsored"); setOffset(0); }}>Sponsored</Button>
-        <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
+      <div className="flex justify-between items-center shrink-0 pb-4">
+        <div className="flex gap-2">
+          <Button size="sm" variant={billRole === "sponsored" ? "default" : "outline"} onClick={() => { onBillRoleChange("sponsored"); setOffset(0); }}>Sponsored</Button>
+          <Button size="sm" variant={billRole === "cosponsored" ? "default" : "outline"} onClick={() => { onBillRoleChange("cosponsored"); setOffset(0); }}>Cosponsored</Button>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant={billView === "list" ? "default" : "outline"} onClick={() => setBillView("list")}>List</Button>
+          <Button size="sm" variant={billView === "breakdown" ? "default" : "outline"} onClick={() => setBillView("breakdown")}>Breakdown</Button>
+        </div>
       </div>
 
-      {!isLoading && data?.policyAreas && data.policyAreas.length > 0 && (
-        <PolicyAreaChart policyAreas={data.policyAreas} type={type} fullyIngested={data?.fullyIngested} />
-      )}
-
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+      {billView === "list" ? (
+        <>
+          <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2 shrink-0">
+            {billRole === "cosponsored" ? "Cosponsored Bills" : "Sponsored Bills"}
+          </p>
+          <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
         {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
         {!isLoading && data?.bills?.length === 0 && (
@@ -151,13 +158,30 @@ function BillsList({ bioguideId, memberName }: { bioguideId: string; memberName?
             </Card>
           </Link>
         ))}
-      </div>
+          </div>
 
-      {data && (data.totalCount ?? 0) > limit && (
-        <div className="flex justify-between items-center pt-6 shrink-0">
-          <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
-          <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount}</span>
-          <Button variant="outline" size="sm" disabled={offset + limit >= (data.totalCount ?? 0)} onClick={() => setOffset(offset + limit)}>Next</Button>
+          {data && (data.totalCount ?? 0) > limit && (
+            <div className="flex justify-between items-center pt-6 shrink-0">
+              <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
+              <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount}</span>
+              <Button variant="outline" size="sm" disabled={offset + limit >= (data.totalCount ?? 0)} onClick={() => setOffset(offset + limit)}>Next</Button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+          {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>}
+          {!isLoading && data?.policyAreas && data.policyAreas.length > 0 && (
+            <>
+              <PolicyAreaChart policyAreas={data.policyAreas} type={billRole} fullyIngested={data?.fullyIngested} />
+              {data?.fullyIngested === false && (
+                <p className="text-xs text-amber-600 mt-2">Breakdown is based on cached bills so far.</p>
+              )}
+            </>
+          )}
+          {!isLoading && (!data?.policyAreas || data.policyAreas.length === 0) && (
+            <p className="text-muted-foreground text-center py-10">No policy area data available.</p>
+          )}
         </div>
       )}
     </div>
@@ -418,6 +442,11 @@ export function FederalRepDetail() {
   const member = memberData?.member;
   const cache = memberData?.cache;
 
+  const [billRole, setBillRole] = useState<"sponsored" | "cosponsored">("sponsored");
+  const { data: billSummaryData } = useGetFederalMemberBills(bioguideId, { type: billRole, offset: 0, limit: 1 }, {
+    query: { enabled: !!bioguideId, queryKey: getGetFederalMemberBillsQueryKey(bioguideId, { type: billRole, offset: 0, limit: 1 }) }
+  });
+
   const [menuOpen, setMenuOpen] = useState(false);
 
   const refreshMutation = useRefreshFederalMember({
@@ -489,6 +518,18 @@ export function FederalRepDetail() {
                           {member.state && <Badge variant="secondary">{member.state}</Badge>}
                           {member.district && <Badge variant="secondary">District {member.district}</Badge>}
                         </div>
+                        {billSummaryData?.policyAreas && billSummaryData.policyAreas.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 mb-3">
+                            <span className="text-xs text-muted-foreground font-medium">
+                              {billRole === "cosponsored" ? "Top Support Areas" : "Top Sponsored Issues"}:
+                            </span>
+                            {billSummaryData.policyAreas.slice(0, 3).filter(p => p.name && p.name !== "Other").map((area) => (
+                              <Badge key={area.name} variant="outline" className="text-xs bg-primary/5 border-primary/20">
+                                {area.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                           {member.phone && <span>{member.phone}</span>}
                           {member.nextElection && <span>Next election: {member.nextElection}</span>}
@@ -526,7 +567,7 @@ export function FederalRepDetail() {
                 <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" /><span className="hidden sm:inline">Finance</span></TabsTrigger>
               </TabsList>
 
-              <TabsContent value="bills" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><BillsList bioguideId={bioguideId} memberName={member.name} /></TabsContent>
+              <TabsContent value="bills" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><BillsList bioguideId={bioguideId} memberName={member.name} billRole={billRole} onBillRoleChange={setBillRole} /></TabsContent>
               <TabsContent value="votes" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><VotesList bioguideId={bioguideId} memberChamber={member.chamber} /></TabsContent>
               <TabsContent value="committees" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><CommitteesList bioguideId={bioguideId} /></TabsContent>
               <TabsContent value="finance" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><FinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>
