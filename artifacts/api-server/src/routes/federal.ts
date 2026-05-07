@@ -381,15 +381,19 @@ async function ingestFederalMemberBills(bioguideId: string, role: "sponsor" | "c
 
   logger?.info({ bioguideId, role, totalIngested, source: "db" }, "Member bill ingestion complete");
 
-  // Write cache status
+  // Write cache status keyed to current congress
+  const currentYear = new Date().getFullYear();
+  const currentCongress = String(Math.floor((currentYear - 1789) / 2) + 1);
+
   await db.insert(federalMemberBillCacheStatusTable).values({
     bioguideId,
     role,
+    congress: currentCongress,
     fullyIngested: true,
     localCount: totalIngested,
     lastFetchedAt: new Date(),
   }).onConflictDoUpdate({
-    target: [federalMemberBillCacheStatusTable.bioguideId, federalMemberBillCacheStatusTable.role],
+    target: [federalMemberBillCacheStatusTable.bioguideId, federalMemberBillCacheStatusTable.role, federalMemberBillCacheStatusTable.congress],
     set: {
       fullyIngested: true,
       localCount: totalIngested,
@@ -491,13 +495,16 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       chamber: r.chamber,
     }));
 
-    // Check cache status
+    // Check cache status for current congress
+    const currentYear = new Date().getFullYear();
+    const currentCongress = String(Math.floor((currentYear - 1789) / 2) + 1);
     const cacheStatusRows = await db
       .select()
       .from(federalMemberBillCacheStatusTable)
       .where(and(
         eq(federalMemberBillCacheStatusTable.bioguideId, bioguideId),
-        eq(federalMemberBillCacheStatusTable.role, role)
+        eq(federalMemberBillCacheStatusTable.role, role),
+        eq(federalMemberBillCacheStatusTable.congress, currentCongress)
       ))
       .limit(1);
     const fullyIngested = cacheStatusRows[0]?.fullyIngested ?? false;

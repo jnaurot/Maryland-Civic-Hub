@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const federalMemberBillCacheStatusTable = pgTable("federal_member_bill_cache_status", {
@@ -9,6 +9,7 @@ export const federalMemberBillCacheStatusTable = pgTable("federal_member_bill_ca
   localCount: integer("local_count").default(0).notNull(),
   lastFetchedAt: timestamp("last_fetched_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  uniqueIndex("idx_federal_member_bill_cache_status_pk").on(table.bioguideId, table.role, table.congress),
   index("idx_federal_member_bill_cache_status_lookup").on(table.bioguideId, table.role),
 ]);
 
