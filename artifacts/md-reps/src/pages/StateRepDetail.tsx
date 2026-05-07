@@ -84,11 +84,16 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex gap-2 shrink-0 pb-4">
-        <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => { setType("sponsored"); setOffset(0); }}>Sponsored</Button>
-        <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
+      <div className="flex justify-between items-center shrink-0 pb-4">
+        <div className="flex gap-2">
+          <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => { setType("sponsored"); setOffset(0); }}>Sponsored</Button>
+          <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
+        </div>
       </div>
 
+      <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2 shrink-0">
+        {type === "cosponsored" ? "Cosponsored Bills" : "Sponsored Bills"}
+      </p>
       <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
         {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
