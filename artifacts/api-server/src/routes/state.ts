@@ -59,6 +59,62 @@ function mapStateBill(b: any) {
 
 // State member IDs are "ocd-person/<uuid>". The frontend URL-encodes them
 // so Express sees a single param like "ocd-person%2F<uuid>". We decode it here.
+router.get("/state/members/search", async (req, res) => {
+  const q = req.query.q;
+  const jurisdiction = req.query.jurisdiction as string | undefined;
+  const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  const offset = Number(req.query.offset ?? 0);
+
+  if (!q || typeof q !== "string") {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
+
+  try {
+    req.log.info({ q, jurisdiction, source: "db" }, "Searching state legislators from DB cache");
+    const searchPattern = `%${q}%`;
+    const conditions: any[] = [
+      or(
+        sql`${stateLegislatorsTable.name} ILIKE ${searchPattern}`,
+        sql`${stateLegislatorsTable.party} ILIKE ${searchPattern}`
+      ),
+    ];
+
+    if (jurisdiction) {
+      conditions.push(eq(stateLegislatorsTable.jurisdiction, jurisdiction));
+    }
+
+    const rows = await db
+      .select()
+      .from(stateLegislatorsTable)
+      .where(and(...conditions))
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stateLegislatorsTable)
+      .where(and(...conditions));
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+
+    const members = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      party: r.party,
+      chamber: r.chamber,
+      district: r.district,
+      jurisdiction: r.jurisdiction,
+      photoUrl: r.photoUrl,
+      state: r.state,
+    }));
+
+    return res.json({ members, totalCount, offset });
+  } catch (err) {
+    req.log.error({ err }, "Error searching state legislators");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
 router.get("/state/members/:memberId", async (req, res) => {
   const memberId = decodeURIComponent(req.params.memberId);
   if (!memberId) return res.status(400).json({ error: "memberId required" });
@@ -350,6 +406,58 @@ router.get("/state/bills", async (req, res) => {
   }
 });
 
+router.get("/state/bills/search", async (req, res) => {
+  const q = req.query.q;
+  const jurisdiction = req.query.jurisdiction as string | undefined;
+  const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  const offset = Number(req.query.offset ?? 0);
+
+  if (!q || typeof q !== "string") {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
+
+  try {
+    req.log.info({ q, jurisdiction, source: "db" }, "Searching state bills from DB cache");
+    const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
+    const conditions = [sql`${stateBillsTable.searchVector} @@ ${searchQuery}`];
+    if (jurisdiction) conditions.push(eq(stateBillsTable.jurisdiction, jurisdiction));
+
+    const rows = await db
+      .select()
+      .from(stateBillsTable)
+      .where(and(...conditions))
+      .orderBy(sql`ts_rank(${stateBillsTable.searchVector}, ${searchQuery}) desc`)
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stateBillsTable)
+      .where(and(...conditions));
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+
+    const bills = rows.map((b) => ({
+      id: b.id,
+      identifier: b.identifier,
+      title: b.title,
+      session: b.session,
+      chamber: b.chamber,
+      status: b.status,
+      introducedDate: b.introducedDate,
+      summary: b.summary,
+      subjects: b.subjects,
+      url: b.url,
+      jurisdiction: b.jurisdiction,
+    }));
+
+    return res.json({ bills, totalCount, offset });
+  } catch (err) {
+    req.log.error({ err }, "Error searching state bills");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
 // Bill IDs are "ocd-bill/<uuid>" — frontend URL-encodes them
 router.get("/state/bills/:billId", async (req, res) => {
   const billId = decodeURIComponent(req.params.billId);
@@ -444,114 +552,6 @@ router.get("/state/bills/:billId", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching state bill detail");
-    return res.status(500).json({ error: String(err) });
-  }
-});
-
-router.get("/state/bills/search", async (req, res) => {
-  const q = req.query.q;
-  const jurisdiction = req.query.jurisdiction as string | undefined;
-  const limit = Math.min(Number(req.query.limit ?? 20), 100);
-  const offset = Number(req.query.offset ?? 0);
-
-  if (!q || typeof q !== "string") {
-    return res.status(400).json({ error: "Query parameter 'q' is required" });
-  }
-
-  try {
-    req.log.info({ q, jurisdiction, source: "db" }, "Searching state bills from DB cache");
-    const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
-    const conditions = [sql`${stateBillsTable.searchVector} @@ ${searchQuery}`];
-    if (jurisdiction) conditions.push(eq(stateBillsTable.jurisdiction, jurisdiction));
-
-    const rows = await db
-      .select()
-      .from(stateBillsTable)
-      .where(and(...conditions))
-      .orderBy(sql`ts_rank(${stateBillsTable.searchVector}, ${searchQuery}) desc`)
-      .limit(limit)
-      .offset(offset);
-
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(stateBillsTable)
-      .where(and(...conditions));
-
-    const totalCount = Number(countResult[0]?.count ?? 0);
-
-    const bills = rows.map((b) => ({
-      id: b.id,
-      identifier: b.identifier,
-      title: b.title,
-      session: b.session,
-      chamber: b.chamber,
-      status: b.status,
-      introducedDate: b.introducedDate,
-      summary: b.summary,
-      subjects: b.subjects,
-      url: b.url,
-      jurisdiction: b.jurisdiction,
-    }));
-
-    return res.json({ bills, totalCount, offset });
-  } catch (err) {
-    req.log.error({ err }, "Error searching state bills");
-    return res.status(500).json({ error: String(err) });
-  }
-});
-
-router.get("/state/members/search", async (req, res) => {
-  const q = req.query.q;
-  const jurisdiction = req.query.jurisdiction as string | undefined;
-  const limit = Math.min(Number(req.query.limit ?? 20), 100);
-  const offset = Number(req.query.offset ?? 0);
-
-  if (!q || typeof q !== "string") {
-    return res.status(400).json({ error: "Query parameter 'q' is required" });
-  }
-
-  try {
-    req.log.info({ q, jurisdiction, source: "db" }, "Searching state legislators from DB cache");
-    const searchPattern = `%${q}%`;
-    const conditions: any[] = [
-      or(
-        sql`${stateLegislatorsTable.name} ILIKE ${searchPattern}`,
-        sql`${stateLegislatorsTable.party} ILIKE ${searchPattern}`
-      ),
-    ];
-
-    if (jurisdiction) {
-      conditions.push(eq(stateLegislatorsTable.jurisdiction, jurisdiction));
-    }
-
-    const rows = await db
-      .select()
-      .from(stateLegislatorsTable)
-      .where(and(...conditions))
-      .limit(limit)
-      .offset(offset);
-
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(stateLegislatorsTable)
-      .where(and(...conditions));
-
-    const totalCount = Number(countResult[0]?.count ?? 0);
-
-    const members = rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      party: r.party,
-      chamber: r.chamber,
-      district: r.district,
-      jurisdiction: r.jurisdiction,
-      photoUrl: r.photoUrl,
-      state: r.state,
-    }));
-
-    return res.json({ members, totalCount, offset });
-  } catch (err) {
-    req.log.error({ err }, "Error searching state legislators");
     return res.status(500).json({ error: String(err) });
   }
 });

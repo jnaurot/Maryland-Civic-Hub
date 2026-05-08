@@ -1,3 +1,4 @@
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useParams, Link, useSearch } from "wouter";
 import {
   useGetFederalBillDetail,
@@ -6,8 +7,99 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ExternalLink, CheckCircle2, Circle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ExternalLink, CheckCircle2, Circle, Search, ChevronUp, ChevronDown, X } from "lucide-react";
 import { RepNameLink } from "@/components/RepNameLink";
+
+function HighlightedSummary({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <span>{text}</span>;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"));
+  // split with a capturing group produces: [before, match, between, match, after]
+  // odd indices are always the matched query segments
+  return (
+    <span className="text-sm leading-relaxed text-muted-foreground">
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <mark key={i} className="bg-yellow-200 text-foreground rounded-sm px-0.5">{part}</mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </span>
+  );
+}
+
+function SummarySearch({ summary }: { summary: string }) {
+  const [query, setQuery] = useState("");
+  const [currentMatch, setCurrentMatch] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const markRefs = useRef<HTMLSpanElement[]>([]);
+
+  const matches = useMemo(() => {
+    if (!query.trim()) return 0;
+    const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    return (summary.match(regex) || []).length;
+  }, [summary, query]);
+
+  const scrollToMatch = useCallback((index: number) => {
+    const marks = containerRef.current?.querySelectorAll("mark");
+    if (!marks || marks.length === 0) return;
+    const clamped = ((index % marks.length) + marks.length) % marks.length;
+    setCurrentMatch(clamped);
+    (marks[clamped] as HTMLElement)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  const handlePrev = () => scrollToMatch(currentMatch - 1);
+  const handleNext = () => scrollToMatch(currentMatch + 1);
+
+  useEffect(() => {
+    if (matches > 0) scrollToMatch(0);
+  }, [matches, query, scrollToMatch]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-4">
+          <CardTitle className="text-base">Summary</CardTitle>
+          <div className="flex items-center gap-2">
+            {query && (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  {matches > 0 ? `${currentMatch + 1} of ${matches}` : "0 matches"}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={matches === 0} onClick={handlePrev}>
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={matches === 0} onClick={handleNext}>
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setQuery(""); setCurrentMatch(0); }}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Find in summary..."
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setCurrentMatch(0); }}
+                className="pl-8 h-8 text-sm w-48"
+              />
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0" ref={containerRef}>
+        <HighlightedSummary text={summary} query={query} />
+      </CardContent>
+    </Card>
+  );
+}
 
 function BillProgressBar({ actions }: { actions?: { date: string; text: string; type?: string }[] }) {
   const stages = ["Introduced", "Committee", "Floor Vote", "Passed", "Signed"];
@@ -118,16 +210,7 @@ export function FederalBillDetail() {
               </CardContent>
             </Card>
 
-            {bill.summary && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <p className="text-sm leading-relaxed text-muted-foreground">{bill.summary}</p>
-                </CardContent>
-              </Card>
-            )}
+            {bill.summary && <SummarySearch summary={bill.summary} />}
 
             <div className="grid md:grid-cols-2 gap-6">
               {bill.sponsors && bill.sponsors.length > 0 && (

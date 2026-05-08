@@ -376,6 +376,53 @@ router.get("/federal/state-members", async (req, res) => {
   }
 });
 
+router.get("/federal/members/search", async (req, res) => {
+  const q = req.query.q;
+  const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  const offset = Number(req.query.offset ?? 0);
+
+  if (!q || typeof q !== "string") {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
+
+  try {
+    req.log.info({ q, source: "db" }, "Searching federal members from DB cache");
+    const searchPattern = `%${q}%`;
+
+    const rows = await db
+      .select()
+      .from(federalMembersTable)
+      .where(
+        or(
+          sql`${federalMembersTable.name} ILIKE ${searchPattern}`,
+          sql`${federalMembersTable.state} ILIKE ${searchPattern}`,
+          sql`${federalMembersTable.party} ILIKE ${searchPattern}`
+        )
+      )
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(federalMembersTable)
+      .where(
+        or(
+          sql`${federalMembersTable.name} ILIKE ${searchPattern}`,
+          sql`${federalMembersTable.state} ILIKE ${searchPattern}`,
+          sql`${federalMembersTable.party} ILIKE ${searchPattern}`
+        )
+      );
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+    const members = rows.map(mapDbRowToMember);
+
+    return res.json({ members, totalCount, offset });
+  } catch (err) {
+    req.log.error({ err }, "Error searching federal members");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
 router.get("/federal/members/:bioguideId", async (req, res) => {
   const parsed = GetFederalMemberParams.safeParse(req.params);
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
@@ -454,26 +501,30 @@ router.post("/federal/members/:bioguideId/refresh", async (req, res) => {
   }
 });
 
-async function ingestFederalMemberBills(bioguideId: string, role: "sponsor" | "cosponsor", logger?: any) {
+function getCurrentCongress() {
+  const currentYear = new Date().getFullYear();
+  return String(Math.floor((currentYear - 1789) / 2) + 1);
+}
+
+const activeBillIngestions = new Set<string>();
+
+async function ingestFederalMemberBillsPage(
+  bioguideId: string,
+  role: "sponsor" | "cosponsor",
+  page: number,
+  logger?: any,
+): Promise<{ inserted: number; totalExpected: number; billItems: any[] }> {
   const endpoint = role === "sponsor" ? "sponsored-legislation" : "cosponsored-legislation";
   const key = role === "sponsor" ? "sponsoredLegislation" : "cosponsoredLegislation";
 
-  let page = 1;
-  let hasMore = true;
-  let totalIngested = 0;
+  logger?.info({ bioguideId, role, page, source: "congress.gov" }, "Ingesting member bills page from Congress.gov");
+  const data = await congressFetch(`/member/${bioguideId}/${endpoint}`, { offset: (page - 1) * 20, limit: 20 }, logger);
+  const allItems: any[] = data[key] ?? data.bills ?? [];
+  const billItems = allItems.filter((b: any) => b.type !== null && b.type !== undefined);
 
-  while (hasMore) {
-    logger?.info({ bioguideId, role, page, source: "congress.gov" }, "Ingesting member bills from Congress.gov");
-    const data = await congressFetch(`/member/${bioguideId}/${endpoint}`, { offset: (page - 1) * 20, limit: 20 }, logger);
-    const allItems: any[] = data[key] ?? data.bills ?? [];
-    const billItems = allItems.filter((b: any) => b.type !== null && b.type !== undefined);
-
-    if (billItems.length === 0) {
-      hasMore = false;
-      break;
-    }
-
-    for (const b of billItems) {
+  // Batch inserts in parallel to reduce round trips
+  await Promise.all(
+    billItems.map(async (b) => {
       const billId = b.number ? `${b.congress}-${b.type?.toLowerCase()}-${b.number}` : String(Math.random());
       const subjects = b.subjects?.item ?? (Array.isArray(b.subjects) ? b.subjects : []);
       const subjectsText = Array.isArray(subjects) ? subjects.join(" ") : "";
@@ -516,38 +567,67 @@ async function ingestFederalMemberBills(bioguideId: string, role: "sponsor" | "c
         role,
         fetchedAt: new Date(),
       }).onConflictDoNothing();
+    })
+  );
 
-      totalIngested++;
+  const totalExpected = data.pagination?.count ?? 0;
+  return { inserted: billItems.length, totalExpected, billItems };
+}
+
+async function ingestFederalMemberBills(
+  bioguideId: string,
+  role: "sponsor" | "cosponsor",
+  logger?: any,
+  opts?: { startPage?: number; skipCacheWrite?: boolean }
+) {
+  const jobKey = `${bioguideId}:${role}`;
+  if (activeBillIngestions.has(jobKey)) {
+    logger?.info({ bioguideId, role }, "Bill ingestion already in progress; skipping duplicate");
+    return;
+  }
+  activeBillIngestions.add(jobKey);
+
+  try {
+    const currentCongress = getCurrentCongress();
+    let page = opts?.startPage ?? 1;
+    let hasMore = true;
+    let totalIngested = 0;
+
+    while (hasMore) {
+      const { inserted, totalExpected } = await ingestFederalMemberBillsPage(bioguideId, role, page, logger);
+      totalIngested += inserted;
+
+      if (inserted === 0) {
+        hasMore = false;
+        break;
+      }
+
+      hasMore = totalIngested < totalExpected && inserted >= 20;
+      page++;
     }
 
-    const totalExpected = data.pagination?.count ?? 0;
-    hasMore = totalIngested < totalExpected && billItems.length >= 20;
-    page++;
+    logger?.info({ bioguideId, role, totalIngested, source: "db" }, "Member bill background ingestion complete");
+
+    if (!opts?.skipCacheWrite) {
+      await db.insert(federalMemberBillCacheStatusTable).values({
+        bioguideId,
+        role,
+        congress: currentCongress,
+        fullyIngested: true,
+        localCount: totalIngested,
+        lastFetchedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: [federalMemberBillCacheStatusTable.bioguideId, federalMemberBillCacheStatusTable.role, federalMemberBillCacheStatusTable.congress],
+        set: {
+          fullyIngested: true,
+          localCount: totalIngested,
+          lastFetchedAt: new Date(),
+        },
+      });
+    }
+  } finally {
+    activeBillIngestions.delete(jobKey);
   }
-
-  logger?.info({ bioguideId, role, totalIngested, source: "db" }, "Member bill ingestion complete");
-
-  // Write cache status keyed to current congress
-  const currentYear = new Date().getFullYear();
-  const currentCongress = String(Math.floor((currentYear - 1789) / 2) + 1);
-
-  await db.insert(federalMemberBillCacheStatusTable).values({
-    bioguideId,
-    role,
-    congress: currentCongress,
-    fullyIngested: true,
-    localCount: totalIngested,
-    lastFetchedAt: new Date(),
-  }).onConflictDoUpdate({
-    target: [federalMemberBillCacheStatusTable.bioguideId, federalMemberBillCacheStatusTable.role, federalMemberBillCacheStatusTable.congress],
-    set: {
-      fullyIngested: true,
-      localCount: totalIngested,
-      lastFetchedAt: new Date(),
-    },
-  });
-
-  return totalIngested;
 }
 
 router.get("/federal/members/:bioguideId/bills", async (req, res) => {
@@ -577,51 +657,128 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       ));
 
     const cachedCount = Number(cachedCountResult[0]?.count ?? 0);
+    const currentCongress = getCurrentCongress();
+
+    const cacheStatusRows = await db
+      .select()
+      .from(federalMemberBillCacheStatusTable)
+      .where(and(
+        eq(federalMemberBillCacheStatusTable.bioguideId, bioguideId),
+        eq(federalMemberBillCacheStatusTable.role, role),
+        eq(federalMemberBillCacheStatusTable.congress, currentCongress)
+      ))
+      .limit(1);
+    const cacheStatus = cacheStatusRows[0];
+
+    let bills: any[] = [];
+    let totalCount = 0;
+    let fullyIngested = cacheStatus?.fullyIngested ?? false;
 
     if (cachedCount === 0) {
-      req.log.info({ bioguideId, role, source: "congress.gov" }, "No cached member bills; triggering ingestion");
-      await ingestFederalMemberBills(bioguideId, role, req.log);
+      // Cold start: fetch page 1 synchronously so the user gets immediate results,
+      // then continue the rest in the background.
+      req.log.info({ bioguideId, role, source: "congress.gov" }, "No cached member bills; fetching first page synchronously");
+      const { inserted: firstPageCount, totalExpected, billItems } = await ingestFederalMemberBillsPage(bioguideId, role, 1, req.log);
+
+      if (firstPageCount > 0) {
+        await db.insert(federalMemberBillCacheStatusTable).values({
+          bioguideId,
+          role,
+          congress: currentCongress,
+          fullyIngested: firstPageCount >= totalExpected,
+          localCount: firstPageCount,
+          lastFetchedAt: new Date(),
+        }).onConflictDoUpdate({
+          target: [federalMemberBillCacheStatusTable.bioguideId, federalMemberBillCacheStatusTable.role, federalMemberBillCacheStatusTable.congress],
+          set: {
+            fullyIngested: firstPageCount >= totalExpected,
+            localCount: firstPageCount,
+            lastFetchedAt: new Date(),
+          },
+        });
+      }
+
+      // Return immediately from the page data we just fetched — no extra DB round-trip
+      bills = billItems.map((b) => ({
+        id: b.number ? `${b.congress}-${b.type?.toLowerCase()}-${b.number}` : String(Math.random()),
+        title: b.title ?? "Untitled",
+        number: b.type && b.number ? `${b.type} ${b.number}` : b.billNumber,
+        congress: String(b.congress),
+        introducedDate: b.introducedDate,
+        latestAction: b.latestAction?.text,
+        policyArea: b.policyArea?.name ?? undefined,
+        url: b.url,
+        chamber: b.originChamber,
+      }));
+      totalCount = totalExpected;
+      fullyIngested = firstPageCount >= totalExpected;
+
+      // Background ingestion for remaining pages (fire-and-forget), starting from page 2
+      if (firstPageCount < totalExpected) {
+        ingestFederalMemberBills(bioguideId, role, req.log, { startPage: 2 }).catch((err) => {
+          req.log?.warn({ err, bioguideId, role }, "Background bill ingestion failed");
+        });
+      }
     } else {
-      req.log.info({ bioguideId, role, cachedCount, source: "db" }, "Serving member bills from cache");
+      if (cacheStatus && !cacheStatus.fullyIngested && !activeBillIngestions.has(`${bioguideId}:${role}`)) {
+        // Partial cache exists and no background job is running — resume it.
+        req.log.info({ bioguideId, role, cachedCount, source: "db" }, "Partial member bills cache; resuming background ingestion");
+        ingestFederalMemberBills(bioguideId, role, req.log).catch((err) => {
+          req.log?.warn({ err, bioguideId, role }, "Background bill ingestion failed");
+        });
+      } else {
+        req.log.info({ bioguideId, role, cachedCount, source: "db" }, "Serving member bills from cache");
+      }
+
+      // Fetch paginated bills from DB
+      const rows = await db
+        .select({
+          id: federalBillsTable.id,
+          title: federalBillsTable.title,
+          number: federalBillsTable.number,
+          congress: federalBillsTable.congress,
+          introducedDate: federalBillsTable.introducedDate,
+          latestAction: federalBillsTable.latestAction,
+          policyArea: federalBillsTable.policyArea,
+          url: federalBillsTable.url,
+          chamber: federalBillsTable.chamber,
+        })
+        .from(federalMemberBillRolesTable)
+        .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
+        .where(and(
+          eq(federalMemberBillRolesTable.bioguideId, bioguideId),
+          eq(federalMemberBillRolesTable.role, role),
+          ...(searchCondition ? [searchCondition] : [])
+        ))
+        .orderBy(desc(federalBillsTable.introducedDate))
+        .limit(limit)
+        .offset(offset);
+
+      const totalResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(federalMemberBillRolesTable)
+        .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
+        .where(and(
+          eq(federalMemberBillRolesTable.bioguideId, bioguideId),
+          eq(federalMemberBillRolesTable.role, role),
+          ...(searchCondition ? [searchCondition] : [])
+        ));
+
+      totalCount = Number(totalResult[0]?.count ?? 0);
+      bills = rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        number: r.number,
+        congress: r.congress,
+        introducedDate: r.introducedDate,
+        latestAction: r.latestAction,
+        policyArea: r.policyArea ?? undefined,
+        url: r.url,
+        chamber: r.chamber,
+      }));
     }
 
-    // Fetch paginated bills from DB
-    const rows = await db
-      .select({
-        id: federalBillsTable.id,
-        title: federalBillsTable.title,
-        number: federalBillsTable.number,
-        congress: federalBillsTable.congress,
-        introducedDate: federalBillsTable.introducedDate,
-        latestAction: federalBillsTable.latestAction,
-        policyArea: federalBillsTable.policyArea,
-        url: federalBillsTable.url,
-        chamber: federalBillsTable.chamber,
-      })
-      .from(federalMemberBillRolesTable)
-      .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
-      .where(and(
-        eq(federalMemberBillRolesTable.bioguideId, bioguideId),
-        eq(federalMemberBillRolesTable.role, role),
-        ...(searchCondition ? [searchCondition] : [])
-      ))
-      .orderBy(desc(federalBillsTable.introducedDate))
-      .limit(limit)
-      .offset(offset);
-
-    const totalResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(federalMemberBillRolesTable)
-      .innerJoin(federalBillsTable, eq(federalMemberBillRolesTable.billId, federalBillsTable.id))
-      .where(and(
-        eq(federalMemberBillRolesTable.bioguideId, bioguideId),
-        eq(federalMemberBillRolesTable.role, role),
-        ...(searchCondition ? [searchCondition] : [])
-      ));
-
-    const totalCount = Number(totalResult[0]?.count ?? 0);
-
-    // Compute policy area breakdown from full cached set
+    // Compute policy area breakdown from whatever we have cached so far
     const policyAreaRows = await db
       .select({
         name: federalBillsTable.policyArea,
@@ -638,32 +795,6 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       .orderBy(sql`count(*) desc`);
 
     const policyAreas = computePolicyAreas(policyAreaRows);
-
-    const bills = rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      number: r.number,
-      congress: r.congress,
-      introducedDate: r.introducedDate,
-      latestAction: r.latestAction,
-      policyArea: r.policyArea ?? undefined,
-      url: r.url,
-      chamber: r.chamber,
-    }));
-
-    // Check cache status for current congress
-    const currentYear = new Date().getFullYear();
-    const currentCongress = String(Math.floor((currentYear - 1789) / 2) + 1);
-    const cacheStatusRows = await db
-      .select()
-      .from(federalMemberBillCacheStatusTable)
-      .where(and(
-        eq(federalMemberBillCacheStatusTable.bioguideId, bioguideId),
-        eq(federalMemberBillCacheStatusTable.role, role),
-        eq(federalMemberBillCacheStatusTable.congress, currentCongress)
-      ))
-      .limit(1);
-    const fullyIngested = cacheStatusRows[0]?.fullyIngested ?? false;
 
     return res.json({
       bills,
@@ -1440,6 +1571,54 @@ router.get("/federal/bills", async (req, res) => {
   }
 });
 
+router.get("/federal/bills/search", async (req, res) => {
+  const q = req.query.q;
+  const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  const offset = Number(req.query.offset ?? 0);
+
+  if (!q || typeof q !== "string") {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
+
+  try {
+    req.log.info({ q, source: "db" }, "Searching federal bills from DB cache");
+    const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
+    const conditions = [sql`${federalBillsTable.searchVector} @@ ${searchQuery}`];
+
+    const rows = await db
+      .select()
+      .from(federalBillsTable)
+      .where(and(...conditions))
+      .orderBy(sql`ts_rank(${federalBillsTable.searchVector}, ${searchQuery}) desc`)
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(federalBillsTable)
+      .where(and(...conditions));
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+
+    const bills = rows.map((b) => ({
+      id: b.id,
+      title: b.title,
+      number: b.number,
+      congress: b.congress,
+      introducedDate: b.introducedDate,
+      summary: b.summary,
+      policyArea: b.policyArea,
+      subjects: b.subjects,
+      url: b.url,
+    }));
+
+    return res.json({ bills, totalCount, offset });
+  } catch (err) {
+    req.log.error({ err }, "Error searching federal bills");
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
 router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) => {
   const parsed = GetFederalBillDetailParams.safeParse(req.params);
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
@@ -1554,101 +1733,6 @@ router.get("/federal/bills/:congress/:billType/:billNumber", async (req, res) =>
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching bill detail");
-    return res.status(500).json({ error: String(err) });
-  }
-});
-
-router.get("/federal/bills/search", async (req, res) => {
-  const q = req.query.q;
-  const limit = Math.min(Number(req.query.limit ?? 20), 100);
-  const offset = Number(req.query.offset ?? 0);
-
-  if (!q || typeof q !== "string") {
-    return res.status(400).json({ error: "Query parameter 'q' is required" });
-  }
-
-  try {
-    req.log.info({ q, source: "db" }, "Searching federal bills from DB cache");
-    const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
-    const conditions = [sql`${federalBillsTable.searchVector} @@ ${searchQuery}`];
-
-    const rows = await db
-      .select()
-      .from(federalBillsTable)
-      .where(and(...conditions))
-      .orderBy(sql`ts_rank(${federalBillsTable.searchVector}, ${searchQuery}) desc`)
-      .limit(limit)
-      .offset(offset);
-
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(federalBillsTable)
-      .where(and(...conditions));
-
-    const totalCount = Number(countResult[0]?.count ?? 0);
-
-    const bills = rows.map((b) => ({
-      id: b.id,
-      title: b.title,
-      number: b.number,
-      congress: b.congress,
-      introducedDate: b.introducedDate,
-      summary: b.summary,
-      policyArea: b.policyArea,
-      subjects: b.subjects,
-      url: b.url,
-    }));
-
-    return res.json({ bills, totalCount, offset });
-  } catch (err) {
-    req.log.error({ err }, "Error searching federal bills");
-    return res.status(500).json({ error: String(err) });
-  }
-});
-
-router.get("/federal/members/search", async (req, res) => {
-  const q = req.query.q;
-  const limit = Math.min(Number(req.query.limit ?? 20), 100);
-  const offset = Number(req.query.offset ?? 0);
-
-  if (!q || typeof q !== "string") {
-    return res.status(400).json({ error: "Query parameter 'q' is required" });
-  }
-
-  try {
-    req.log.info({ q, source: "db" }, "Searching federal members from DB cache");
-    const searchPattern = `%${q}%`;
-
-    const rows = await db
-      .select()
-      .from(federalMembersTable)
-      .where(
-        or(
-          sql`${federalMembersTable.name} ILIKE ${searchPattern}`,
-          sql`${federalMembersTable.state} ILIKE ${searchPattern}`,
-          sql`${federalMembersTable.party} ILIKE ${searchPattern}`
-        )
-      )
-      .limit(limit)
-      .offset(offset);
-
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(federalMembersTable)
-      .where(
-        or(
-          sql`${federalMembersTable.name} ILIKE ${searchPattern}`,
-          sql`${federalMembersTable.state} ILIKE ${searchPattern}`,
-          sql`${federalMembersTable.party} ILIKE ${searchPattern}`
-        )
-      );
-
-    const totalCount = Number(countResult[0]?.count ?? 0);
-    const members = rows.map(mapDbRowToMember);
-
-    return res.json({ members, totalCount, offset });
-  } catch (err) {
-    req.log.error({ err }, "Error searching federal members");
     return res.status(500).json({ error: String(err) });
   }
 });
