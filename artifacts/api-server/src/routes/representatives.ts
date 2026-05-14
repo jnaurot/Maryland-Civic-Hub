@@ -1,6 +1,13 @@
 import { Router } from "express";
 import { GetRepresentativesByAddressQueryParams } from "@workspace/api-zod";
 import { getDistrictLegislators } from "../lib/stateLegislatorCache";
+import { fetchWithTimeout as fetch } from "../lib/http";
+import { sendInternalError } from "../lib/respond";
+import {
+  formatCongressName,
+  getStateName,
+  normalizeCensusDistrict,
+} from "./representativesUtils";
 
 const router = Router();
 
@@ -15,7 +22,9 @@ async function geocodeAddress(address: string): Promise<{
   stateHouseDistrict: string | null;
   normalizedAddress: string | null;
 }> {
-  const url = new URL("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress");
+  const url = new URL(
+    "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress",
+  );
   url.searchParams.set("address", address);
   url.searchParams.set("benchmark", "Public_AR_Current");
   url.searchParams.set("vintage", "Current_Current");
@@ -24,7 +33,7 @@ async function geocodeAddress(address: string): Promise<{
 
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`Census geocoder error ${res.status}`);
-  const data = await res.json() as any;
+  const data = (await res.json()) as any;
 
   const match = data.result?.addressMatches?.[0];
   if (!match) throw new Error("Address not found");
@@ -33,7 +42,9 @@ async function geocodeAddress(address: string): Promise<{
   const lng = match.coordinates?.x;
   const geos = match.geographies ?? {};
 
-  const congressionalKey = Object.keys(geos).find((k) => k.includes("Congressional Districts"));
+  const congressionalKey = Object.keys(geos).find((k) =>
+    k.includes("Congressional Districts"),
+  );
   const congressional = congressionalKey ? geos[congressionalKey]?.[0] : null;
   const district = congressional?.BASENAME ?? null;
 
@@ -41,49 +52,78 @@ async function geocodeAddress(address: string): Promise<{
   const stateCode = addr?.state ?? null;
 
   // Census returns year-prefixed keys like "2024 State Legislative Districts - Upper"
-  const upperKey = Object.keys(geos).find((k) => k.includes("State Legislative Districts - Upper"));
-  const lowerKey = Object.keys(geos).find((k) => k.includes("State Legislative Districts - Lower"));
+  const upperKey = Object.keys(geos).find((k) =>
+    k.includes("State Legislative Districts - Upper"),
+  );
+  const lowerKey = Object.keys(geos).find((k) =>
+    k.includes("State Legislative Districts - Lower"),
+  );
   // BASENAME is the plain district number (e.g., "40"); SLDU/SLDL are Census codes (e.g., "040")
-  const upperRaw = upperKey ? (geos[upperKey]?.[0]?.BASENAME ?? geos[upperKey]?.[0]?.SLDU ?? null) : null;
-  const lowerRaw = lowerKey ? (geos[lowerKey]?.[0]?.BASENAME ?? geos[lowerKey]?.[0]?.SLDL ?? null) : null;
+  const upperRaw = upperKey
+    ? (geos[upperKey]?.[0]?.BASENAME ?? geos[upperKey]?.[0]?.SLDU ?? null)
+    : null;
+  const lowerRaw = lowerKey
+    ? (geos[lowerKey]?.[0]?.BASENAME ?? geos[lowerKey]?.[0]?.SLDL ?? null)
+    : null;
   // Strip any remaining leading zeros
-  const upperDistrict = upperRaw ? String(parseInt(upperRaw, 10)) : null;
-  const lowerDistrict = lowerRaw ? String(parseInt(lowerRaw, 10)) : null;
+  const upperDistrict = normalizeCensusDistrict(upperRaw);
+  const lowerDistrict = normalizeCensusDistrict(lowerRaw);
 
   const normalizedAddress = addr
-    ? `${addr.fromAddress ?? ""} ${addr.preDirection ?? ""} ${addr.streetName ?? ""} ${addr.suffixType ?? ""}, ${addr.city ?? ""}, ${addr.state ?? ""} ${addr.zip ?? ""}`.replace(/\s+/g, " ").trim()
+    ? `${addr.fromAddress ?? ""} ${addr.preDirection ?? ""} ${addr.streetName ?? ""} ${addr.suffixType ?? ""}, ${addr.city ?? ""}, ${addr.state ?? ""} ${addr.zip ?? ""}`
+        .replace(/\s+/g, " ")
+        .trim()
     : null;
 
-  return { lat, lng, district, stateCode, stateSenateDistrict: upperDistrict, stateHouseDistrict: lowerDistrict, normalizedAddress };
+  return {
+    lat,
+    lng,
+    district,
+    stateCode,
+    stateSenateDistrict: upperDistrict,
+    stateHouseDistrict: lowerDistrict,
+    normalizedAddress,
+  };
 }
 
-async function fetchCongressMembers(stateCode: string, district: string): Promise<any[]> {
+async function fetchCongressMembers(
+  stateCode: string,
+  district: string,
+): Promise<any[]> {
   if (!CONGRESS_API_KEY) return [];
   try {
     // Senators (statewide)
-    const senatorsUrl = new URL(`https://api.congress.gov/v3/member/${stateCode}`);
+    const senatorsUrl = new URL(
+      `https://api.congress.gov/v3/member/${stateCode}`,
+    );
     senatorsUrl.searchParams.set("currentMember", "true");
     senatorsUrl.searchParams.set("limit", "20");
     senatorsUrl.searchParams.set("api_key", CONGRESS_API_KEY);
     senatorsUrl.searchParams.set("format", "json");
 
     const senatorsRes = await fetch(senatorsUrl.toString());
-    const senatorsData = senatorsRes.ok ? (await senatorsRes.json() as any) : { members: [] };
-    const senators = (senatorsData.members ?? []).filter((m: any) =>
-      !m.district && m.terms?.item?.some((t: any) => t.chamber === "Senate" && !t.endYear)
+    const senatorsData = senatorsRes.ok
+      ? ((await senatorsRes.json()) as any)
+      : { members: [] };
+    const senators = (senatorsData.members ?? []).filter(
+      (m: any) =>
+        !m.district &&
+        m.terms?.item?.some((t: any) => t.chamber === "Senate" && !t.endYear),
     );
 
     // House member for the specific district
     let houseMember: any[] = [];
     if (district) {
       const districtNum = parseInt(district, 10);
-      const houseUrl = new URL(`https://api.congress.gov/v3/member/${stateCode}/${districtNum}`);
+      const houseUrl = new URL(
+        `https://api.congress.gov/v3/member/${stateCode}/${districtNum}`,
+      );
       houseUrl.searchParams.set("currentMember", "true");
       houseUrl.searchParams.set("api_key", CONGRESS_API_KEY);
       houseUrl.searchParams.set("format", "json");
       const houseRes = await fetch(houseUrl.toString());
       if (houseRes.ok) {
-        const houseData = await houseRes.json() as any;
+        const houseData = (await houseRes.json()) as any;
         houseMember = houseData.members ?? [];
       }
     }
@@ -95,7 +135,9 @@ async function fetchCongressMembers(stateCode: string, district: string): Promis
       const isSenate = chamber === "Senate";
       return {
         name: formatCongressName(m.name),
-        office: isSenate ? `U.S. Senator for ${stateCode}` : `U.S. Representative, ${stateCode}-${district}`,
+        office: isSenate
+          ? `U.S. Senator for ${stateCode}`
+          : `U.S. Representative, ${stateCode}-${district}`,
         party: m.partyName,
         photoUrl: m.depiction?.imageUrl,
         level: "federal" as const,
@@ -109,36 +151,18 @@ async function fetchCongressMembers(stateCode: string, district: string): Promis
   }
 }
 
-function formatCongressName(name: string): string {
-  // Congress returns "Last, First" format
-  const parts = name.split(", ");
-  if (parts.length === 2) return `${parts[1]} ${parts[0]}`;
-  return name;
-}
-
-const STATE_NAMES: Record<string, string> = {
-  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado",
-  CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
-  IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana",
-  ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi",
-  MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
-  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma",
-  OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota",
-  TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
-  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", DC: "District of Columbia",
-};
-
-function getStateName(code: string): string | undefined {
-  return STATE_NAMES[code.toUpperCase()];
-}
-
-async function fetchStateLegislators(stateCode: string, stateSenateDistrict: string | null, stateHouseDistrict: string | null, logger?: any): Promise<{ stateReps: any[]; cache: any }> {
+async function fetchStateLegislators(
+  stateCode: string,
+  stateSenateDistrict: string | null,
+  stateHouseDistrict: string | null,
+  logger?: any,
+): Promise<{ stateReps: any[]; cache: any }> {
   try {
     const { legislators, cache } = await getDistrictLegislators(
       stateCode,
       stateSenateDistrict,
       stateHouseDistrict,
-      logger
+      logger,
     );
     const stateReps = legislators.map((person) => ({
       name: person.name ?? "",
@@ -153,7 +177,14 @@ async function fetchStateLegislators(stateCode: string, stateSenateDistrict: str
     return { stateReps, cache };
   } catch (e) {
     logger?.error({ err: e }, "Error fetching state legislators");
-    return { stateReps: [], cache: { source: "db", stale: false, fetchedAt: new Date().toISOString() } };
+    return {
+      stateReps: [],
+      cache: {
+        source: "db",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+      },
+    };
   }
 }
 
@@ -170,12 +201,20 @@ router.get("/representatives", async (req, res) => {
     const stateCode = geo.stateCode ?? "";
 
     if (!geo.stateSenateDistrict && !geo.stateHouseDistrict) {
-      req.log.warn({ stateCode }, "Census geocoder returned no state legislative districts");
+      req.log.warn(
+        { stateCode },
+        "Census geocoder returned no state legislative districts",
+      );
     }
 
     const [federalReps, stateResult] = await Promise.all([
       fetchCongressMembers(stateCode, geo.district ?? ""),
-      fetchStateLegislators(stateCode, geo.stateSenateDistrict, geo.stateHouseDistrict, req.log),
+      fetchStateLegislators(
+        stateCode,
+        geo.stateSenateDistrict,
+        geo.stateHouseDistrict,
+        req.log,
+      ),
     ]);
 
     const representatives = [...federalReps, ...stateResult.stateReps];
@@ -192,7 +231,7 @@ router.get("/representatives", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching representatives");
-    return res.status(500).json({ error: String(err) });
+    return sendInternalError(res);
   }
 });
 

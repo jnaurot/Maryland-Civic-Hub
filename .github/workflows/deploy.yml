@@ -44,7 +44,14 @@ jobs:
 
       - run: pnpm run typecheck
 
+      - run: pnpm run build
+        env:
+          PORT: 5173
+          BASE_PATH: /
+
       - run: pnpm -r --if-present run test
+
+      - run: pnpm run test
 
   deploy:
     needs: test
@@ -65,5 +72,5 @@ jobs:
             pnpm install --frozen-lockfile
             pnpm --filter @workspace/db run push
             pnpm run build
-            pm2 restart maryland-civic-hub || pm2 start "PORT=3001 pnpm --filter @workspace/api-server run dev" --name maryland-civic-hub
+            pm2 restart maryland-civic-hub || pm2 start "PORT=3001 pnpm --filter @workspace/api-server run start" --name maryland-civic-hub
             pm2 save

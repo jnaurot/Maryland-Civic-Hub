@@ -4,6 +4,8 @@ import {
   GetCandidateFinanceQueryParams,
   SearchCandidateFinanceQueryParams,
 } from "@workspace/api-zod";
+import { fetchWithTimeout as fetch } from "../lib/http";
+import { sendInternalError } from "../lib/respond";
 
 const router = Router();
 
@@ -11,7 +13,10 @@ const FEC_BASE = "https://api.opensecrets.org";
 const FEC_API_BASE = "https://api.open.fec.gov/v1";
 
 // We use FEC (free, no key needed) for finance data
-async function fecFetch(path: string, params: Record<string, string | number> = {}) {
+async function fecFetch(
+  path: string,
+  params: Record<string, string | number> = {},
+) {
   const url = new URL(`${FEC_API_BASE}${path}`);
   url.searchParams.set("api_key", "DEMO_KEY");
   for (const [k, v] of Object.entries(params)) {
@@ -27,7 +32,8 @@ async function fecFetch(path: string, params: Record<string, string | number> = 
 
 router.get("/finance/search", async (req, res) => {
   const parsed = SearchCandidateFinanceQueryParams.safeParse(req.query);
-  if (!parsed.success) return res.status(400).json({ error: "name is required" });
+  if (!parsed.success)
+    return res.status(400).json({ error: "name is required" });
 
   const { name, state } = parsed.data;
 
@@ -54,14 +60,15 @@ router.get("/finance/search", async (req, res) => {
     return res.json({ candidates });
   } catch (err) {
     req.log.error({ err }, "Error searching FEC candidates");
-    return res.status(500).json({ error: String(err) });
+    return sendInternalError(res);
   }
 });
 
 router.get("/finance/:candidateId", async (req, res) => {
   const paramsParsed = GetCandidateFinanceParams.safeParse(req.params);
   const queryParsed = GetCandidateFinanceQueryParams.safeParse(req.query);
-  if (!paramsParsed.success) return res.status(400).json({ error: "Invalid params" });
+  if (!paramsParsed.success)
+    return res.status(400).json({ error: "Invalid params" });
 
   const { candidateId } = paramsParsed.data;
   const cycle = queryParsed.success ? queryParsed.data.cycle : undefined;
@@ -88,26 +95,34 @@ router.get("/finance/:candidateId", async (req, res) => {
       }),
     ]);
 
-    const totals = totalsData.status === "fulfilled" ? (totalsData.value.results?.[0] ?? {}) : {};
+    const totals =
+      totalsData.status === "fulfilled"
+        ? (totalsData.value.results?.[0] ?? {})
+        : {};
     const candidateName = totals.candidate_name ?? candidateId;
 
-    const topDonors = donorsData.status === "fulfilled"
-      ? (donorsData.value.results ?? []).map((d: any) => ({
-          name: d.contributor_name ?? d.contributor_id ?? "Unknown",
-          total: d.total ?? 0,
-          type: (d.contributor_type === "C" ? "pac" : "individual") as "pac" | "individual" | "other",
-          industry: d.contributor_industry,
-        }))
-      : [];
+    const topDonors =
+      donorsData.status === "fulfilled"
+        ? (donorsData.value.results ?? []).map((d: any) => ({
+            name: d.contributor_name ?? d.contributor_id ?? "Unknown",
+            total: d.total ?? 0,
+            type: (d.contributor_type === "C" ? "pac" : "individual") as
+              | "pac"
+              | "individual"
+              | "other",
+            industry: d.contributor_industry,
+          }))
+        : [];
 
-    const topIndustries = industriesData.status === "fulfilled"
-      ? (industriesData.value.results ?? []).map((d: any) => ({
-          name: d.industry ?? d.industry_code ?? "Unknown",
-          total: d.total ?? 0,
-          type: "other" as "pac" | "individual" | "other",
-          industry: d.industry,
-        }))
-      : [];
+    const topIndustries =
+      industriesData.status === "fulfilled"
+        ? (industriesData.value.results ?? []).map((d: any) => ({
+            name: d.industry ?? d.industry_code ?? "Unknown",
+            total: d.total ?? 0,
+            type: "other" as "pac" | "individual" | "other",
+            industry: d.industry,
+          }))
+        : [];
 
     return res.json({
       candidateId,
@@ -121,7 +136,7 @@ router.get("/finance/:candidateId", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching candidate finance");
-    return res.status(500).json({ error: String(err) });
+    return sendInternalError(res);
   }
 });
 

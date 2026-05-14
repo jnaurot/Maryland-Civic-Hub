@@ -11,6 +11,7 @@ This is a **Maryland civic information web app** built as a pnpm workspace monor
 - `pnpm install` — Install dependencies. The root `preinstall` script enforces pnpm and blocks npm/yarn.
 - `pnpm run typecheck` — Full typecheck across all packages (libs + artifacts + scripts).
 - `pnpm run typecheck:libs` — Typecheck only the referenced libraries (`lib/db`, `lib/api-client-react`, `lib/api-zod`).
+- `pnpm run test` — Run the Vitest test suite.
 - `pnpm run build` — Typecheck everything, then build all packages recursively.
 - `pnpm --filter @workspace/api-server run dev` — Build and start the API server in development mode.
 - `pnpm --filter @workspace/md-reps run dev` — Start the Vite dev server for the frontend.
@@ -19,7 +20,7 @@ This is a **Maryland civic information web app** built as a pnpm workspace monor
 - `pnpm --filter @workspace/api-spec run codegen` — Regenerate React Query hooks and Zod schemas from `openapi.yaml`.
 - `pnpm --filter @workspace/db run push` — Push Drizzle schema changes to the database.
 
-There is **no test framework** in this repo. Do not assume tests exist or attempt to run them.
+Vitest is configured at the workspace root for focused unit tests around shared utilities and backend helpers.
 
 ## Monorepo structure
 
@@ -102,11 +103,13 @@ The following are required for development:
 - `CONGRESS_API_KEY` — Congress.gov API key.
 - `OPENSTATES_API_KEY` — OpenStates API key.
 - `GOOGLE_CIVIC_API_KEY` — Google Civic Information API key.
+- `CORS_ORIGIN` — Optional production CORS origin. If omitted in production, the API emits no cross-origin CORS allowance.
 
 These are typically stored in an untracked `.env` file at the repo root.
 
 ## Important implementation notes
 
+- **Testing:** Vitest tests live next to the code they cover. Prefer pure utility and API boundary tests with mocked upstream data before adding live-provider coverage.
 - **No linting setup:** There is no ESLint or Biome configuration. Prettier is the only formatter.
 - **Do not edit generated code:** Always modify `openapi.yaml` and rerun Orval codegen rather than editing `lib/api-client-react/src/generated/` or `lib/api-zod/src/generated/`.
 - **External API error handling:** The backend routes generally catch external API failures and return empty arrays or 500 errors rather than propagating raw third-party responses.

@@ -1,5 +1,6 @@
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { db, stateLegislatorsTable, providerStatusTable } from "@workspace/db";
+import { fetchWithTimeout as fetch } from "./http";
 
 const OPENSTATES_API_KEY = process.env.OPENSTATES_API_KEY;
 const OPENSTATES_BASE = "https://v3.openstates.org";
@@ -12,8 +13,14 @@ let memBlockedUntil = 0;
 
 const PROVIDER_KEY = "openstates";
 
-async function loadProviderStatus(): Promise<typeof providerStatusTable.$inferSelect | undefined> {
-  const rows = await db.select().from(providerStatusTable).where(eq(providerStatusTable.provider, PROVIDER_KEY)).limit(1);
+async function loadProviderStatus(): Promise<
+  typeof providerStatusTable.$inferSelect | undefined
+> {
+  const rows = await db
+    .select()
+    .from(providerStatusTable)
+    .where(eq(providerStatusTable.provider, PROVIDER_KEY))
+    .limit(1);
   return rows[0];
 }
 
@@ -32,21 +39,24 @@ export async function isRateLimited(): Promise<boolean> {
 export async function recordRateLimit(statusCode: number, reason?: string) {
   const blockedUntil = new Date(Date.now() + 60_000);
   try {
-    await db.insert(providerStatusTable).values({
-      provider: PROVIDER_KEY,
-      blockedUntil,
-      reason: reason ?? `HTTP ${statusCode}`,
-      lastStatusCode: statusCode,
-      updatedAt: new Date(),
-    }).onConflictDoUpdate({
-      target: providerStatusTable.provider,
-      set: {
+    await db
+      .insert(providerStatusTable)
+      .values({
+        provider: PROVIDER_KEY,
         blockedUntil,
         reason: reason ?? `HTTP ${statusCode}`,
         lastStatusCode: statusCode,
         updatedAt: new Date(),
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: providerStatusTable.provider,
+        set: {
+          blockedUntil,
+          reason: reason ?? `HTTP ${statusCode}`,
+          lastStatusCode: statusCode,
+          updatedAt: new Date(),
+        },
+      });
   } catch {
     memBlockedUntil = Date.now() + 60_000;
   }
@@ -54,29 +64,36 @@ export async function recordRateLimit(statusCode: number, reason?: string) {
 
 async function resetRateLimit() {
   try {
-    await db.insert(providerStatusTable).values({
-      provider: PROVIDER_KEY,
-      blockedUntil: null,
-      reason: null,
-      lastStatusCode: null,
-      updatedAt: new Date(),
-    }).onConflictDoUpdate({
-      target: providerStatusTable.provider,
-      set: {
+    await db
+      .insert(providerStatusTable)
+      .values({
+        provider: PROVIDER_KEY,
         blockedUntil: null,
         reason: null,
         lastStatusCode: null,
         updatedAt: new Date(),
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: providerStatusTable.provider,
+        set: {
+          blockedUntil: null,
+          reason: null,
+          lastStatusCode: null,
+          updatedAt: new Date(),
+        },
+      });
   } catch {
     memBlockedUntil = 0;
   }
 }
 
-async function openStatesFetch(path: string, params: Record<string, string | number> = {}) {
+async function openStatesFetch(
+  path: string,
+  params: Record<string, string | number> = {},
+) {
   if (!OPENSTATES_API_KEY) throw new Error("OPENSTATES_API_KEY not configured");
-  if (await isRateLimited()) throw new Error("OpenStates rate limit active. Please try again later.");
+  if (await isRateLimited())
+    throw new Error("OpenStates rate limit active. Please try again later.");
   const url = new URL(`${OPENSTATES_BASE}${path}`);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
@@ -86,7 +103,10 @@ async function openStatesFetch(path: string, params: Record<string, string | num
   });
   if (!res.ok) {
     const text = await res.text();
-    if (res.status === 429 || (res.status === 403 && text.toLowerCase().includes("rate"))) {
+    if (
+      res.status === 429 ||
+      (res.status === 403 && text.toLowerCase().includes("rate"))
+    ) {
       await recordRateLimit(res.status, text);
     }
     throw new Error(`OpenStates API error ${res.status}: ${text}`);
@@ -107,7 +127,8 @@ function mapOpenStatesPerson(person: any) {
     id: person.id,
     name: person.name ?? "",
     party: person.party ?? null,
-    chamber: role.org_classification === "upper" ? "Senate" : "House of Delegates",
+    chamber:
+      role.org_classification === "upper" ? "Senate" : "House of Delegates",
     district: role.district ? String(role.district) : null,
     jurisdiction,
     photoUrl: person.image ?? null,
@@ -142,7 +163,7 @@ export interface LegislatorResult {
  */
 export async function getStateLegislator(
   id: string,
-  logger?: any
+  logger?: any,
 ): Promise<LegislatorResult> {
   const rows = await db
     .select()
@@ -155,23 +176,40 @@ export async function getStateLegislator(
   if (cached) {
     const stale = isStale(cached);
     if (!stale) {
-      logger?.info({ legislatorId: id, source: "db" }, "Serving legislator from cache");
+      logger?.info(
+        { legislatorId: id, source: "db" },
+        "Serving legislator from cache",
+      );
       return {
         legislator: mapOpenStatesPerson(cached.raw ?? cached),
-        cache: { source: "db", stale: false, fetchedAt: cached.fetchedAt.toISOString() },
+        cache: {
+          source: "db",
+          stale: false,
+          fetchedAt: cached.fetchedAt.toISOString(),
+        },
       };
     }
     // Stale cache exists. Try to refresh if not rate limited.
     if (!(await isRateLimited())) {
       try {
-        logger?.info({ legislatorId: id, source: "openstates" }, "Refreshing stale legislator from OpenStates");
+        logger?.info(
+          { legislatorId: id, source: "openstates" },
+          "Refreshing stale legislator from OpenStates",
+        );
         const fresh = await fetchStateLegislatorFromOpenStates(id);
         return {
           legislator: fresh,
-          cache: { source: "openstates", stale: false, fetchedAt: new Date().toISOString() },
+          cache: {
+            source: "openstates",
+            stale: false,
+            fetchedAt: new Date().toISOString(),
+          },
         };
       } catch (err) {
-        logger?.warn({ err, legislatorId: id, source: "db" }, "Failed to refresh stale legislator; returning cached data");
+        logger?.warn(
+          { err, legislatorId: id, source: "db" },
+          "Failed to refresh stale legislator; returning cached data",
+        );
         return {
           legislator: mapOpenStatesPerson(cached.raw ?? cached),
           cache: {
@@ -184,7 +222,10 @@ export async function getStateLegislator(
       }
     }
     // Rate limited → return stale cache with warning
-    logger?.warn({ legislatorId: id, source: "db" }, "Rate limited; returning stale legislator cache");
+    logger?.warn(
+      { legislatorId: id, source: "db" },
+      "Rate limited; returning stale legislator cache",
+    );
     return {
       legislator: mapOpenStatesPerson(cached.raw ?? cached),
       cache: {
@@ -202,11 +243,18 @@ export async function getStateLegislator(
   }
 
   try {
-    logger?.info({ legislatorId: id, source: "openstates" }, "Cache miss; fetching legislator from OpenStates");
+    logger?.info(
+      { legislatorId: id, source: "openstates" },
+      "Cache miss; fetching legislator from OpenStates",
+    );
     const fresh = await fetchStateLegislatorFromOpenStates(id);
     return {
       legislator: fresh,
-      cache: { source: "openstates", stale: false, fetchedAt: new Date().toISOString() },
+      cache: {
+        source: "openstates",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+      },
     };
   } catch (err) {
     throw new Error(`Failed to fetch legislator from OpenStates: ${err}`);
@@ -219,7 +267,7 @@ export async function getStateLegislator(
  */
 export async function refreshStateLegislator(
   id: string,
-  logger?: any
+  logger?: any,
 ): Promise<LegislatorResult> {
   if (await isRateLimited()) {
     const rows = await db
@@ -246,7 +294,11 @@ export async function refreshStateLegislator(
     const fresh = await fetchStateLegislatorFromOpenStates(id);
     return {
       legislator: fresh,
-      cache: { source: "openstates", stale: false, fetchedAt: new Date().toISOString() },
+      cache: {
+        source: "openstates",
+        stale: false,
+        fetchedAt: new Date().toISOString(),
+      },
     };
   } catch (err) {
     const rows = await db
@@ -323,10 +375,13 @@ export async function fetchAndCacheDistrictLegislators(
   jurisdiction: string,
   senateDistrict: string | null,
   houseDistrict: string | null,
-  logger?: any
+  logger?: any,
 ): Promise<Array<ReturnType<typeof mapOpenStatesPerson>>> {
   if (await isRateLimited()) {
-    logger?.warn({ jurisdiction }, "Skipping OpenStates district fetch due to active rate limit");
+    logger?.warn(
+      { jurisdiction },
+      "Skipping OpenStates district fetch due to active rate limit",
+    );
     return [];
   }
 
@@ -385,7 +440,10 @@ export async function fetchAndCacheDistrictLegislators(
           });
       }
     } catch (err) {
-      logger?.error({ err, jurisdiction, district, orgClass }, "Failed to fetch district legislators");
+      logger?.error(
+        { err, jurisdiction, district, orgClass },
+        "Failed to fetch district legislators",
+      );
     }
   };
 
@@ -405,7 +463,7 @@ export async function getDistrictLegislators(
   jurisdiction: string,
   senateDistrict: string | null,
   houseDistrict: string | null,
-  logger?: any
+  logger?: any,
 ): Promise<{
   legislators: Array<ReturnType<typeof mapOpenStatesPerson>>;
   cache: CacheMeta;
@@ -415,21 +473,32 @@ export async function getDistrictLegislators(
   if (senateDistrict) districts.push(senateDistrict);
   if (houseDistrict) districts.push(houseDistrict);
 
-  let cachedRows: typeof stateLegislatorsTable.$inferSelect[] = [];
+  let cachedRows: (typeof stateLegislatorsTable.$inferSelect)[] = [];
   if (districts.length > 0) {
     cachedRows = await db
       .select()
       .from(stateLegislatorsTable)
-      .where(and(eq(stateLegislatorsTable.jurisdiction, jurisdiction.toLowerCase()), inArray(stateLegislatorsTable.district, districts)));
+      .where(
+        and(
+          eq(stateLegislatorsTable.jurisdiction, jurisdiction.toLowerCase()),
+          inArray(stateLegislatorsTable.district, districts),
+        ),
+      );
   }
 
   if (cachedRows.length > 0) {
     const anyStale = cachedRows.some(isStale);
-    const oldest = cachedRows.reduce((min, r) =>
-      new Date(r.fetchedAt).getTime() < new Date(min.fetchedAt).getTime() ? r : min,
-      cachedRows[0]
+    const oldest = cachedRows.reduce(
+      (min, r) =>
+        new Date(r.fetchedAt).getTime() < new Date(min.fetchedAt).getTime()
+          ? r
+          : min,
+      cachedRows[0],
     );
-    logger?.info({ jurisdiction, count: cachedRows.length, source: "db", stale: anyStale }, "Serving district legislators from cache");
+    logger?.info(
+      { jurisdiction, count: cachedRows.length, source: "db", stale: anyStale },
+      "Serving district legislators from cache",
+    );
     return {
       legislators: cachedRows.map((r) => mapOpenStatesPerson(r.raw ?? r)),
       cache: {
@@ -441,8 +510,16 @@ export async function getDistrictLegislators(
   }
 
   // Cache miss → fetch from OpenStates
-  logger?.info({ jurisdiction, senateDistrict, houseDistrict, source: "openstates" }, "Cache miss; fetching district legislators from OpenStates");
-  const fetched = await fetchAndCacheDistrictLegislators(jurisdiction, senateDistrict, houseDistrict, logger);
+  logger?.info(
+    { jurisdiction, senateDistrict, houseDistrict, source: "openstates" },
+    "Cache miss; fetching district legislators from OpenStates",
+  );
+  const fetched = await fetchAndCacheDistrictLegislators(
+    jurisdiction,
+    senateDistrict,
+    houseDistrict,
+    logger,
+  );
   return {
     legislators: fetched,
     cache: {
@@ -457,7 +534,9 @@ export async function getDistrictLegislators(
 export async function getRateLimitStatus() {
   const status = await loadProviderStatus();
   return {
-    blocked: status?.blockedUntil ? new Date().getTime() < new Date(status.blockedUntil).getTime() : false,
+    blocked: status?.blockedUntil
+      ? new Date().getTime() < new Date(status.blockedUntil).getTime()
+      : false,
     blockedUntil: status?.blockedUntil?.toISOString() ?? null,
     reason: status?.reason ?? null,
     lastStatusCode: status?.lastStatusCode ?? null,
