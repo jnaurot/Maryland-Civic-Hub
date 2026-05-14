@@ -39,39 +39,7 @@ import {
   Search,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-
-function partyColor(party?: string) {
-  if (!party) return "bg-gray-100 text-gray-700";
-  const p = party.toLowerCase();
-  if (p.includes("democrat")) return "bg-blue-600 text-white";
-  if (p.includes("republican")) return "bg-red-600 text-white";
-  return "bg-gray-200 text-gray-800";
-}
-
-function voteColor(voteCast?: string) {
-  if (!voteCast) return "text-muted-foreground";
-  const v = voteCast.toLowerCase();
-  if (v === "yea") return "text-green-600 font-semibold";
-  if (v === "nay") return "text-red-600 font-semibold";
-  if (v === "present") return "text-yellow-600 font-semibold";
-  return "text-muted-foreground";
-}
-
-function voteBadgeClass(voteCast?: string) {
-  if (!voteCast) return "bg-gray-100 text-gray-700";
-  const v = voteCast.toLowerCase();
-  if (v === "yea") return "bg-green-100 text-green-700 border-green-200";
-  if (v === "nay") return "bg-red-100 text-red-700 border-red-200";
-  if (v === "present") return "bg-yellow-100 text-yellow-700 border-yellow-200";
-  return "bg-muted text-muted-foreground border-muted-foreground/20";
-}
-
-function formatMoney(n?: number) {
-  if (!n) return "$0";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n}`;
-}
+import { partyColor, voteColor, formatMoney } from "@/lib/rep-utils";
 
 function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: string; jurisdiction?: string; memberName?: string }) {
   const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
@@ -344,10 +312,10 @@ export function StateRepDetail() {
           duration: 5000,
         });
       },
-      onError: (err: any) => {
+      onError: (err: Error) => {
         toast({
           title: "Refresh failed",
-          description: err?.message || "Could not refresh from OpenStates.",
+          description: err.message || "Could not refresh from OpenStates.",
           variant: "destructive",
           duration: 5000,
         });

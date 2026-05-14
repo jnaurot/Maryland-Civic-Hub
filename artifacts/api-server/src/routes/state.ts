@@ -2,7 +2,6 @@ import { Router } from "express";
 import { eq, and, or, desc, sql } from "drizzle-orm";
 import {
   db,
-  normalizeVoteCast,
   normalizeStateVotePosition,
   stateVoteRecordsTable,
   stateBillsTable,
@@ -12,6 +11,8 @@ import {
   GetStateMemberBillsQueryParams,
   GetStateMemberVotesQueryParams,
   GetStateBillsQueryParams,
+  SearchStateMembersQueryParams,
+  SearchStateBillsQueryParams,
 } from "@workspace/api-zod";
 import {
   getStateLegislator,
@@ -84,14 +85,12 @@ function mapStateBill(b: any) {
 // State member IDs are "ocd-person/<uuid>". The frontend URL-encodes them
 // so Express sees a single param like "ocd-person%2F<uuid>". We decode it here.
 router.get("/state/members/search", async (req, res) => {
-  const q = req.query.q;
-  const jurisdiction = req.query.jurisdiction as string | undefined;
-  const limit = Math.min(Number(req.query.limit ?? 20), 100);
-  const offset = Number(req.query.offset ?? 0);
-
-  if (!q || typeof q !== "string") {
-    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  const parsed = SearchStateMembersQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid query parameters" });
   }
+  const { q, jurisdiction, limit: rawLimit, offset } = parsed.data;
+  const limit = Math.min(rawLimit, 100);
 
   try {
     req.log.info(
@@ -503,14 +502,12 @@ router.get("/state/bills", async (req, res) => {
 });
 
 router.get("/state/bills/search", async (req, res) => {
-  const q = req.query.q;
-  const jurisdiction = req.query.jurisdiction as string | undefined;
-  const limit = Math.min(Number(req.query.limit ?? 20), 100);
-  const offset = Number(req.query.offset ?? 0);
-
-  if (!q || typeof q !== "string") {
-    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  const parsed = SearchStateBillsQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid query parameters" });
   }
+  const { q, jurisdiction, limit: rawLimit, offset } = parsed.data;
+  const limit = Math.min(rawLimit, 100);
 
   try {
     req.log.info(

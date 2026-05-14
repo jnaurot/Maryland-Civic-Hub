@@ -46,39 +46,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { RepNameLink } from "@/components/RepNameLink";
-
-function partyColor(party?: string) {
-  if (!party) return "bg-gray-100 text-gray-700";
-  const p = party.toLowerCase();
-  if (p.includes("democrat")) return "bg-blue-600 text-white";
-  if (p.includes("republican")) return "bg-red-600 text-white";
-  return "bg-gray-200 text-gray-800";
-}
-
-function voteColor(voteCast?: string) {
-  if (!voteCast) return "text-muted-foreground";
-  const v = voteCast.toLowerCase();
-  if (v === "yea") return "text-green-600 font-semibold";
-  if (v === "nay") return "text-red-600 font-semibold";
-  if (v === "present") return "text-yellow-600 font-semibold";
-  return "text-muted-foreground"; // Not Voting
-}
-
-function voteBadgeClass(voteCast?: string) {
-  if (!voteCast) return "bg-gray-100 text-gray-700";
-  const v = voteCast.toLowerCase();
-  if (v === "yea") return "bg-green-100 text-green-700 border-green-200";
-  if (v === "nay") return "bg-red-100 text-red-700 border-red-200";
-  if (v === "present") return "bg-yellow-100 text-yellow-700 border-yellow-200";
-  return "bg-muted text-muted-foreground border-muted-foreground/20"; // Not Voting
-}
-
-function formatMoney(n?: number) {
-  if (!n) return "$0";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n}`;
-}
+import { partyColor, voteBadgeClass, formatMoney } from "@/lib/rep-utils";
 
 function PolicyAreaChart({
   policyAreas,
@@ -192,7 +160,7 @@ function BillsList({
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({
-          queryKey: [`/api/federal/members/${bioguideId}/bills`],
+          queryKey: getGetFederalMemberBillsQueryKey(bioguideId),
         });
         toast({
           title: "Legislation refreshed",
@@ -200,10 +168,10 @@ function BillsList({
           duration: 5000,
         });
       },
-      onError: (err: any) => {
+      onError: (err: Error) => {
         toast({
           title: "Refresh failed",
-          description: err?.message || "Could not refresh legislation.",
+          description: err.message || "Could not refresh legislation.",
           variant: "destructive",
           duration: 5000,
         });
@@ -607,7 +575,7 @@ function VotesList({
 
         {!isLoading &&
           votes.map((vote: any) => (
-            <Card key={vote.rollCallNumber} className="overflow-hidden">
+            <Card key={`${vote.congress}-${vote.session}-${vote.rollCallNumber}`} className="overflow-hidden">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -939,10 +907,10 @@ export function FederalRepDetail() {
         });
         queryClient.invalidateQueries({ queryKey: memberQueryKey });
       },
-      onError: (err: any) => {
+      onError: (err: Error) => {
         toast({
           title: "Refresh failed",
-          description: err?.message || "Could not refresh from Congress.gov.",
+          description: err.message || "Could not refresh from Congress.gov.",
           variant: "destructive",
           duration: 5000,
         });
@@ -953,13 +921,13 @@ export function FederalRepDetail() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({
-          queryKey: [`/api/federal/members/${bioguideId}/bills`],
+          queryKey: getGetFederalMemberBillsQueryKey(bioguideId),
         });
       },
-      onError: (err: any) => {
+      onError: (err: Error) => {
         toast({
           title: "Legislation refresh failed",
-          description: err?.message || "Could not refresh legislation.",
+          description: err.message || "Could not refresh legislation.",
           variant: "destructive",
           duration: 5000,
         });

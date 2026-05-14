@@ -9,8 +9,8 @@ import { sendInternalError } from "../lib/respond";
 
 const router = Router();
 
-const FEC_BASE = "https://api.opensecrets.org";
 const FEC_API_BASE = "https://api.open.fec.gov/v1";
+const FEC_API_KEY = process.env.FEC_API_KEY;
 
 // We use FEC (free, no key needed) for finance data
 async function fecFetch(
@@ -18,7 +18,9 @@ async function fecFetch(
   params: Record<string, string | number> = {},
 ) {
   const url = new URL(`${FEC_API_BASE}${path}`);
-  url.searchParams.set("api_key", "DEMO_KEY");
+  if (FEC_API_KEY) {
+    url.searchParams.set("api_key", FEC_API_KEY);
+  }
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
   }

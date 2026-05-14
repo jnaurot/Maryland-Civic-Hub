@@ -1,4 +1,4 @@
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db, stateLegislatorsTable, providerStatusTable } from "@workspace/db";
 import { fetchWithTimeout as fetch } from "./http";
 

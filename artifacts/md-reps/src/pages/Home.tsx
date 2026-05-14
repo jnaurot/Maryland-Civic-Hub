@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, AlertTriangle, FileText } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { US_STATES, getStateName, getStateFlagUrl } from "@/lib/states";
+import { partyColor } from "@/lib/rep-utils";
 import type { Representative } from "@workspace/api-client-react";
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -148,13 +149,6 @@ export function Home() {
   const activeStateName = getStateName(activeStateCode) ?? "your area";
   const flagUrl = getStateFlagUrl(activeStateCode) ?? getStateFlagUrl("US");
 
-  const getPartyColor = (party?: string) => {
-    if (!party) return "bg-gray-100 text-gray-800";
-    if (party.toLowerCase().includes("democrat")) return "bg-[#1E40AF] text-white";
-    if (party.toLowerCase().includes("republican")) return "bg-[#DC2626] text-white";
-    return "bg-gray-200 text-gray-800";
-  };
-
   function renderTextSearchResults() {
     if (textSearchLoading) {
       return (
@@ -201,7 +195,7 @@ export function Home() {
                     </CardHeader>
                     <CardContent>
                       <div className="flex flex-wrap gap-2 mt-1">
-                        {member.party && <Badge className={`${getPartyColor(member.party)} hover:${getPartyColor(member.party)} font-medium text-xs`}>{member.party}</Badge>}
+                        {member.party && <Badge className={`${partyColor(member.party)} hover:${partyColor(member.party)} font-medium text-xs`}>{member.party}</Badge>}
                         {member.state && <Badge variant="outline" className="text-xs">{member.state}</Badge>}
                       </div>
                     </CardContent>
@@ -234,7 +228,7 @@ export function Home() {
                     </CardHeader>
                     <CardContent>
                       <div className="flex flex-wrap gap-2 mt-1">
-                        {member.party && <Badge className={`${getPartyColor(member.party)} hover:${getPartyColor(member.party)} font-medium text-xs`}>{member.party}</Badge>}
+                        {member.party && <Badge className={`${partyColor(member.party)} hover:${partyColor(member.party)} font-medium text-xs`}>{member.party}</Badge>}
                         {member.jurisdiction && <Badge variant="outline" className="text-xs">{member.jurisdiction}</Badge>}
                       </div>
                     </CardContent>
@@ -321,7 +315,7 @@ export function Home() {
   };
 
   const renderRepCard = (rep: Representative) => {
-    const partyColor = getPartyColor(rep.party);
+    const partyCls = partyColor(rep.party);
 
     let linkHref = "#";
     if (rep.level === "federal" && rep.bioguideId) {
@@ -332,7 +326,7 @@ export function Home() {
     }
 
     return (
-      <Link key={`${rep.name}-${rep.office}`} href={linkHref} className="block group">
+      <Link key={rep.bioguideId || rep.openstatesId || `${rep.name}-${rep.office}`} href={linkHref} className="block group">
         <Card className="h-full transition-all duration-200 hover:shadow-md hover:border-accent">
           <CardHeader className="flex flex-row items-center gap-4 pb-2">
             <Avatar className="h-16 w-16 border-2 border-muted">
@@ -347,7 +341,7 @@ export function Home() {
           <CardContent>
             <div className="flex flex-wrap gap-2 mt-2">
               {rep.party && (
-                <Badge className={`${partyColor} hover:${partyColor} font-medium`}>
+                <Badge className={`${partyCls} hover:${partyCls} font-medium`}>
                   {rep.party}
                 </Badge>
               )}
@@ -445,7 +439,12 @@ export function Home() {
                   value={textQuery}
                   onChange={(e) => setTextQuery(e.target.value)}
                   onFocus={() => setTextInputFocused(true)}
-                  onBlur={() => setTimeout(() => setTextInputFocused(false), 150)}
+                  onBlur={(e) => {
+                    // Only blur if focus moves outside the search form container
+                    const related = e.relatedTarget as HTMLElement | null;
+                    const form = related?.closest('[data-testid="global-search-form"]');
+                    if (!form) setTextInputFocused(false);
+                  }}
                 />
                 {textInputFocused && hasAcResults && (
                   <div

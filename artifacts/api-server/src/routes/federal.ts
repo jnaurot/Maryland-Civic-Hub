@@ -31,9 +31,12 @@ import {
   GetFederalMemberHouseVotesQueryParams,
   GetFederalMemberSenateVotesParams,
   GetFederalMemberSenateVotesQueryParams,
+  SearchFederalMembersQueryParams,
+  SearchFederalBillsQueryParams,
 } from "@workspace/api-zod";
 import { fetchWithTimeout as fetch } from "../lib/http";
 import { sendInternalError } from "../lib/respond";
+import { logger } from "../lib/logger";
 import {
   classifyFederalLegislationItem,
   getFederalLegislationDisplayNumber,
@@ -376,47 +379,49 @@ async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
       );
     }
 
-    // Upsert committees and member assignments
-    for (const a of assignments) {
-      await db
-        .insert(federalCommitteesTable)
-        .values({
-          id: a.code,
-          name: a.name,
-          chamber: mapped.chamber ?? null,
-          fetchedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: federalCommitteesTable.id,
-          set: {
+    // Upsert committees and member assignments within a transaction
+    await db.transaction(async (tx) => {
+      for (const a of assignments) {
+        await tx
+          .insert(federalCommitteesTable)
+          .values({
+            id: a.code,
             name: a.name,
             chamber: mapped.chamber ?? null,
             fetchedAt: new Date(),
-          },
-        });
-      await db
-        .insert(federalMemberCommitteesTable)
-        .values({
-          bioguideId: mapped.bioguideId || bioguideId,
-          committeeId: a.code,
-          fetchedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: [
-            federalMemberCommitteesTable.bioguideId,
-            federalMemberCommitteesTable.committeeId,
-          ],
-          set: { fetchedAt: new Date() },
-        });
-    }
+          })
+          .onConflictDoUpdate({
+            target: federalCommitteesTable.id,
+            set: {
+              name: a.name,
+              chamber: mapped.chamber ?? null,
+              fetchedAt: new Date(),
+            },
+          });
+        await tx
+          .insert(federalMemberCommitteesTable)
+          .values({
+            bioguideId: mapped.bioguideId || bioguideId,
+            committeeId: a.code,
+            fetchedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: [
+              federalMemberCommitteesTable.bioguideId,
+              federalMemberCommitteesTable.committeeId,
+            ],
+            set: { fetchedAt: new Date() },
+          });
+      }
 
-    // Mark committee data as fetched even if empty (prevents repeated XML fetches)
-    await db
-      .update(federalMembersTable)
-      .set({ committeeFetchedAt: new Date() })
-      .where(
-        eq(federalMembersTable.bioguideId, mapped.bioguideId || bioguideId),
-      );
+      // Mark committee data as fetched even if empty (prevents repeated XML fetches)
+      await tx
+        .update(federalMembersTable)
+        .set({ committeeFetchedAt: new Date() })
+        .where(
+          eq(federalMembersTable.bioguideId, mapped.bioguideId || bioguideId),
+        );
+    });
   } catch (err) {
     logger?.warn(
       { err, bioguideId },
@@ -489,13 +494,12 @@ router.get("/federal/state-members", async (req, res) => {
 });
 
 router.get("/federal/members/search", async (req, res) => {
-  const q = req.query.q;
-  const limit = Math.min(Number(req.query.limit ?? 20), 100);
-  const offset = Number(req.query.offset ?? 0);
-
-  if (!q || typeof q !== "string") {
-    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  const parsed = SearchFederalMembersQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid query parameters" });
   }
+  const { q, limit: rawLimit, offset } = parsed.data;
+  const limit = Math.min(rawLimit, 100);
 
   try {
     req.log.info(
@@ -836,8 +840,9 @@ async function ingestFederalMemberBills(
     let hasMore = true;
     let totalIngested = 0;
     let sourceTotalCount = 0;
+    const MAX_PAGES = 200;
 
-    while (hasMore) {
+    while (hasMore && page <= MAX_PAGES) {
       const { inserted, totalExpected } = await ingestFederalMemberBillsPage(
         bioguideId,
         role,
@@ -1344,37 +1349,39 @@ async function discoverAndIngestVotes(congress: number, session: number) {
           const xml = await xmlRes.text();
           const parsed = parseClerkVoteXml(xml);
 
-          const [inserted] = await db
-            .insert(houseVotesTable)
-            .values({
-              congress: vote.congress,
-              session: vote.sessionNumber,
-              rollCallNumber: vote.rollCallNumber,
-              year: new Date(vote.startDate).getFullYear(),
-              voteDate: vote.startDate
-                ? new Date(vote.startDate).toISOString().split("T")[0]
-                : null,
-              legislationType: vote.legislationType ?? null,
-              legislationNumber: vote.legislationNumber ?? null,
-              voteQuestion: parsed.metadata.voteQuestion ?? null,
-              voteResult: parsed.metadata.voteResult ?? null,
-              voteDescription: parsed.metadata.voteDescription ?? null,
-              sourceDataUrl: xmlUrl,
-            })
-            .returning({ id: houseVotesTable.id });
+          await db.transaction(async (tx) => {
+            const [inserted] = await tx
+              .insert(houseVotesTable)
+              .values({
+                congress: vote.congress,
+                session: vote.sessionNumber,
+                rollCallNumber: vote.rollCallNumber,
+                year: new Date(vote.startDate).getFullYear(),
+                voteDate: vote.startDate
+                  ? new Date(vote.startDate).toISOString().split("T")[0]
+                  : null,
+                legislationType: vote.legislationType ?? null,
+                legislationNumber: vote.legislationNumber ?? null,
+                voteQuestion: parsed.metadata.voteQuestion ?? null,
+                voteResult: parsed.metadata.voteResult ?? null,
+                voteDescription: parsed.metadata.voteDescription ?? null,
+                sourceDataUrl: xmlUrl,
+              })
+              .returning({ id: houseVotesTable.id });
 
-          if (inserted && parsed.memberVotes.length > 0) {
-            await db.insert(houseVoteRecordsTable).values(
-              parsed.memberVotes.map((m: any) => ({
-                voteId: inserted.id,
-                bioguideId: m.bioguideId,
-                memberName: m.name,
-                party: m.party ?? null,
-                state: m.state ?? null,
-                voteCast: normalizeVoteCast(m.voteCast),
-              })),
-            );
-          }
+            if (inserted && parsed.memberVotes.length > 0) {
+              await tx.insert(houseVoteRecordsTable).values(
+                parsed.memberVotes.map((m: any) => ({
+                  voteId: inserted.id,
+                  bioguideId: m.bioguideId,
+                  memberName: m.name,
+                  party: m.party ?? null,
+                  state: m.state ?? null,
+                  voteCast: normalizeVoteCast(m.voteCast),
+                })),
+              );
+            }
+          });
         } catch {
           // Ignore individual vote fetch/parse failures
         }
@@ -1500,14 +1507,14 @@ router.get("/federal/members/:bioguideId/house-votes", async (req, res) => {
 });
 
 async function resolveLisMemberId(bioguideId: string): Promise<string | null> {
-  console.log("[resolveLisMemberId] bioguideId:", bioguideId);
+  logger.info({ bioguideId }, "Resolving LIS member ID");
   const mapped = await db
     .select({ lisMemberId: senatorIdentitiesTable.lisMemberId })
     .from(senatorIdentitiesTable)
     .where(eq(senatorIdentitiesTable.bioguideId, bioguideId))
     .limit(1);
   if (mapped.length > 0) {
-    console.log("[resolveLisMemberId] found mapping:", mapped[0].lisMemberId);
+    logger.info({ bioguideId, lisMemberId: mapped[0].lisMemberId }, "Found LIS mapping in cache");
     return mapped[0].lisMemberId;
   }
 
@@ -1519,20 +1526,9 @@ async function resolveLisMemberId(bioguideId: string): Promise<string | null> {
     // Prefer stateCode from the latest term if available.
     const latestTerm = normalizeTermsItem(m).slice(-1)[0] ?? {};
     const state = latestTerm.stateCode ?? m.state;
-    console.log(
-      "[resolveLisMemberId] fetched member name:",
-      name,
-      "state:",
-      state,
-    );
     if (name && state) {
       const lastName = name.split(" ").pop() ?? "";
-      console.log(
-        "[resolveLisMemberId] searching vote positions for lastName:",
-        lastName,
-        "state:",
-        state,
-      );
+      logger.info({ bioguideId, name, state, lastName }, "Searching vote positions for LIS mapping");
       const match = await db
         .selectDistinct({ lisMemberId: senatorVotePositionsTable.lisMemberId })
         .from(senatorVotePositionsTable)
@@ -1543,7 +1539,6 @@ async function resolveLisMemberId(bioguideId: string): Promise<string | null> {
           ),
         )
         .limit(1);
-      console.log("[resolveLisMemberId] match result:", match);
       if (match.length > 0) {
         await db
           .insert(senatorIdentitiesTable)
@@ -1555,17 +1550,14 @@ async function resolveLisMemberId(bioguideId: string): Promise<string | null> {
             party: m.partyHistory?.[0]?.partyAbbreviation,
           })
           .onConflictDoNothing();
-        console.log(
-          "[resolveLisMemberId] stored mapping:",
-          match[0].lisMemberId,
-        );
+        logger.info({ bioguideId, lisMemberId: match[0].lisMemberId }, "Stored LIS mapping");
         return match[0].lisMemberId;
       }
     }
   } catch (err) {
-    console.log("[resolveLisMemberId] error:", err);
+    logger.warn({ err, bioguideId }, "Error resolving LIS member ID");
   }
-  console.log("[resolveLisMemberId] returning null");
+  logger.info({ bioguideId }, "No LIS mapping found");
   return null;
 }
 
@@ -1574,10 +1566,10 @@ async function discoverSenateVotes(
   session: number,
 ): Promise<number[]> {
   const url = `https://www.senate.gov/legislative/LIS/roll_call_lists/vote_menu_${congress}_${session}.htm`;
-  console.log("[discoverSenateVotes] fetching:", url);
+  logger.info({ url, congress, session }, "Discovering senate votes");
   const res = await fetch(url, { headers: { "User-Agent": "CivicHub/1.0" } });
   if (!res.ok) {
-    console.log("[discoverSenateVotes] failed:", res.status);
+    logger.warn({ status: res.status, url }, "Failed to discover senate votes");
     return [];
   }
   const html = await res.text();
@@ -1588,7 +1580,7 @@ async function discoverSenateVotes(
     numbers.add(parseInt(m[1], 10));
   }
   const result = Array.from(numbers).sort((a, b) => b - a);
-  console.log("[discoverSenateVotes] found", result.length, "roll calls");
+  logger.info({ count: result.length, congress, session }, "Discovered senate roll calls");
   return result;
 }
 
@@ -1650,18 +1642,9 @@ function parseSenateVoteXml(xml: string): {
 }
 
 async function ingestSenateVotes(congress: number, session: number) {
-  console.log(
-    "[ingestSenateVotes] starting congress:",
-    congress,
-    "session:",
-    session,
-  );
+  logger.info({ congress, session }, "Starting senate vote ingestion");
   const rollCalls = await discoverSenateVotes(congress, session);
-  console.log(
-    "[ingestSenateVotes] will process",
-    rollCalls.length,
-    "roll calls",
-  );
+  logger.info({ count: rollCalls.length, congress, session }, "Processing senate roll calls");
 
   const chunkSize = 5;
   let ingestedCount = 0;
@@ -1691,61 +1674,46 @@ async function ingestSenateVotes(congress: number, session: number) {
           const xml = await res.text();
           const parsed = parseSenateVoteXml(xml);
 
-          const [inserted] = await db
-            .insert(senateRollCallVotesTable)
-            .values({
-              ...parsed.metadata,
-              sourceXmlUrl: xmlUrl,
-              sourceHtmlUrl: xmlUrl.replace(".xml", ".htm"),
-            })
-            .returning({ id: senateRollCallVotesTable.id });
+          await db.transaction(async (tx) => {
+            const [inserted] = await tx
+              .insert(senateRollCallVotesTable)
+              .values({
+                ...parsed.metadata,
+                sourceXmlUrl: xmlUrl,
+                sourceHtmlUrl: xmlUrl.replace(".xml", ".htm"),
+              })
+              .returning({ id: senateRollCallVotesTable.id });
 
-          if (inserted && parsed.memberVotes.length > 0) {
-            await db.insert(senatorVotePositionsTable).values(
-              parsed.memberVotes.map((m) => ({
-                voteId: inserted.id,
-                lisMemberId: m.lisMemberId,
-                senatorName: m.name,
-                state: m.state ?? null,
-                party: m.party ?? null,
-                voteCast: normalizeVoteCast(m.voteCast),
-                bioguideId: null,
-              })),
-            );
-            ingestedCount++;
-            console.log(
-              "[ingestSenateVotes] ingested roll call",
-              rollCall,
-              "with",
-              parsed.memberVotes.length,
-              "members",
-            );
-          }
+            if (inserted && parsed.memberVotes.length > 0) {
+              await tx.insert(senatorVotePositionsTable).values(
+                parsed.memberVotes.map((m) => ({
+                  voteId: inserted.id,
+                  lisMemberId: m.lisMemberId,
+                  senatorName: m.name,
+                  state: m.state ?? null,
+                  party: m.party ?? null,
+                  voteCast: normalizeVoteCast(m.voteCast),
+                  bioguideId: null,
+                })),
+              );
+              ingestedCount++;
+              logger?.info(
+                { rollCall, members: parsed.memberVotes.length, congress, session },
+                "Ingested senate roll call",
+              );
+            }
+          });
         } catch (err) {
-          console.log(
-            "[ingestSenateVotes] failed roll call",
-            rollCall,
-            "error:",
-            err,
-          );
+          logger.warn({ err, rollCall, congress, session }, "Failed to ingest senate roll call");
         }
       }),
     );
   }
-  console.log(
-    "[ingestSenateVotes] done. ingested:",
-    ingestedCount,
-    "new votes",
-  );
+  logger.info({ ingestedCount, congress, session }, "Senate vote ingestion complete");
 }
 
 router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
-  console.log(
-    "[senate-votes] REQUEST bioguideId:",
-    req.params.bioguideId,
-    "query:",
-    req.query,
-  );
+  req.log.info({ bioguideId: req.params.bioguideId, query: req.query }, "GET /federal/members/:bioguideId/senate-votes");
   const paramsParsed = GetFederalMemberSenateVotesParams.safeParse(req.params);
   const queryParsed = GetFederalMemberSenateVotesQueryParams.safeParse(
     req.query,
@@ -1776,21 +1744,21 @@ router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
     const searchCondition = buildSearchCondition();
 
     const lisMemberId = await resolveLisMemberId(bioguideId);
-    console.log("[senate-votes] resolved lisMemberId:", lisMemberId);
+    req.log.info({ bioguideId, lisMemberId }, "Resolved LIS member ID for senate votes");
 
     const baseConditions: any[] = lisMemberId
       ? [eq(senatorVotePositionsTable.lisMemberId, lisMemberId)]
       : [];
 
     if (baseConditions.length === 0) {
-      console.log("[senate-votes] no mapping found, triggering ingestion");
+      req.log.info({ bioguideId }, "No LIS mapping found, triggering senate vote ingestion");
       await ingestSenateVotes(currentCongress, currentSession);
       if (currentSession === 2) await ingestSenateVotes(currentCongress, 1);
       // Retry now that vote records exist for name matching
       const retryLisId = await resolveLisMemberId(bioguideId);
-      console.log("[senate-votes] retry resolved lisMemberId:", retryLisId);
+      req.log.info({ bioguideId, retryLisId }, "Retry resolved LIS member ID after ingestion");
       if (!retryLisId) {
-        console.log("[senate-votes] still no mapping, returning empty");
+        req.log.warn({ bioguideId }, "No LIS mapping after ingestion, returning empty votes");
         return res.json({ votes: [], totalCount: 0, offset });
       }
       baseConditions.push(
@@ -1810,12 +1778,10 @@ router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
       );
 
     const totalInDb = Number(countResult[0]?.count ?? 0);
-    console.log("[senate-votes] total votes in DB for member:", totalInDb);
+    req.log.info({ bioguideId, totalInDb }, "Total senate votes in DB for member");
 
     if (totalInDb < offset + limit) {
-      console.log(
-        "[senate-votes] not enough votes in DB, triggering more ingestion",
-      );
+      req.log.info({ bioguideId, totalInDb, offset, limit }, "Not enough votes in DB, triggering more ingestion");
       await ingestSenateVotes(currentCongress, currentSession);
       if (currentSession === 2) await ingestSenateVotes(currentCongress, 1);
     }
@@ -2121,13 +2087,12 @@ router.get("/federal/bills", async (req, res) => {
 });
 
 router.get("/federal/bills/search", async (req, res) => {
-  const q = req.query.q;
-  const limit = Math.min(Number(req.query.limit ?? 20), 100);
-  const offset = Number(req.query.offset ?? 0);
-
-  if (!q || typeof q !== "string") {
-    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  const parsed = SearchFederalBillsQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid query parameters" });
   }
+  const { q, limit: rawLimit, offset } = parsed.data;
+  const limit = Math.min(rawLimit, 100);
 
   try {
     req.log.info({ q, source: "db" }, "Searching federal bills from DB cache");
