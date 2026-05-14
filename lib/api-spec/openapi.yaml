@@ -169,6 +169,13 @@ paths:
           schema:
             type: string
           description: Search query to filter bills by title, number, or subject
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [all, bill, resolution, amendment, other]
+            default: all
+          description: Filter member legislation by classified item category
       responses:
         "200":
           description: Bills list
@@ -802,6 +809,11 @@ components:
           type: array
           items:
             type: string
+        itemCategory:
+          type: string
+          enum: [bill, resolution, amendment, other]
+        legislationType:
+          type: string
       required: [id, title]
 
     BillDetail:
@@ -914,6 +926,15 @@ components:
                 type: integer
         fullyIngested:
           type: boolean
+        sourceTotalCount:
+          type: integer
+        category:
+          type: string
+          enum: [all, bill, resolution, amendment, other]
+        categoryCounts:
+          type: object
+          additionalProperties:
+            type: integer
       required: [bills]
 
     VoteRecord:

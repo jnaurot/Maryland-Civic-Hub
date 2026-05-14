@@ -66,6 +66,16 @@ export interface FederalStateMembersResponse {
   stateRepCache?: CacheMeta;
 }
 
+export type BillItemCategory =
+  (typeof BillItemCategory)[keyof typeof BillItemCategory];
+
+export const BillItemCategory = {
+  bill: "bill",
+  resolution: "resolution",
+  amendment: "amendment",
+  other: "other",
+} as const;
+
 export interface Bill {
   id: string;
   title: string;
@@ -80,6 +90,8 @@ export interface Bill {
   chamber?: string;
   policyArea?: string;
   subjects?: string[];
+  itemCategory?: BillItemCategory;
+  legislationType?: string;
 }
 
 export interface SponsorInfo {
@@ -128,12 +140,28 @@ export type BillsListResponsePolicyAreasItem = {
   pct?: number;
 };
 
+export type BillsListResponseCategory =
+  (typeof BillsListResponseCategory)[keyof typeof BillsListResponseCategory];
+
+export const BillsListResponseCategory = {
+  all: "all",
+  bill: "bill",
+  resolution: "resolution",
+  amendment: "amendment",
+  other: "other",
+} as const;
+
+export type BillsListResponseCategoryCounts = { [key: string]: number };
+
 export interface BillsListResponse {
   bills: Bill[];
   totalCount?: number;
   offset?: number;
   policyAreas?: BillsListResponsePolicyAreasItem[];
   fullyIngested?: boolean;
+  sourceTotalCount?: number;
+  category?: BillsListResponseCategory;
+  categoryCounts?: BillsListResponseCategoryCounts;
 }
 
 export interface VoteRecord {
@@ -405,6 +433,10 @@ export type GetFederalMemberBillsParams = {
    * Search query to filter bills by title, number, or subject
    */
   q?: string;
+  /**
+   * Filter member legislation by classified item category
+   */
+  category?: GetFederalMemberBillsCategory;
 };
 
 export type GetFederalMemberBillsType =
@@ -413,6 +445,17 @@ export type GetFederalMemberBillsType =
 export const GetFederalMemberBillsType = {
   sponsored: "sponsored",
   cosponsored: "cosponsored",
+} as const;
+
+export type GetFederalMemberBillsCategory =
+  (typeof GetFederalMemberBillsCategory)[keyof typeof GetFederalMemberBillsCategory];
+
+export const GetFederalMemberBillsCategory = {
+  all: "all",
+  bill: "bill",
+  resolution: "resolution",
+  amendment: "amendment",
+  other: "other",
 } as const;
 
 export type RefreshFederalMemberBillsBodyType =

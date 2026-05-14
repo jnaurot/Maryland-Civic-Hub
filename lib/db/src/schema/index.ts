@@ -30,5 +30,6 @@ export * from "./federal_bills";
 export * from "./federal_members";
 export * from "./federal_member_bill_roles";
 export * from "./federal_member_bill_cache_status";
+export * from "./federal_member_legislation_items";
 export * from "./federal_committees";
 export * from "./federal_member_committees";

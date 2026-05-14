@@ -193,6 +193,7 @@ export const GetFederalMemberBillsParams = zod.object({
 export const getFederalMemberBillsQueryTypeDefault = `sponsored`;
 export const getFederalMemberBillsQueryOffsetDefault = 0;
 export const getFederalMemberBillsQueryLimitDefault = 20;
+export const getFederalMemberBillsQueryCategoryDefault = `all`;
 
 export const GetFederalMemberBillsQueryParams = zod.object({
   type: zod
@@ -204,6 +205,10 @@ export const GetFederalMemberBillsQueryParams = zod.object({
     .string()
     .optional()
     .describe("Search query to filter bills by title, number, or subject"),
+  category: zod
+    .enum(["all", "bill", "resolution", "amendment", "other"])
+    .default(getFederalMemberBillsQueryCategoryDefault)
+    .describe("Filter member legislation by classified item category"),
 });
 
 export const GetFederalMemberBillsResponse = zod.object({
@@ -222,6 +227,10 @@ export const GetFederalMemberBillsResponse = zod.object({
       chamber: zod.string().optional(),
       policyArea: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
+      itemCategory: zod
+        .enum(["bill", "resolution", "amendment", "other"])
+        .optional(),
+      legislationType: zod.string().optional(),
     }),
   ),
   totalCount: zod.number().optional(),
@@ -236,6 +245,11 @@ export const GetFederalMemberBillsResponse = zod.object({
     )
     .optional(),
   fullyIngested: zod.boolean().optional(),
+  sourceTotalCount: zod.number().optional(),
+  category: zod
+    .enum(["all", "bill", "resolution", "amendment", "other"])
+    .optional(),
+  categoryCounts: zod.record(zod.string(), zod.number()).optional(),
 });
 
 /**
@@ -269,6 +283,10 @@ export const RefreshFederalMemberBillsResponse = zod.object({
       chamber: zod.string().optional(),
       policyArea: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
+      itemCategory: zod
+        .enum(["bill", "resolution", "amendment", "other"])
+        .optional(),
+      legislationType: zod.string().optional(),
     }),
   ),
   totalCount: zod.number().optional(),
@@ -283,6 +301,11 @@ export const RefreshFederalMemberBillsResponse = zod.object({
     )
     .optional(),
   fullyIngested: zod.boolean().optional(),
+  sourceTotalCount: zod.number().optional(),
+  category: zod
+    .enum(["all", "bill", "resolution", "amendment", "other"])
+    .optional(),
+  categoryCounts: zod.record(zod.string(), zod.number()).optional(),
 });
 
 /**
@@ -436,6 +459,10 @@ export const GetFederalBillsResponse = zod.object({
       chamber: zod.string().optional(),
       policyArea: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
+      itemCategory: zod
+        .enum(["bill", "resolution", "amendment", "other"])
+        .optional(),
+      legislationType: zod.string().optional(),
     }),
   ),
   totalCount: zod.number().optional(),
@@ -450,6 +477,11 @@ export const GetFederalBillsResponse = zod.object({
     )
     .optional(),
   fullyIngested: zod.boolean().optional(),
+  sourceTotalCount: zod.number().optional(),
+  category: zod
+    .enum(["all", "bill", "resolution", "amendment", "other"])
+    .optional(),
+  categoryCounts: zod.record(zod.string(), zod.number()).optional(),
 });
 
 /**
@@ -480,6 +512,10 @@ export const SearchFederalBillsResponse = zod.object({
       chamber: zod.string().optional(),
       policyArea: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
+      itemCategory: zod
+        .enum(["bill", "resolution", "amendment", "other"])
+        .optional(),
+      legislationType: zod.string().optional(),
     }),
   ),
   totalCount: zod.number().optional(),
@@ -494,6 +530,11 @@ export const SearchFederalBillsResponse = zod.object({
     )
     .optional(),
   fullyIngested: zod.boolean().optional(),
+  sourceTotalCount: zod.number().optional(),
+  category: zod
+    .enum(["all", "bill", "resolution", "amendment", "other"])
+    .optional(),
+  categoryCounts: zod.record(zod.string(), zod.number()).optional(),
 });
 
 /**
