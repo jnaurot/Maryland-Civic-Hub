@@ -364,13 +364,18 @@ export function Home() {
   return (
     <div className="h-[calc(100dvh-4rem)] flex flex-col">
       {/* Hero Section */}
-      <div className="bg-primary text-primary-foreground py-20 px-4 relative overflow-hidden shrink-0">
-        {flagUrl && (
-          <div
-            className="absolute inset-0 opacity-10 bg-cover bg-center"
-            style={{ backgroundImage: `url('${flagUrl}')` }}
-          />
-        )}
+      <div
+        data-testid="home-hero"
+        className="bg-primary text-primary-foreground py-20 px-4 relative overflow-visible shrink-0 z-20"
+      >
+        <div data-testid="home-hero-background" className="absolute inset-0 overflow-hidden pointer-events-none">
+          {flagUrl && (
+            <div
+              className="absolute inset-0 opacity-10 bg-cover bg-center"
+              style={{ backgroundImage: `url('${flagUrl}')` }}
+            />
+          )}
+        </div>
         <div className="container mx-auto max-w-3xl relative z-10 text-center">
           <h1 className="text-4xl md:text-5xl font-black mb-6 tracking-tight">
             Know Your Representatives
@@ -426,7 +431,11 @@ export function Home() {
               </div>
               <span className="relative px-2 text-xs text-primary-foreground/60 uppercase tracking-wide mx-auto bg-primary">or</span>
             </div>
-            <form onSubmit={handleTextSearch} className="relative flex flex-col sm:flex-row gap-3">
+            <form
+              data-testid="global-search-form"
+              onSubmit={handleTextSearch}
+              className="relative flex flex-col sm:flex-row gap-3 z-30"
+            >
               <div className="relative flex-grow">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground z-10" />
                 <Input
@@ -439,7 +448,10 @@ export function Home() {
                   onBlur={() => setTimeout(() => setTextInputFocused(false), 150)}
                 />
                 {textInputFocused && hasAcResults && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-popover border rounded-xl shadow-xl z-50 max-h-[60vh] overflow-y-auto text-left">
+                  <div
+                    data-testid="global-search-autocomplete"
+                    className="absolute left-0 right-0 top-full mt-1 bg-popover border rounded-xl shadow-xl z-[100] max-h-[min(28rem,60vh)] overflow-y-auto text-left"
+                  >
                     {(acFederalMembers?.members?.length ?? 0) > 0 && (
                       <div className="py-2">
                         <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Federal Representatives</p>

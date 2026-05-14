@@ -337,7 +337,7 @@ function BillsList({
       </div>
 
       {billView === "list" ? (
-        <>
+        <div className="flex-1 min-h-0 flex flex-col">
           <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2 shrink-0">
             {roleLabel}
           </p>
@@ -346,126 +346,129 @@ function BillsList({
               Indexing sponsored legislation. Counts may update.
             </p>
           )}
-          <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
-            {isLoading && (
-              <div className="space-y-3">
-                {[...Array(5)].map((_, i) => (
-                  <Skeleton key={i} className="h-20 w-full" />
-                ))}
-              </div>
-            )}
+          <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+            <div className="space-y-3">
+              {isLoading && (
+                <>
+                  {[...Array(5)].map((_, i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </>
+              )}
 
-            {!isLoading && data?.bills?.length === 0 && (
-              <p className="text-muted-foreground text-center py-10">
-                No bills found.
-              </p>
-            )}
+              {!isLoading && data?.bills?.length === 0 && (
+                <p className="text-muted-foreground text-center py-10">
+                  No legislation found.
+                </p>
+              )}
 
-            {!isLoading &&
-              data?.bills?.map((bill) => {
-                const href = internalBillHref(bill);
-                const card = (
-                  <Card
-                    className={
-                      href
-                        ? "hover:border-primary transition-colors cursor-pointer"
-                        : "transition-colors"
-                    }
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            {bill.number && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs font-mono shrink-0"
-                              >
-                                {bill.number}
-                              </Badge>
+              {!isLoading &&
+                data?.bills?.map((bill) => {
+                  const href = internalBillHref(bill);
+                  const card = (
+                    <Card
+                      className={
+                        href
+                          ? "hover:border-primary transition-colors cursor-pointer"
+                          : "transition-colors"
+                      }
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              {bill.number && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs font-mono shrink-0"
+                                >
+                                  {bill.number}
+                                </Badge>
+                              )}
+                              {bill.itemCategory && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-xs capitalize"
+                                >
+                                  {bill.itemCategory}
+                                </Badge>
+                              )}
+                              {bill.chamber && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {bill.chamber}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="font-medium text-sm line-clamp-2">
+                              {bill.title}
+                            </p>
+                            {bill.latestAction && (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                                {bill.latestAction}
+                              </p>
                             )}
-                            {bill.itemCategory && (
-                              <Badge
-                                variant="secondary"
-                                className="text-xs capitalize"
+                            {!href && bill.url && (
+                              <a
+                                className="text-xs text-primary mt-2 inline-flex items-center gap-1"
+                                href={bill.url.replace(
+                                  "api.congress.gov/v3",
+                                  "www.congress.gov",
+                                )}
+                                target="_blank"
+                                rel="noreferrer"
                               >
-                                {bill.itemCategory}
-                              </Badge>
-                            )}
-                            {bill.chamber && (
-                              <Badge variant="secondary" className="text-xs">
-                                {bill.chamber}
-                              </Badge>
+                                View source <ExternalLink className="h-3 w-3" />
+                              </a>
                             )}
                           </div>
-                          <p className="font-medium text-sm line-clamp-2">
-                            {bill.title}
-                          </p>
-                          {bill.latestAction && (
-                            <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                              {bill.latestAction}
-                            </p>
-                          )}
-                          {!href && bill.url && (
-                            <a
-                              className="text-xs text-primary mt-2 inline-flex items-center gap-1"
-                              href={bill.url.replace(
-                                "api.congress.gov/v3",
-                                "www.congress.gov",
-                              )}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              View source <ExternalLink className="h-3 w-3" />
-                            </a>
+                          {bill.introducedDate && (
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {bill.introducedDate}
+                            </span>
                           )}
                         </div>
-                        {bill.introducedDate && (
-                          <span className="text-xs text-muted-foreground shrink-0">
-                            {bill.introducedDate}
-                          </span>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-                return href ? (
-                  <Link key={bill.id} href={href}>
-                    {card}
-                  </Link>
-                ) : (
-                  <div key={bill.id}>{card}</div>
-                );
-              })}
-          </div>
+                      </CardContent>
+                    </Card>
+                  );
+                  return href ? (
+                    <Link key={bill.id} href={href}>
+                      {card}
+                    </Link>
+                  ) : (
+                    <div key={bill.id}>{card}</div>
+                  );
+                })}
 
-          {data && (data.totalCount ?? 0) > limit && (
-            <div className="flex justify-between items-center pt-6 shrink-0">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={offset === 0}
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                {offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of{" "}
-                {data.totalCount}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={offset + limit >= (data.totalCount ?? 0)}
-                onClick={() => setOffset(offset + limit)}
-              >
-                Next
-              </Button>
+              {data && (data.totalCount ?? 0) > limit && (
+                <div className="flex justify-between items-center pt-3 pb-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={offset === 0}
+                    onClick={() => setOffset(Math.max(0, offset - limit))}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    {offset + 1}–
+                    {Math.min(offset + limit, data.totalCount ?? 0)} of{" "}
+                    {data.totalCount}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={offset + limit >= (data.totalCount ?? 0)}
+                    onClick={() => setOffset(offset + limit)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
             </div>
-          )}
-        </>
+          </div>
+        </div>
       ) : (
-        <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
           {isLoading && (
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
