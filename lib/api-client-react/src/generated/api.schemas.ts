@@ -9,8 +9,7 @@ export interface HealthStatus {
   status: string;
 }
 
-export type RepresentativeLevel =
-  (typeof RepresentativeLevel)[keyof typeof RepresentativeLevel];
+export type RepresentativeLevel = (typeof RepresentativeLevel)[keyof typeof RepresentativeLevel];
 
 export const RepresentativeLevel = {
   federal: "federal",
@@ -33,8 +32,7 @@ export interface Representative {
   division?: string;
 }
 
-export type CacheMetaSource =
-  (typeof CacheMetaSource)[keyof typeof CacheMetaSource];
+export type CacheMetaSource = (typeof CacheMetaSource)[keyof typeof CacheMetaSource];
 
 export const CacheMetaSource = {
   db: "db",
@@ -66,8 +64,7 @@ export interface FederalStateMembersResponse {
   stateRepCache?: CacheMeta;
 }
 
-export type BillItemCategory =
-  (typeof BillItemCategory)[keyof typeof BillItemCategory];
+export type BillItemCategory = (typeof BillItemCategory)[keyof typeof BillItemCategory];
 
 export const BillItemCategory = {
   bill: "bill",
@@ -84,6 +81,12 @@ export interface Bill {
   introducedDate?: string;
   latestAction?: string;
   latestActionDate?: string;
+  stageIntroduced?: boolean;
+  stageCommittee?: boolean;
+  stageFloorVote?: boolean;
+  stagePassed?: boolean;
+  stageSignedEnacted?: boolean;
+  stageDead?: boolean;
   sponsors?: string[];
   url?: string;
   status?: string;
@@ -153,6 +156,8 @@ export const BillsListResponseCategory = {
 
 export type BillsListResponseCategoryCounts = { [key: string]: number };
 
+export type BillsListResponseStageCounts = { [key: string]: { [key: string]: number } };
+
 export interface BillsListResponse {
   bills: Bill[];
   totalCount?: number;
@@ -162,6 +167,7 @@ export interface BillsListResponse {
   sourceTotalCount?: number;
   category?: BillsListResponseCategory;
   categoryCounts?: BillsListResponseCategoryCounts;
+  stageCounts?: BillsListResponseStageCounts;
 }
 
 export interface VoteRecord {
@@ -305,6 +311,12 @@ export interface StateBill {
   introducedDate?: string;
   latestAction?: string;
   latestActionDate?: string;
+  stageIntroduced?: boolean;
+  stageCommittee?: boolean;
+  stageFloorVote?: boolean;
+  stagePassed?: boolean;
+  stageSignedEnacted?: boolean;
+  stageDead?: boolean;
   sponsors?: string[];
   url?: string;
   subjects?: string[];
@@ -359,8 +371,7 @@ export interface StateVotesListResponse {
   offset?: number;
 }
 
-export type DonorEntryType =
-  (typeof DonorEntryType)[keyof typeof DonorEntryType];
+export type DonorEntryType = (typeof DonorEntryType)[keyof typeof DonorEntryType];
 
 export const DonorEntryType = {
   pac: "pac",
@@ -437,6 +448,10 @@ export type GetFederalMemberBillsParams = {
    * Filter member legislation by classified item category
    */
   category?: GetFederalMemberBillsCategory;
+  /**
+   * Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead
+   */
+  stages?: string;
 };
 
 export type GetFederalMemberBillsType =
@@ -588,8 +603,7 @@ export type GetStateBillsParams = {
   jurisdiction?: string;
 };
 
-export type GetStateBillsChamber =
-  (typeof GetStateBillsChamber)[keyof typeof GetStateBillsChamber];
+export type GetStateBillsChamber = (typeof GetStateBillsChamber)[keyof typeof GetStateBillsChamber];
 
 export const GetStateBillsChamber = {
   upper: "upper",

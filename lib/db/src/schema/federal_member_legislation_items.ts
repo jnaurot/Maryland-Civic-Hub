@@ -6,6 +6,7 @@ import {
   index,
   primaryKey,
   customType,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
@@ -30,6 +31,12 @@ export const federalMemberLegislationItemsTable = pgTable(
     introducedDate: text("introduced_date"),
     latestAction: text("latest_action"),
     latestActionDate: text("latest_action_date"),
+    stageIntroduced: boolean("stage_introduced").default(false).notNull(),
+    stageCommittee: boolean("stage_committee").default(false).notNull(),
+    stageFloorVote: boolean("stage_floor_vote").default(false).notNull(),
+    stagePassed: boolean("stage_passed").default(false).notNull(),
+    stageSignedEnacted: boolean("stage_signed_enacted").default(false).notNull(),
+    stageDead: boolean("stage_dead").default(false).notNull(),
     policyArea: text("policy_area"),
     url: text("url"),
     raw: jsonb("raw"),
@@ -51,6 +58,20 @@ export const federalMemberLegislationItemsTable = pgTable(
       table.searchVector,
     ),
     index("idx_federal_member_legislation_fetched_at").on(table.fetchedAt),
+    index("idx_federal_member_legislation_stage_signed").on(
+      table.bioguideId,
+      table.role,
+      table.stageSignedEnacted,
+      table.category,
+      table.introducedDate,
+    ),
+    index("idx_federal_member_legislation_stage_committee").on(
+      table.bioguideId,
+      table.role,
+      table.stageCommittee,
+      table.category,
+      table.introducedDate,
+    ),
   ],
 );
 

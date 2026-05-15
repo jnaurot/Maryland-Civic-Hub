@@ -163,3 +163,26 @@ test("state rep bills tab regression", async ({ page }) => {
   await page.goto("/rep/state/S123");
   await expect(page).toHaveScreenshot("state-rep-bills.png", { fullPage: true });
 });
+
+test("federal bills status filter keeps displayed counts in present context", async ({
+  page,
+}) => {
+  await page.goto("/bills/federal");
+  await page.getByRole("button", { name: "Status Off" }).click();
+  await page.getByRole("button", { name: "Signed/Enacted" }).click();
+
+  await expect(page.getByText("0 bills")).toBeVisible();
+  await expect(page.getByText("0–0 of 0")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+});
+
+test("federal rep category count stays in status-filter context", async ({
+  page,
+}) => {
+  await page.goto("/rep/federal/F000001");
+  await page.getByRole("button", { name: "Status Off" }).click();
+  await page.getByRole("button", { name: "Signed/Enacted" }).click();
+
+  await expect(page.getByRole("button", { name: "All (0)" })).toBeVisible();
+  await expect(page.getByText("0–0 of 0")).toBeVisible();
+});

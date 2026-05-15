@@ -4,6 +4,61 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronUp, ChevronDown, X, Search } from "lucide-react";
 
+export const BILL_STAGE_OPTIONS = [
+  "Introduced",
+  "Committee",
+  "Floor Vote",
+  "Passed",
+  "Signed/Enacted",
+  "Dead",
+] as const;
+
+export type BillStage = (typeof BILL_STAGE_OPTIONS)[number];
+
+export const BILL_STAGE_QUERY_KEYS: Record<BillStage, string> = {
+  Introduced: "introduced",
+  Committee: "committee",
+  "Floor Vote": "floor_vote",
+  Passed: "passed",
+  "Signed/Enacted": "signed_enacted",
+  Dead: "dead",
+};
+
+export function getBillStageMatches({
+  latestAction,
+  status,
+  introducedDate,
+}: {
+  latestAction?: string | null;
+  status?: string | null;
+  introducedDate?: string | null;
+}): Record<BillStage, boolean> {
+  const text = `${latestAction ?? ""} ${status ?? ""}`.toLowerCase();
+  const introduced = !!introducedDate || text.length >= 0;
+  const committee = /(committee|referred|reported)/i.test(text);
+  const floorVote = /(roll|yea|nay|vote|agreed to|floor)/i.test(text);
+  const signedOrEnacted =
+    /(signed|became public law|became law|public law|enacted)/i.test(text);
+  const passed =
+    signedOrEnacted ||
+    /(passed house|passed senate|passed\/agreed|agreed to in house|agreed to in senate|passed by|adopted|adopted by)/i.test(
+      text,
+    );
+  const dead =
+    /(died|dead|failed|vetoed|tabled indefinitely|indefinitely postponed|withdrawn)/i.test(
+      text,
+    );
+
+  return {
+    Introduced: introduced,
+    Committee: committee,
+    "Floor Vote": floorVote,
+    Passed: passed,
+    "Signed/Enacted": signedOrEnacted,
+    Dead: dead,
+  };
+}
+
 export function partyColor(party?: string) {
   if (!party) return "bg-gray-100 text-gray-700";
   const p = party.toLowerCase();

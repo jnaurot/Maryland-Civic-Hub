@@ -176,6 +176,11 @@ paths:
             enum: [all, bill, resolution, amendment, other]
             default: all
           description: Filter member legislation by classified item category
+        - name: stages
+          in: query
+          schema:
+            type: string
+          description: "Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead"
       responses:
         "200":
           description: Bills list
@@ -793,6 +798,18 @@ components:
           type: string
         latestActionDate:
           type: string
+        stageIntroduced:
+          type: boolean
+        stageCommittee:
+          type: boolean
+        stageFloorVote:
+          type: boolean
+        stagePassed:
+          type: boolean
+        stageSignedEnacted:
+          type: boolean
+        stageDead:
+          type: boolean
         sponsors:
           type: array
           items:
@@ -935,6 +952,12 @@ components:
           type: object
           additionalProperties:
             type: integer
+        stageCounts:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: integer
       required: [bills]
 
     VoteRecord:
@@ -1193,6 +1216,18 @@ components:
           type: string
         latestActionDate:
           type: string
+        stageIntroduced:
+          type: boolean
+        stageCommittee:
+          type: boolean
+        stageFloorVote:
+          type: boolean
+        stagePassed:
+          type: boolean
+        stageSignedEnacted:
+          type: boolean
+        stageDead:
+          type: boolean
         sponsors:
           type: array
           items:

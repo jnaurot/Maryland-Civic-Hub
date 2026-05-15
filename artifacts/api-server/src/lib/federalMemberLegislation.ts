@@ -84,6 +84,12 @@ export function mapFederalLegislationForResponse(row: {
   introducedDate: string | null;
   latestAction: string | null;
   latestActionDate: string | null;
+  stageIntroduced?: boolean | null;
+  stageCommittee?: boolean | null;
+  stageFloorVote?: boolean | null;
+  stagePassed?: boolean | null;
+  stageSignedEnacted?: boolean | null;
+  stageDead?: boolean | null;
   policyArea: string | null;
   url: string | null;
   category: string;
@@ -97,6 +103,12 @@ export function mapFederalLegislationForResponse(row: {
     introducedDate: row.introducedDate ?? undefined,
     latestAction: row.latestAction ?? undefined,
     latestActionDate: row.latestActionDate ?? undefined,
+    stageIntroduced: row.stageIntroduced ?? undefined,
+    stageCommittee: row.stageCommittee ?? undefined,
+    stageFloorVote: row.stageFloorVote ?? undefined,
+    stagePassed: row.stagePassed ?? undefined,
+    stageSignedEnacted: row.stageSignedEnacted ?? undefined,
+    stageDead: row.stageDead ?? undefined,
     policyArea: row.policyArea ?? undefined,
     url: row.url ?? undefined,
     itemCategory: row.category,

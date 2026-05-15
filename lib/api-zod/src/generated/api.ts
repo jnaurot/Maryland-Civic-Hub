@@ -196,9 +196,7 @@ export const getFederalMemberBillsQueryLimitDefault = 20;
 export const getFederalMemberBillsQueryCategoryDefault = `all`;
 
 export const GetFederalMemberBillsQueryParams = zod.object({
-  type: zod
-    .enum(["sponsored", "cosponsored"])
-    .default(getFederalMemberBillsQueryTypeDefault),
+  type: zod.enum(["sponsored", "cosponsored"]).default(getFederalMemberBillsQueryTypeDefault),
   offset: zod.coerce.number().default(getFederalMemberBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getFederalMemberBillsQueryLimitDefault),
   q: zod.coerce
@@ -209,6 +207,12 @@ export const GetFederalMemberBillsQueryParams = zod.object({
     .enum(["all", "bill", "resolution", "amendment", "other"])
     .default(getFederalMemberBillsQueryCategoryDefault)
     .describe("Filter member legislation by classified item category"),
+  stages: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead",
+    ),
 });
 
 export const GetFederalMemberBillsResponse = zod.object({
@@ -221,15 +225,19 @@ export const GetFederalMemberBillsResponse = zod.object({
       introducedDate: zod.string().optional(),
       latestAction: zod.string().optional(),
       latestActionDate: zod.string().optional(),
+      stageIntroduced: zod.boolean().optional(),
+      stageCommittee: zod.boolean().optional(),
+      stageFloorVote: zod.boolean().optional(),
+      stagePassed: zod.boolean().optional(),
+      stageSignedEnacted: zod.boolean().optional(),
+      stageDead: zod.boolean().optional(),
       sponsors: zod.array(zod.string()).optional(),
       url: zod.string().optional(),
       status: zod.string().optional(),
       chamber: zod.string().optional(),
       policyArea: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
-      itemCategory: zod
-        .enum(["bill", "resolution", "amendment", "other"])
-        .optional(),
+      itemCategory: zod.enum(["bill", "resolution", "amendment", "other"]).optional(),
       legislationType: zod.string().optional(),
     }),
   ),
@@ -246,10 +254,9 @@ export const GetFederalMemberBillsResponse = zod.object({
     .optional(),
   fullyIngested: zod.boolean().optional(),
   sourceTotalCount: zod.number().optional(),
-  category: zod
-    .enum(["all", "bill", "resolution", "amendment", "other"])
-    .optional(),
+  category: zod.enum(["all", "bill", "resolution", "amendment", "other"]).optional(),
   categoryCounts: zod.record(zod.string(), zod.number()).optional(),
+  stageCounts: zod.record(zod.string(), zod.record(zod.string(), zod.number())).optional(),
 });
 
 /**
@@ -262,9 +269,7 @@ export const RefreshFederalMemberBillsParams = zod.object({
 export const refreshFederalMemberBillsBodyTypeDefault = `sponsored`;
 
 export const RefreshFederalMemberBillsBody = zod.object({
-  type: zod
-    .enum(["sponsored", "cosponsored"])
-    .default(refreshFederalMemberBillsBodyTypeDefault),
+  type: zod.enum(["sponsored", "cosponsored"]).default(refreshFederalMemberBillsBodyTypeDefault),
 });
 
 export const RefreshFederalMemberBillsResponse = zod.object({
@@ -277,15 +282,19 @@ export const RefreshFederalMemberBillsResponse = zod.object({
       introducedDate: zod.string().optional(),
       latestAction: zod.string().optional(),
       latestActionDate: zod.string().optional(),
+      stageIntroduced: zod.boolean().optional(),
+      stageCommittee: zod.boolean().optional(),
+      stageFloorVote: zod.boolean().optional(),
+      stagePassed: zod.boolean().optional(),
+      stageSignedEnacted: zod.boolean().optional(),
+      stageDead: zod.boolean().optional(),
       sponsors: zod.array(zod.string()).optional(),
       url: zod.string().optional(),
       status: zod.string().optional(),
       chamber: zod.string().optional(),
       policyArea: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
-      itemCategory: zod
-        .enum(["bill", "resolution", "amendment", "other"])
-        .optional(),
+      itemCategory: zod.enum(["bill", "resolution", "amendment", "other"]).optional(),
       legislationType: zod.string().optional(),
     }),
   ),
@@ -302,10 +311,9 @@ export const RefreshFederalMemberBillsResponse = zod.object({
     .optional(),
   fullyIngested: zod.boolean().optional(),
   sourceTotalCount: zod.number().optional(),
-  category: zod
-    .enum(["all", "bill", "resolution", "amendment", "other"])
-    .optional(),
+  category: zod.enum(["all", "bill", "resolution", "amendment", "other"]).optional(),
   categoryCounts: zod.record(zod.string(), zod.number()).optional(),
+  stageCounts: zod.record(zod.string(), zod.record(zod.string(), zod.number())).optional(),
 });
 
 /**
@@ -320,21 +328,15 @@ export const getFederalMemberHouseVotesQueryLimitDefault = 20;
 export const getFederalMemberHouseVotesQueryFilterDefault = `all`;
 
 export const GetFederalMemberHouseVotesQueryParams = zod.object({
-  offset: zod.coerce
-    .number()
-    .default(getFederalMemberHouseVotesQueryOffsetDefault),
-  limit: zod.coerce
-    .number()
-    .default(getFederalMemberHouseVotesQueryLimitDefault),
+  offset: zod.coerce.number().default(getFederalMemberHouseVotesQueryOffsetDefault),
+  limit: zod.coerce.number().default(getFederalMemberHouseVotesQueryLimitDefault),
   filter: zod
     .enum(["all", "yea", "nay", "present", "not-voting"])
     .default(getFederalMemberHouseVotesQueryFilterDefault),
   q: zod.coerce
     .string()
     .optional()
-    .describe(
-      "Search query to filter votes by title, legislation, or question",
-    ),
+    .describe("Search query to filter votes by title, legislation, or question"),
 });
 
 export const GetFederalMemberHouseVotesResponse = zod.object({
@@ -366,12 +368,8 @@ export const getFederalMemberSenateVotesQueryLimitDefault = 20;
 export const getFederalMemberSenateVotesQueryFilterDefault = `all`;
 
 export const GetFederalMemberSenateVotesQueryParams = zod.object({
-  offset: zod.coerce
-    .number()
-    .default(getFederalMemberSenateVotesQueryOffsetDefault),
-  limit: zod.coerce
-    .number()
-    .default(getFederalMemberSenateVotesQueryLimitDefault),
+  offset: zod.coerce.number().default(getFederalMemberSenateVotesQueryOffsetDefault),
+  limit: zod.coerce.number().default(getFederalMemberSenateVotesQueryLimitDefault),
   filter: zod
     .enum(["all", "yea", "nay", "present", "not-voting"])
     .default(getFederalMemberSenateVotesQueryFilterDefault),
@@ -436,9 +434,7 @@ export const getFederalBillsQueryOffsetDefault = 0;
 export const getFederalBillsQueryLimitDefault = 20;
 
 export const GetFederalBillsQueryParams = zod.object({
-  chamber: zod
-    .enum(["house", "senate", "both"])
-    .default(getFederalBillsQueryChamberDefault),
+  chamber: zod.enum(["house", "senate", "both"]).default(getFederalBillsQueryChamberDefault),
   offset: zod.coerce.number().default(getFederalBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getFederalBillsQueryLimitDefault),
 });
@@ -453,15 +449,19 @@ export const GetFederalBillsResponse = zod.object({
       introducedDate: zod.string().optional(),
       latestAction: zod.string().optional(),
       latestActionDate: zod.string().optional(),
+      stageIntroduced: zod.boolean().optional(),
+      stageCommittee: zod.boolean().optional(),
+      stageFloorVote: zod.boolean().optional(),
+      stagePassed: zod.boolean().optional(),
+      stageSignedEnacted: zod.boolean().optional(),
+      stageDead: zod.boolean().optional(),
       sponsors: zod.array(zod.string()).optional(),
       url: zod.string().optional(),
       status: zod.string().optional(),
       chamber: zod.string().optional(),
       policyArea: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
-      itemCategory: zod
-        .enum(["bill", "resolution", "amendment", "other"])
-        .optional(),
+      itemCategory: zod.enum(["bill", "resolution", "amendment", "other"]).optional(),
       legislationType: zod.string().optional(),
     }),
   ),
@@ -478,10 +478,9 @@ export const GetFederalBillsResponse = zod.object({
     .optional(),
   fullyIngested: zod.boolean().optional(),
   sourceTotalCount: zod.number().optional(),
-  category: zod
-    .enum(["all", "bill", "resolution", "amendment", "other"])
-    .optional(),
+  category: zod.enum(["all", "bill", "resolution", "amendment", "other"]).optional(),
   categoryCounts: zod.record(zod.string(), zod.number()).optional(),
+  stageCounts: zod.record(zod.string(), zod.record(zod.string(), zod.number())).optional(),
 });
 
 /**
@@ -506,15 +505,19 @@ export const SearchFederalBillsResponse = zod.object({
       introducedDate: zod.string().optional(),
       latestAction: zod.string().optional(),
       latestActionDate: zod.string().optional(),
+      stageIntroduced: zod.boolean().optional(),
+      stageCommittee: zod.boolean().optional(),
+      stageFloorVote: zod.boolean().optional(),
+      stagePassed: zod.boolean().optional(),
+      stageSignedEnacted: zod.boolean().optional(),
+      stageDead: zod.boolean().optional(),
       sponsors: zod.array(zod.string()).optional(),
       url: zod.string().optional(),
       status: zod.string().optional(),
       chamber: zod.string().optional(),
       policyArea: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
-      itemCategory: zod
-        .enum(["bill", "resolution", "amendment", "other"])
-        .optional(),
+      itemCategory: zod.enum(["bill", "resolution", "amendment", "other"]).optional(),
       legislationType: zod.string().optional(),
     }),
   ),
@@ -531,10 +534,9 @@ export const SearchFederalBillsResponse = zod.object({
     .optional(),
   fullyIngested: zod.boolean().optional(),
   sourceTotalCount: zod.number().optional(),
-  category: zod
-    .enum(["all", "bill", "resolution", "amendment", "other"])
-    .optional(),
+  category: zod.enum(["all", "bill", "resolution", "amendment", "other"]).optional(),
   categoryCounts: zod.record(zod.string(), zod.number()).optional(),
+  stageCounts: zod.record(zod.string(), zod.record(zod.string(), zod.number())).optional(),
 });
 
 /**
@@ -706,18 +708,11 @@ export const getStateMemberBillsQueryOffsetDefault = 0;
 export const getStateMemberBillsQueryLimitDefault = 20;
 
 export const GetStateMemberBillsQueryParams = zod.object({
-  type: zod
-    .enum(["sponsored", "cosponsored"])
-    .default(getStateMemberBillsQueryTypeDefault),
-  jurisdiction: zod.coerce
-    .string()
-    .default(getStateMemberBillsQueryJurisdictionDefault),
+  type: zod.enum(["sponsored", "cosponsored"]).default(getStateMemberBillsQueryTypeDefault),
+  jurisdiction: zod.coerce.string().default(getStateMemberBillsQueryJurisdictionDefault),
   offset: zod.coerce.number().default(getStateMemberBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getStateMemberBillsQueryLimitDefault),
-  q: zod.coerce
-    .string()
-    .optional()
-    .describe("Search query to filter bills by title or identifier"),
+  q: zod.coerce.string().optional().describe("Search query to filter bills by title or identifier"),
 });
 
 export const GetStateMemberBillsResponse = zod.object({
@@ -732,6 +727,12 @@ export const GetStateMemberBillsResponse = zod.object({
       introducedDate: zod.string().optional(),
       latestAction: zod.string().optional(),
       latestActionDate: zod.string().optional(),
+      stageIntroduced: zod.boolean().optional(),
+      stageCommittee: zod.boolean().optional(),
+      stageFloorVote: zod.boolean().optional(),
+      stagePassed: zod.boolean().optional(),
+      stageSignedEnacted: zod.boolean().optional(),
+      stageDead: zod.boolean().optional(),
       sponsors: zod.array(zod.string()).optional(),
       url: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
@@ -754,18 +755,13 @@ export const getStateMemberVotesQueryLimitDefault = 20;
 export const getStateMemberVotesQueryFilterDefault = `all`;
 
 export const GetStateMemberVotesQueryParams = zod.object({
-  jurisdiction: zod.coerce
-    .string()
-    .default(getStateMemberVotesQueryJurisdictionDefault),
+  jurisdiction: zod.coerce.string().default(getStateMemberVotesQueryJurisdictionDefault),
   offset: zod.coerce.number().default(getStateMemberVotesQueryOffsetDefault),
   limit: zod.coerce.number().default(getStateMemberVotesQueryLimitDefault),
   filter: zod
     .enum(["all", "yea", "nay", "present", "not-voting"])
     .default(getStateMemberVotesQueryFilterDefault),
-  q: zod.coerce
-    .string()
-    .optional()
-    .describe("Search query to filter votes by bill title"),
+  q: zod.coerce.string().optional().describe("Search query to filter votes by bill title"),
 });
 
 export const GetStateMemberVotesResponse = zod.object({
@@ -794,9 +790,7 @@ export const GetStateBillsQueryParams = zod.object({
   chamber: zod.enum(["upper", "lower"]).optional(),
   offset: zod.coerce.number().default(getStateBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getStateBillsQueryLimitDefault),
-  jurisdiction: zod.coerce
-    .string()
-    .default(getStateBillsQueryJurisdictionDefault),
+  jurisdiction: zod.coerce.string().default(getStateBillsQueryJurisdictionDefault),
 });
 
 export const GetStateBillsResponse = zod.object({
@@ -811,6 +805,12 @@ export const GetStateBillsResponse = zod.object({
       introducedDate: zod.string().optional(),
       latestAction: zod.string().optional(),
       latestActionDate: zod.string().optional(),
+      stageIntroduced: zod.boolean().optional(),
+      stageCommittee: zod.boolean().optional(),
+      stageFloorVote: zod.boolean().optional(),
+      stagePassed: zod.boolean().optional(),
+      stageSignedEnacted: zod.boolean().optional(),
+      stageDead: zod.boolean().optional(),
       sponsors: zod.array(zod.string()).optional(),
       url: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),
@@ -829,9 +829,7 @@ export const searchStateBillsQueryLimitDefault = 20;
 
 export const SearchStateBillsQueryParams = zod.object({
   q: zod.coerce.string(),
-  jurisdiction: zod.coerce
-    .string()
-    .default(searchStateBillsQueryJurisdictionDefault),
+  jurisdiction: zod.coerce.string().default(searchStateBillsQueryJurisdictionDefault),
   offset: zod.coerce.number().default(searchStateBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(searchStateBillsQueryLimitDefault),
 });
@@ -848,6 +846,12 @@ export const SearchStateBillsResponse = zod.object({
       introducedDate: zod.string().optional(),
       latestAction: zod.string().optional(),
       latestActionDate: zod.string().optional(),
+      stageIntroduced: zod.boolean().optional(),
+      stageCommittee: zod.boolean().optional(),
+      stageFloorVote: zod.boolean().optional(),
+      stagePassed: zod.boolean().optional(),
+      stageSignedEnacted: zod.boolean().optional(),
+      stageDead: zod.boolean().optional(),
       sponsors: zod.array(zod.string()).optional(),
       url: zod.string().optional(),
       subjects: zod.array(zod.string()).optional(),

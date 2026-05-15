@@ -22,6 +22,7 @@ import {
 } from "../lib/stateLegislatorCache";
 import { fetchWithTimeout as fetch } from "../lib/http";
 import { sendInternalError } from "../lib/respond";
+import { computeLegislationStageFlags } from "../lib/legislationStages";
 
 async function checkRateLimited() {
   if (await isRateLimited()) {
@@ -33,6 +34,11 @@ const router = Router();
 
 const OPENSTATES_API_KEY = process.env.OPENSTATES_API_KEY;
 const BASE = "https://v3.openstates.org";
+const STATE_MEMBER_BILLS_CACHE_TTL_MS = 5 * 60 * 1000;
+const stateMemberBillsCache = new Map<
+  string,
+  { fetchedAt: number; bills: ReturnType<typeof mapStateBill>[]; totalCount: number }
+>();
 
 async function openStatesFetch(
   path: string,
@@ -66,12 +72,12 @@ function mapStateBill(b: any) {
     id: b.id ?? "",
     identifier: b.identifier,
     title: b.title ?? "Untitled",
-    session: b.legislative_session,
+    session: b.session ?? b.legislative_session,
     chamber: b.from_organization?.classification,
-    status: b.status ?? latestAction?.description,
+    status: b.status ?? b.latest_action_description ?? latestAction?.description,
     introducedDate: b.first_action_date ?? b.created_at?.split("T")[0],
-    latestAction: latestAction?.description,
-    latestActionDate: latestAction?.date,
+    latestAction: b.latest_action_description ?? latestAction?.description,
+    latestActionDate: b.latest_action_date ?? latestAction?.date,
     sponsors: b.sponsorships?.map((s: any) => s.name ?? "") ?? [],
     url: b.openstates_url,
     subjects: Array.isArray(b.subject)
@@ -79,6 +85,112 @@ function mapStateBill(b: any) {
       : b.subject
         ? [b.subject]
         : undefined,
+  };
+}
+
+function getBillSortDateMs(bill: ReturnType<typeof mapStateBill>) {
+  const rawDate = bill.introducedDate ?? bill.latestActionDate;
+  const time = rawDate ? new Date(rawDate).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function sortBillsNewestFirst<T extends ReturnType<typeof mapStateBill>>(bills: T[]) {
+  return bills.sort((a, b) => {
+    const dateDelta = getBillSortDateMs(b) - getBillSortDateMs(a);
+    if (dateDelta !== 0) return dateDelta;
+    return (b.identifier ?? "").localeCompare(a.identifier ?? "");
+  });
+}
+
+async function upsertStateBill({
+  bill,
+  sourceBill,
+  jurisdiction,
+}: {
+  bill: ReturnType<typeof mapStateBill>;
+  sourceBill: any;
+  jurisdiction: string;
+}) {
+  const subjectsText = Array.isArray(bill.subjects)
+    ? bill.subjects.join(" ")
+    : "";
+  const stageFlags = computeLegislationStageFlags({
+    latestAction: bill.latestAction,
+    status: bill.status,
+    introducedDate: bill.introducedDate,
+  });
+  await db
+    .insert(stateBillsTable)
+    .values({
+      id: bill.id,
+      identifier: bill.identifier ?? null,
+      title: bill.title,
+      session: bill.session ?? null,
+      chamber: bill.chamber ?? null,
+      status: bill.status ?? null,
+      introducedDate: bill.introducedDate ?? null,
+      stageIntroduced: stageFlags.introduced,
+      stageCommittee: stageFlags.committee,
+      stageFloorVote: stageFlags.floor_vote,
+      stagePassed: stageFlags.passed,
+      stageSignedEnacted: stageFlags.signed_enacted,
+      stageDead: stageFlags.dead,
+      summary: null,
+      subjects: bill.subjects ?? [],
+      url: bill.url ?? null,
+      jurisdiction,
+      raw: sourceBill,
+      searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.identifier ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+    })
+    .onConflictDoUpdate({
+      target: stateBillsTable.id,
+      set: {
+        title: bill.title,
+        identifier: bill.identifier ?? null,
+        session: bill.session ?? null,
+        chamber: bill.chamber ?? null,
+        status: bill.status ?? null,
+        introducedDate: bill.introducedDate ?? null,
+        stageIntroduced: stageFlags.introduced,
+        stageCommittee: stageFlags.committee,
+        stageFloorVote: stageFlags.floor_vote,
+        stagePassed: stageFlags.passed,
+        stageSignedEnacted: stageFlags.signed_enacted,
+        stageDead: stageFlags.dead,
+        subjects: bill.subjects ?? [],
+        url: bill.url ?? null,
+        raw: sourceBill,
+        fetchedAt: new Date(),
+        searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.identifier ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+      },
+    });
+}
+
+function mapDbStateBillRow(row: typeof stateBillsTable.$inferSelect) {
+  const raw = (row.raw ?? {}) as any;
+  const actions: any[] = Array.isArray(raw.actions) ? raw.actions : [];
+  const latestAction = actions[actions.length - 1];
+  return {
+    id: row.id,
+    identifier: row.identifier ?? undefined,
+    title: row.title ?? "Untitled",
+    session: row.session ?? undefined,
+    chamber: row.chamber ?? undefined,
+    status: row.status ?? undefined,
+    introducedDate: row.introducedDate ?? undefined,
+    latestAction: latestAction?.description ?? row.status ?? undefined,
+    latestActionDate: latestAction?.date ?? undefined,
+    stageIntroduced: row.stageIntroduced,
+    stageCommittee: row.stageCommittee,
+    stageFloorVote: row.stageFloorVote,
+    stagePassed: row.stagePassed,
+    stageSignedEnacted: row.stageSignedEnacted,
+    stageDead: row.stageDead,
+    sponsors: Array.isArray(raw.sponsorships)
+      ? raw.sponsorships.map((s: any) => s?.name).filter(Boolean)
+      : [],
+    url: row.url ?? undefined,
+    subjects: row.subjects ?? undefined,
   };
 }
 
@@ -178,17 +290,59 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
     return res.status(400).json({ error: "Invalid params" });
 
   try {
-    const { jurisdiction, offset, limit, q } = queryParsed.data;
-    const page = Math.floor(offset / limit) + 1;
-    const data = await openStatesFetch("/bills", {
+    const { jurisdiction, offset, limit, q, type } = queryParsed.data;
+    const sponsorClassification =
+      type === "cosponsored" ? "cosponsor" : "primary";
+    const perPage = Math.min(limit, 20);
+    const page = Math.floor(offset / perPage) + 1;
+    const cacheKey = [
       jurisdiction,
-      per_page: limit,
+      memberId,
+      sponsorClassification,
       page,
-      sponsor_id: memberId,
-    });
-    let bills = (data.results ?? []).map(mapStateBill);
+      perPage,
+    ].join("|");
+    const cached = stateMemberBillsCache.get(cacheKey);
+    let bills: ReturnType<typeof mapStateBill>[] | undefined =
+      cached && Date.now() - cached.fetchedAt < STATE_MEMBER_BILLS_CACHE_TTL_MS
+        ? [...cached.bills]
+        : undefined;
+    let totalCount =
+      cached && Date.now() - cached.fetchedAt < STATE_MEMBER_BILLS_CACHE_TTL_MS
+        ? cached.totalCount
+        : 0;
 
-    // In-memory search filter (OpenStates does not support per-member text search)
+    if (!bills) {
+      const params: Record<string, string | number> = {
+        jurisdiction,
+        per_page: perPage,
+        page,
+        sponsor: memberId,
+        include: "sponsorships",
+        sponsor_classification: sponsorClassification,
+        sort: "first_action_desc",
+      };
+
+      const data = await openStatesFetch("/bills", params);
+      totalCount = Number(data.pagination?.total_items ?? 0);
+      const sourceBills = data.results ?? [];
+      bills = sortBillsNewestFirst(sourceBills.map(mapStateBill));
+      for (const sourceBill of sourceBills) {
+        await upsertStateBill({
+          bill: mapStateBill(sourceBill),
+          sourceBill,
+          jurisdiction,
+        });
+      }
+      stateMemberBillsCache.set(cacheKey, {
+        fetchedAt: Date.now(),
+        bills,
+        totalCount,
+      });
+    }
+
+    // OpenStates does not support per-member text search, so search within the
+    // current sponsored/cosponsored page after fetching it from the provider.
     if (q) {
       const query = q.toLowerCase();
       bills = bills.filter(
@@ -196,11 +350,25 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
           (b.title ?? "").toLowerCase().includes(query) ||
           (b.identifier ?? "").toLowerCase().includes(query),
       );
+      totalCount = bills.length;
     }
+
+    req.log.info(
+      {
+        memberId,
+        jurisdiction,
+        type,
+        offset,
+        limit,
+        totalCount,
+        source: "openstates",
+      },
+      "Serving state member bills from OpenStates sponsor index",
+    );
 
     return res.json({
       bills,
-      totalCount: data.pagination?.total_items,
+      totalCount,
       offset,
     });
   } catch (err) {
@@ -425,6 +593,35 @@ router.get("/state/bills", async (req, res) => {
   const { chamber, offset, limit, jurisdiction } = parsed.data;
 
   try {
+    const dbConditions = [
+      eq(stateBillsTable.jurisdiction, jurisdiction),
+      ...(chamber ? [eq(stateBillsTable.chamber, chamber)] : []),
+    ];
+    const dbCountResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stateBillsTable)
+      .where(and(...dbConditions));
+    const dbTotalCount = Number(dbCountResult[0]?.count ?? 0);
+
+    if (dbTotalCount > offset) {
+      const rows = await db
+        .select()
+        .from(stateBillsTable)
+        .where(and(...dbConditions))
+        .orderBy(desc(stateBillsTable.introducedDate))
+        .limit(limit)
+        .offset(offset);
+      req.log.info(
+        { jurisdiction, chamber, offset, limit, totalCount: dbTotalCount, source: "db" },
+        "Serving state bills from DB cache",
+      );
+      return res.json({
+        bills: rows.map(mapDbStateBillRow),
+        totalCount: dbTotalCount,
+        offset,
+      });
+    }
+
     const params: Record<string, string | number> = {
       jurisdiction,
       per_page: limit,
@@ -455,39 +652,9 @@ router.get("/state/bills", async (req, res) => {
     });
 
     // Upsert into cache for search
-    for (const bill of bills) {
-      const subjectsText = Array.isArray(bill.subjects)
-        ? bill.subjects.join(" ")
-        : "";
-      await db
-        .insert(stateBillsTable)
-        .values({
-          id: bill.id,
-          identifier: bill.identifier ?? null,
-          title: bill.title,
-          session: bill.session ?? null,
-          chamber: bill.chamber ?? null,
-          status: bill.status ?? null,
-          introducedDate: bill.introducedDate ?? null,
-          summary: null,
-          subjects: bill.subjects ?? [],
-          url: bill.url ?? null,
-          jurisdiction,
-          raw: null,
-          searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.identifier}, '') || ' ' || coalesce(${subjectsText}, ''))`,
-        })
-        .onConflictDoUpdate({
-          target: stateBillsTable.id,
-          set: {
-            title: bill.title,
-            identifier: bill.identifier ?? null,
-            status: bill.status ?? null,
-            subjects: bill.subjects ?? [],
-            url: bill.url ?? null,
-            fetchedAt: new Date(),
-            searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.identifier}, '') || ' ' || coalesce(${subjectsText}, ''))`,
-          },
-        });
+    for (const [idx, bill] of bills.entries()) {
+      const sourceBill = (data.results ?? [])[idx] ?? null;
+      await upsertStateBill({ bill, sourceBill, jurisdiction });
     }
 
     return res.json({

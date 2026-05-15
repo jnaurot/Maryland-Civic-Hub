@@ -68,9 +68,7 @@ export const getHealthCheckUrl = () => {
   return `/api/healthz`;
 };
 
-export const healthCheck = async (
-  options?: RequestInit,
-): Promise<HealthStatus> => {
+export const healthCheck = async (options?: RequestInit): Promise<HealthStatus> => {
   return customFetch<HealthStatus>(getHealthCheckUrl(), {
     ...options,
     method: "GET",
@@ -85,20 +83,15 @@ export const getHealthCheckQueryOptions = <
   TData = Awaited<ReturnType<typeof healthCheck>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof healthCheck>>,
-    TError,
-    TData
-  >;
+  query?: UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey = queryOptions?.queryKey ?? getHealthCheckQueryKey();
 
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheck>>> = ({
-    signal,
-  }) => healthCheck({ signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheck>>> = ({ signal }) =>
+    healthCheck({ signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof healthCheck>>,
@@ -107,9 +100,7 @@ export const getHealthCheckQueryOptions = <
   > & { queryKey: QueryKey };
 };
 
-export type HealthCheckQueryResult = NonNullable<
-  Awaited<ReturnType<typeof healthCheck>>
->;
+export type HealthCheckQueryResult = NonNullable<Awaited<ReturnType<typeof healthCheck>>>;
 export type HealthCheckQueryError = ErrorType<unknown>;
 
 /**
@@ -120,18 +111,12 @@ export function useHealthCheck<
   TData = Awaited<ReturnType<typeof healthCheck>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof healthCheck>>,
-    TError,
-    TData
-  >;
+  query?: UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -139,9 +124,7 @@ export function useHealthCheck<
 /**
  * @summary Get all representatives for a given address
  */
-export const getGetRepresentativesByAddressUrl = (
-  params: GetRepresentativesByAddressParams,
-) => {
+export const getGetRepresentativesByAddressUrl = (params: GetRepresentativesByAddressParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -161,13 +144,10 @@ export const getRepresentativesByAddress = async (
   params: GetRepresentativesByAddressParams,
   options?: RequestInit,
 ): Promise<RepresentativesResponse> => {
-  return customFetch<RepresentativesResponse>(
-    getGetRepresentativesByAddressUrl(params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<RepresentativesResponse>(getGetRepresentativesByAddressUrl(params), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetRepresentativesByAddressQueryKey = (
@@ -182,23 +162,17 @@ export const getGetRepresentativesByAddressQueryOptions = <
 >(
   params: GetRepresentativesByAddressParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getRepresentativesByAddress>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getRepresentativesByAddress>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getGetRepresentativesByAddressQueryKey(params);
+  const queryKey = queryOptions?.queryKey ?? getGetRepresentativesByAddressQueryKey(params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getRepresentativesByAddress>>
-  > = ({ signal }) =>
-    getRepresentativesByAddress(params, { signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getRepresentativesByAddress>>> = ({
+    signal,
+  }) => getRepresentativesByAddress(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getRepresentativesByAddress>>,
@@ -222,22 +196,13 @@ export function useGetRepresentativesByAddress<
 >(
   params: GetRepresentativesByAddressParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getRepresentativesByAddress>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getRepresentativesByAddress>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetRepresentativesByAddressQueryOptions(
-    params,
-    options,
-  );
+  const queryOptions = getGetRepresentativesByAddressQueryOptions(params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -245,9 +210,7 @@ export function useGetRepresentativesByAddress<
 /**
  * @summary Get all current federal members for a state
  */
-export const getGetFederalStateMembersUrl = (
-  params: GetFederalStateMembersParams,
-) => {
+export const getGetFederalStateMembersUrl = (params: GetFederalStateMembersParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -267,18 +230,13 @@ export const getFederalStateMembers = async (
   params: GetFederalStateMembersParams,
   options?: RequestInit,
 ): Promise<FederalStateMembersResponse> => {
-  return customFetch<FederalStateMembersResponse>(
-    getGetFederalStateMembersUrl(params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<FederalStateMembersResponse>(getGetFederalStateMembersUrl(params), {
+    ...options,
+    method: "GET",
+  });
 };
 
-export const getGetFederalStateMembersQueryKey = (
-  params?: GetFederalStateMembersParams,
-) => {
+export const getGetFederalStateMembersQueryKey = (params?: GetFederalStateMembersParams) => {
   return [`/api/federal/state-members`, ...(params ? [params] : [])] as const;
 };
 
@@ -288,22 +246,15 @@ export const getGetFederalStateMembersQueryOptions = <
 >(
   params: GetFederalStateMembersParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalStateMembers>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalStateMembers>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getGetFederalStateMembersQueryKey(params);
+  const queryKey = queryOptions?.queryKey ?? getGetFederalStateMembersQueryKey(params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getFederalStateMembers>>
-  > = ({ signal }) =>
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFederalStateMembers>>> = ({ signal }) =>
     getFederalStateMembers(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
@@ -328,19 +279,13 @@ export function useGetFederalStateMembers<
 >(
   params: GetFederalStateMembersParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalStateMembers>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalStateMembers>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetFederalStateMembersQueryOptions(params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -356,13 +301,10 @@ export const getFederalMember = async (
   bioguideId: string,
   options?: RequestInit,
 ): Promise<FederalMemberDetailResponse> => {
-  return customFetch<FederalMemberDetailResponse>(
-    getGetFederalMemberUrl(bioguideId),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<FederalMemberDetailResponse>(getGetFederalMemberUrl(bioguideId), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetFederalMemberQueryKey = (bioguideId: string) => {
@@ -375,39 +317,25 @@ export const getGetFederalMemberQueryOptions = <
 >(
   bioguideId: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMember>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMember>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getGetFederalMemberQueryKey(bioguideId);
+  const queryKey = queryOptions?.queryKey ?? getGetFederalMemberQueryKey(bioguideId);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getFederalMember>>
-  > = ({ signal }) =>
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFederalMember>>> = ({ signal }) =>
     getFederalMember(bioguideId, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!bioguideId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!bioguideId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getFederalMember>>,
     TError,
     TData
   > & { queryKey: QueryKey };
 };
 
-export type GetFederalMemberQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getFederalMember>>
->;
+export type GetFederalMemberQueryResult = NonNullable<Awaited<ReturnType<typeof getFederalMember>>>;
 export type GetFederalMemberQueryError = ErrorType<unknown>;
 
 /**
@@ -420,19 +348,13 @@ export function useGetFederalMember<
 >(
   bioguideId: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMember>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMember>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetFederalMemberQueryOptions(bioguideId, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -448,13 +370,10 @@ export const refreshFederalMember = async (
   bioguideId: string,
   options?: RequestInit,
 ): Promise<FederalMemberDetailResponse> => {
-  return customFetch<FederalMemberDetailResponse>(
-    getRefreshFederalMemberUrl(bioguideId),
-    {
-      ...options,
-      method: "POST",
-    },
-  );
+  return customFetch<FederalMemberDetailResponse>(getRefreshFederalMemberUrl(bioguideId), {
+    ...options,
+    method: "POST",
+  });
 };
 
 export const getRefreshFederalMemberMutationOptions = <
@@ -476,9 +395,7 @@ export const getRefreshFederalMemberMutationOptions = <
 > => {
   const mutationKey = ["refreshFederalMember"];
   const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
     : { mutation: { mutationKey }, request: undefined };
@@ -504,10 +421,7 @@ export type RefreshFederalMemberMutationError = ErrorType<unknown>;
 /**
  * @summary Force refresh a federal member from Congress.gov
  */
-export const useRefreshFederalMember = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
+export const useRefreshFederalMember = <TError = ErrorType<unknown>, TContext = unknown>(options?: {
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof refreshFederalMember>>,
     TError,
@@ -527,9 +441,7 @@ export const useRefreshFederalMember = <
 /**
  * @summary Search federal members by name, state, or party
  */
-export const getSearchFederalMembersUrl = (
-  params: SearchFederalMembersParams,
-) => {
+export const getSearchFederalMembersUrl = (params: SearchFederalMembersParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -549,18 +461,13 @@ export const searchFederalMembers = async (
   params: SearchFederalMembersParams,
   options?: RequestInit,
 ): Promise<FederalMembersSearchResponse> => {
-  return customFetch<FederalMembersSearchResponse>(
-    getSearchFederalMembersUrl(params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<FederalMembersSearchResponse>(getSearchFederalMembersUrl(params), {
+    ...options,
+    method: "GET",
+  });
 };
 
-export const getSearchFederalMembersQueryKey = (
-  params?: SearchFederalMembersParams,
-) => {
+export const getSearchFederalMembersQueryKey = (params?: SearchFederalMembersParams) => {
   return [`/api/federal/members/search`, ...(params ? [params] : [])] as const;
 };
 
@@ -570,22 +477,15 @@ export const getSearchFederalMembersQueryOptions = <
 >(
   params: SearchFederalMembersParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchFederalMembers>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchFederalMembers>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getSearchFederalMembersQueryKey(params);
+  const queryKey = queryOptions?.queryKey ?? getSearchFederalMembersQueryKey(params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof searchFederalMembers>>
-  > = ({ signal }) =>
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof searchFederalMembers>>> = ({ signal }) =>
     searchFederalMembers(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
@@ -610,19 +510,13 @@ export function useSearchFederalMembers<
 >(
   params: SearchFederalMembersParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchFederalMembers>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchFederalMembers>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getSearchFederalMembersQueryOptions(params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -654,23 +548,17 @@ export const getFederalMemberBills = async (
   params?: GetFederalMemberBillsParams,
   options?: RequestInit,
 ): Promise<BillsListResponse> => {
-  return customFetch<BillsListResponse>(
-    getGetFederalMemberBillsUrl(bioguideId, params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<BillsListResponse>(getGetFederalMemberBillsUrl(bioguideId, params), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetFederalMemberBillsQueryKey = (
   bioguideId: string,
   params?: GetFederalMemberBillsParams,
 ) => {
-  return [
-    `/api/federal/members/${bioguideId}/bills`,
-    ...(params ? [params] : []),
-  ] as const;
+  return [`/api/federal/members/${bioguideId}/bills`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetFederalMemberBillsQueryOptions = <
@@ -680,31 +568,18 @@ export const getGetFederalMemberBillsQueryOptions = <
   bioguideId: string,
   params?: GetFederalMemberBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMemberBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ??
-    getGetFederalMemberBillsQueryKey(bioguideId, params);
+  const queryKey = queryOptions?.queryKey ?? getGetFederalMemberBillsQueryKey(bioguideId, params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getFederalMemberBills>>
-  > = ({ signal }) =>
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFederalMemberBills>>> = ({ signal }) =>
     getFederalMemberBills(bioguideId, params, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!bioguideId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!bioguideId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getFederalMemberBills>>,
     TError,
     TData
@@ -727,23 +602,13 @@ export function useGetFederalMemberBills<
   bioguideId: string,
   params?: GetFederalMemberBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMemberBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetFederalMemberBillsQueryOptions(
-    bioguideId,
-    params,
-    options,
-  );
+  const queryOptions = getGetFederalMemberBillsQueryOptions(bioguideId, params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -760,15 +625,12 @@ export const refreshFederalMemberBills = async (
   refreshFederalMemberBillsBody?: RefreshFederalMemberBillsBody,
   options?: RequestInit,
 ): Promise<BillsListResponse> => {
-  return customFetch<BillsListResponse>(
-    getRefreshFederalMemberBillsUrl(bioguideId),
-    {
-      ...options,
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...options?.headers },
-      body: JSON.stringify(refreshFederalMemberBillsBody),
-    },
-  );
+  return customFetch<BillsListResponse>(getRefreshFederalMemberBillsUrl(bioguideId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(refreshFederalMemberBillsBody),
+  });
 };
 
 export const getRefreshFederalMemberBillsMutationOptions = <
@@ -790,9 +652,7 @@ export const getRefreshFederalMemberBillsMutationOptions = <
 > => {
   const mutationKey = ["refreshFederalMemberBills"];
   const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
     : { mutation: { mutationKey }, request: undefined };
@@ -812,8 +672,7 @@ export const getRefreshFederalMemberBillsMutationOptions = <
 export type RefreshFederalMemberBillsMutationResult = NonNullable<
   Awaited<ReturnType<typeof refreshFederalMemberBills>>
 >;
-export type RefreshFederalMemberBillsMutationBody =
-  BodyType<RefreshFederalMemberBillsBody>;
+export type RefreshFederalMemberBillsMutationBody = BodyType<RefreshFederalMemberBillsBody>;
 export type RefreshFederalMemberBillsMutationError = ErrorType<unknown>;
 
 /**
@@ -866,23 +725,17 @@ export const getFederalMemberHouseVotes = async (
   params?: GetFederalMemberHouseVotesParams,
   options?: RequestInit,
 ): Promise<HouseVotesListResponse> => {
-  return customFetch<HouseVotesListResponse>(
-    getGetFederalMemberHouseVotesUrl(bioguideId, params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<HouseVotesListResponse>(getGetFederalMemberHouseVotesUrl(bioguideId, params), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetFederalMemberHouseVotesQueryKey = (
   bioguideId: string,
   params?: GetFederalMemberHouseVotesParams,
 ) => {
-  return [
-    `/api/federal/members/${bioguideId}/house-votes`,
-    ...(params ? [params] : []),
-  ] as const;
+  return [`/api/federal/members/${bioguideId}/house-votes`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetFederalMemberHouseVotesQueryOptions = <
@@ -892,34 +745,20 @@ export const getGetFederalMemberHouseVotesQueryOptions = <
   bioguideId: string,
   params?: GetFederalMemberHouseVotesParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberHouseVotes>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMemberHouseVotes>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ??
-    getGetFederalMemberHouseVotesQueryKey(bioguideId, params);
+    queryOptions?.queryKey ?? getGetFederalMemberHouseVotesQueryKey(bioguideId, params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getFederalMemberHouseVotes>>
-  > = ({ signal }) =>
-    getFederalMemberHouseVotes(bioguideId, params, {
-      signal,
-      ...requestOptions,
-    });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFederalMemberHouseVotes>>> = ({
+    signal,
+  }) => getFederalMemberHouseVotes(bioguideId, params, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!bioguideId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!bioguideId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getFederalMemberHouseVotes>>,
     TError,
     TData
@@ -942,23 +781,13 @@ export function useGetFederalMemberHouseVotes<
   bioguideId: string,
   params?: GetFederalMemberHouseVotesParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberHouseVotes>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMemberHouseVotes>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetFederalMemberHouseVotesQueryOptions(
-    bioguideId,
-    params,
-    options,
-  );
+  const queryOptions = getGetFederalMemberHouseVotesQueryOptions(bioguideId, params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -1003,10 +832,7 @@ export const getGetFederalMemberSenateVotesQueryKey = (
   bioguideId: string,
   params?: GetFederalMemberSenateVotesParams,
 ) => {
-  return [
-    `/api/federal/members/${bioguideId}/senate-votes`,
-    ...(params ? [params] : []),
-  ] as const;
+  return [`/api/federal/members/${bioguideId}/senate-votes`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetFederalMemberSenateVotesQueryOptions = <
@@ -1016,34 +842,20 @@ export const getGetFederalMemberSenateVotesQueryOptions = <
   bioguideId: string,
   params?: GetFederalMemberSenateVotesParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberSenateVotes>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMemberSenateVotes>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ??
-    getGetFederalMemberSenateVotesQueryKey(bioguideId, params);
+    queryOptions?.queryKey ?? getGetFederalMemberSenateVotesQueryKey(bioguideId, params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getFederalMemberSenateVotes>>
-  > = ({ signal }) =>
-    getFederalMemberSenateVotes(bioguideId, params, {
-      signal,
-      ...requestOptions,
-    });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFederalMemberSenateVotes>>> = ({
+    signal,
+  }) => getFederalMemberSenateVotes(bioguideId, params, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!bioguideId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!bioguideId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getFederalMemberSenateVotes>>,
     TError,
     TData
@@ -1066,23 +878,13 @@ export function useGetFederalMemberSenateVotes<
   bioguideId: string,
   params?: GetFederalMemberSenateVotesParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberSenateVotes>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMemberSenateVotes>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetFederalMemberSenateVotesQueryOptions(
-    bioguideId,
-    params,
-    options,
-  );
+  const queryOptions = getGetFederalMemberSenateVotesQueryOptions(bioguideId, params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -1098,13 +900,10 @@ export const getFederalMemberCommittees = async (
   bioguideId: string,
   options?: RequestInit,
 ): Promise<CommitteesListResponse> => {
-  return customFetch<CommitteesListResponse>(
-    getGetFederalMemberCommitteesUrl(bioguideId),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<CommitteesListResponse>(getGetFederalMemberCommitteesUrl(bioguideId), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetFederalMemberCommitteesQueryKey = (bioguideId: string) => {
@@ -1117,30 +916,19 @@ export const getGetFederalMemberCommitteesQueryOptions = <
 >(
   bioguideId: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberCommittees>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMemberCommittees>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getGetFederalMemberCommitteesQueryKey(bioguideId);
+  const queryKey = queryOptions?.queryKey ?? getGetFederalMemberCommitteesQueryKey(bioguideId);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getFederalMemberCommittees>>
-  > = ({ signal }) =>
-    getFederalMemberCommittees(bioguideId, { signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFederalMemberCommittees>>> = ({
+    signal,
+  }) => getFederalMemberCommittees(bioguideId, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!bioguideId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!bioguideId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getFederalMemberCommittees>>,
     TError,
     TData
@@ -1162,22 +950,13 @@ export function useGetFederalMemberCommittees<
 >(
   bioguideId: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalMemberCommittees>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalMemberCommittees>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetFederalMemberCommitteesQueryOptions(
-    bioguideId,
-    options,
-  );
+  const queryOptions = getGetFederalMemberCommitteesQueryOptions(bioguideId, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -1221,11 +1000,7 @@ export const getGetFederalBillsQueryOptions = <
 >(
   params?: GetFederalBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -1233,9 +1008,8 @@ export const getGetFederalBillsQueryOptions = <
 
   const queryKey = queryOptions?.queryKey ?? getGetFederalBillsQueryKey(params);
 
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFederalBills>>> = ({
-    signal,
-  }) => getFederalBills(params, { signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFederalBills>>> = ({ signal }) =>
+    getFederalBills(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getFederalBills>>,
@@ -1244,9 +1018,7 @@ export const getGetFederalBillsQueryOptions = <
   > & { queryKey: QueryKey };
 };
 
-export type GetFederalBillsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getFederalBills>>
->;
+export type GetFederalBillsQueryResult = NonNullable<Awaited<ReturnType<typeof getFederalBills>>>;
 export type GetFederalBillsQueryError = ErrorType<unknown>;
 
 /**
@@ -1259,19 +1031,13 @@ export function useGetFederalBills<
 >(
   params?: GetFederalBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetFederalBillsQueryOptions(params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -1305,9 +1071,7 @@ export const searchFederalBills = async (
   });
 };
 
-export const getSearchFederalBillsQueryKey = (
-  params?: SearchFederalBillsParams,
-) => {
+export const getSearchFederalBillsQueryKey = (params?: SearchFederalBillsParams) => {
   return [`/api/federal/bills/search`, ...(params ? [params] : [])] as const;
 };
 
@@ -1317,22 +1081,16 @@ export const getSearchFederalBillsQueryOptions = <
 >(
   params: SearchFederalBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchFederalBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchFederalBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getSearchFederalBillsQueryKey(params);
+  const queryKey = queryOptions?.queryKey ?? getSearchFederalBillsQueryKey(params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof searchFederalBills>>
-  > = ({ signal }) => searchFederalBills(params, { signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof searchFederalBills>>> = ({ signal }) =>
+    searchFederalBills(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof searchFederalBills>>,
@@ -1356,19 +1114,13 @@ export function useSearchFederalBills<
 >(
   params: SearchFederalBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchFederalBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchFederalBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getSearchFederalBillsQueryOptions(params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -1390,13 +1142,10 @@ export const getFederalBillDetail = async (
   billNumber: string,
   options?: RequestInit,
 ): Promise<BillDetail> => {
-  return customFetch<BillDetail>(
-    getGetFederalBillDetailUrl(congress, billType, billNumber),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<BillDetail>(getGetFederalBillDetailUrl(congress, billType, billNumber), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetFederalBillDetailQueryKey = (
@@ -1415,38 +1164,26 @@ export const getGetFederalBillDetailQueryOptions = <
   billType: string,
   billNumber: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalBillDetail>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalBillDetail>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ??
-    getGetFederalBillDetailQueryKey(congress, billType, billNumber);
+    queryOptions?.queryKey ?? getGetFederalBillDetailQueryKey(congress, billType, billNumber);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getFederalBillDetail>>
-  > = ({ signal }) =>
-    getFederalBillDetail(congress, billType, billNumber, {
-      signal,
-      ...requestOptions,
-    });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFederalBillDetail>>> = ({ signal }) =>
+    getFederalBillDetail(congress, billType, billNumber, { signal, ...requestOptions });
 
   return {
     queryKey,
     queryFn,
     enabled: !!(congress && billType && billNumber),
     ...queryOptions,
-  } as UseQueryOptions<
-    Awaited<ReturnType<typeof getFederalBillDetail>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
+  } as UseQueryOptions<Awaited<ReturnType<typeof getFederalBillDetail>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
 };
 
 export type GetFederalBillDetailQueryResult = NonNullable<
@@ -1466,24 +1203,13 @@ export function useGetFederalBillDetail<
   billType: string,
   billNumber: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getFederalBillDetail>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getFederalBillDetail>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetFederalBillDetailQueryOptions(
-    congress,
-    billType,
-    billNumber,
-    options,
-  );
+  const queryOptions = getGetFederalBillDetailQueryOptions(congress, billType, billNumber, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -1499,13 +1225,10 @@ export const getStateMember = async (
   memberId: string,
   options?: RequestInit,
 ): Promise<StateMemberDetailResponse> => {
-  return customFetch<StateMemberDetailResponse>(
-    getGetStateMemberUrl(memberId),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<StateMemberDetailResponse>(getGetStateMemberUrl(memberId), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetStateMemberQueryKey = (memberId: string) => {
@@ -1518,38 +1241,25 @@ export const getGetStateMemberQueryOptions = <
 >(
   memberId: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateMember>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateMember>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getGetStateMemberQueryKey(memberId);
+  const queryKey = queryOptions?.queryKey ?? getGetStateMemberQueryKey(memberId);
 
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStateMember>>> = ({
-    signal,
-  }) => getStateMember(memberId, { signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStateMember>>> = ({ signal }) =>
+    getStateMember(memberId, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!memberId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!memberId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getStateMember>>,
     TError,
     TData
   > & { queryKey: QueryKey };
 };
 
-export type GetStateMemberQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getStateMember>>
->;
+export type GetStateMemberQueryResult = NonNullable<Awaited<ReturnType<typeof getStateMember>>>;
 export type GetStateMemberQueryError = ErrorType<unknown>;
 
 /**
@@ -1562,19 +1272,13 @@ export function useGetStateMember<
 >(
   memberId: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateMember>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateMember>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetStateMemberQueryOptions(memberId, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -1602,18 +1306,13 @@ export const searchStateMembers = async (
   params: SearchStateMembersParams,
   options?: RequestInit,
 ): Promise<StateMembersSearchResponse> => {
-  return customFetch<StateMembersSearchResponse>(
-    getSearchStateMembersUrl(params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<StateMembersSearchResponse>(getSearchStateMembersUrl(params), {
+    ...options,
+    method: "GET",
+  });
 };
 
-export const getSearchStateMembersQueryKey = (
-  params?: SearchStateMembersParams,
-) => {
+export const getSearchStateMembersQueryKey = (params?: SearchStateMembersParams) => {
   return [`/api/state/members/search`, ...(params ? [params] : [])] as const;
 };
 
@@ -1623,22 +1322,16 @@ export const getSearchStateMembersQueryOptions = <
 >(
   params: SearchStateMembersParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchStateMembers>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchStateMembers>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getSearchStateMembersQueryKey(params);
+  const queryKey = queryOptions?.queryKey ?? getSearchStateMembersQueryKey(params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof searchStateMembers>>
-  > = ({ signal }) => searchStateMembers(params, { signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof searchStateMembers>>> = ({ signal }) =>
+    searchStateMembers(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof searchStateMembers>>,
@@ -1662,19 +1355,13 @@ export function useSearchStateMembers<
 >(
   params: SearchStateMembersParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchStateMembers>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchStateMembers>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getSearchStateMembersQueryOptions(params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -1690,13 +1377,10 @@ export const refreshStateMember = async (
   memberId: string,
   options?: RequestInit,
 ): Promise<StateMemberDetailResponse> => {
-  return customFetch<StateMemberDetailResponse>(
-    getRefreshStateMemberUrl(memberId),
-    {
-      ...options,
-      method: "POST",
-    },
-  );
+  return customFetch<StateMemberDetailResponse>(getRefreshStateMemberUrl(memberId), {
+    ...options,
+    method: "POST",
+  });
 };
 
 export const getRefreshStateMemberMutationOptions = <
@@ -1718,9 +1402,7 @@ export const getRefreshStateMemberMutationOptions = <
 > => {
   const mutationKey = ["refreshStateMember"];
   const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
     : { mutation: { mutationKey }, request: undefined };
@@ -1746,10 +1428,7 @@ export type RefreshStateMemberMutationError = ErrorType<unknown>;
 /**
  * @summary Force refresh a state legislator from OpenStates
  */
-export const useRefreshStateMember = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
+export const useRefreshStateMember = <TError = ErrorType<unknown>, TContext = unknown>(options?: {
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof refreshStateMember>>,
     TError,
@@ -1769,10 +1448,7 @@ export const useRefreshStateMember = <
 /**
  * @summary Get bills sponsored or cosponsored by a state member
  */
-export const getGetStateMemberBillsUrl = (
-  memberId: string,
-  params?: GetStateMemberBillsParams,
-) => {
+export const getGetStateMemberBillsUrl = (memberId: string, params?: GetStateMemberBillsParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -1793,23 +1469,17 @@ export const getStateMemberBills = async (
   params?: GetStateMemberBillsParams,
   options?: RequestInit,
 ): Promise<StateBillsListResponse> => {
-  return customFetch<StateBillsListResponse>(
-    getGetStateMemberBillsUrl(memberId, params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<StateBillsListResponse>(getGetStateMemberBillsUrl(memberId, params), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetStateMemberBillsQueryKey = (
   memberId: string,
   params?: GetStateMemberBillsParams,
 ) => {
-  return [
-    `/api/state/members/${memberId}/bills`,
-    ...(params ? [params] : []),
-  ] as const;
+  return [`/api/state/members/${memberId}/bills`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetStateMemberBillsQueryOptions = <
@@ -1819,30 +1489,18 @@ export const getGetStateMemberBillsQueryOptions = <
   memberId: string,
   params?: GetStateMemberBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateMemberBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateMemberBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getGetStateMemberBillsQueryKey(memberId, params);
+  const queryKey = queryOptions?.queryKey ?? getGetStateMemberBillsQueryKey(memberId, params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getStateMemberBills>>
-  > = ({ signal }) =>
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStateMemberBills>>> = ({ signal }) =>
     getStateMemberBills(memberId, params, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!memberId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!memberId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getStateMemberBills>>,
     TError,
     TData
@@ -1865,23 +1523,13 @@ export function useGetStateMemberBills<
   memberId: string,
   params?: GetStateMemberBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateMemberBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateMemberBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetStateMemberBillsQueryOptions(
-    memberId,
-    params,
-    options,
-  );
+  const queryOptions = getGetStateMemberBillsQueryOptions(memberId, params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -1889,10 +1537,7 @@ export function useGetStateMemberBills<
 /**
  * @summary Get voting record for a state member
  */
-export const getGetStateMemberVotesUrl = (
-  memberId: string,
-  params?: GetStateMemberVotesParams,
-) => {
+export const getGetStateMemberVotesUrl = (memberId: string, params?: GetStateMemberVotesParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -1913,23 +1558,17 @@ export const getStateMemberVotes = async (
   params?: GetStateMemberVotesParams,
   options?: RequestInit,
 ): Promise<StateVotesListResponse> => {
-  return customFetch<StateVotesListResponse>(
-    getGetStateMemberVotesUrl(memberId, params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<StateVotesListResponse>(getGetStateMemberVotesUrl(memberId, params), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetStateMemberVotesQueryKey = (
   memberId: string,
   params?: GetStateMemberVotesParams,
 ) => {
-  return [
-    `/api/state/members/${memberId}/votes`,
-    ...(params ? [params] : []),
-  ] as const;
+  return [`/api/state/members/${memberId}/votes`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetStateMemberVotesQueryOptions = <
@@ -1939,30 +1578,18 @@ export const getGetStateMemberVotesQueryOptions = <
   memberId: string,
   params?: GetStateMemberVotesParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateMemberVotes>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateMemberVotes>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getGetStateMemberVotesQueryKey(memberId, params);
+  const queryKey = queryOptions?.queryKey ?? getGetStateMemberVotesQueryKey(memberId, params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getStateMemberVotes>>
-  > = ({ signal }) =>
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStateMemberVotes>>> = ({ signal }) =>
     getStateMemberVotes(memberId, params, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!memberId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!memberId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getStateMemberVotes>>,
     TError,
     TData
@@ -1985,23 +1612,13 @@ export function useGetStateMemberVotes<
   memberId: string,
   params?: GetStateMemberVotesParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateMemberVotes>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateMemberVotes>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetStateMemberVotesQueryOptions(
-    memberId,
-    params,
-    options,
-  );
+  const queryOptions = getGetStateMemberVotesQueryOptions(memberId, params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -2045,11 +1662,7 @@ export const getGetStateBillsQueryOptions = <
 >(
   params?: GetStateBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -2057,9 +1670,8 @@ export const getGetStateBillsQueryOptions = <
 
   const queryKey = queryOptions?.queryKey ?? getGetStateBillsQueryKey(params);
 
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStateBills>>> = ({
-    signal,
-  }) => getStateBills(params, { signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStateBills>>> = ({ signal }) =>
+    getStateBills(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getStateBills>>,
@@ -2068,9 +1680,7 @@ export const getGetStateBillsQueryOptions = <
   > & { queryKey: QueryKey };
 };
 
-export type GetStateBillsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getStateBills>>
->;
+export type GetStateBillsQueryResult = NonNullable<Awaited<ReturnType<typeof getStateBills>>>;
 export type GetStateBillsQueryError = ErrorType<unknown>;
 
 /**
@@ -2083,19 +1693,13 @@ export function useGetStateBills<
 >(
   params?: GetStateBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetStateBillsQueryOptions(params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -2129,9 +1733,7 @@ export const searchStateBills = async (
   });
 };
 
-export const getSearchStateBillsQueryKey = (
-  params?: SearchStateBillsParams,
-) => {
+export const getSearchStateBillsQueryKey = (params?: SearchStateBillsParams) => {
   return [`/api/state/bills/search`, ...(params ? [params] : [])] as const;
 };
 
@@ -2141,22 +1743,16 @@ export const getSearchStateBillsQueryOptions = <
 >(
   params: SearchStateBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchStateBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchStateBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getSearchStateBillsQueryKey(params);
+  const queryKey = queryOptions?.queryKey ?? getSearchStateBillsQueryKey(params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof searchStateBills>>
-  > = ({ signal }) => searchStateBills(params, { signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof searchStateBills>>> = ({ signal }) =>
+    searchStateBills(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof searchStateBills>>,
@@ -2165,9 +1761,7 @@ export const getSearchStateBillsQueryOptions = <
   > & { queryKey: QueryKey };
 };
 
-export type SearchStateBillsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof searchStateBills>>
->;
+export type SearchStateBillsQueryResult = NonNullable<Awaited<ReturnType<typeof searchStateBills>>>;
 export type SearchStateBillsQueryError = ErrorType<unknown>;
 
 /**
@@ -2180,19 +1774,13 @@ export function useSearchStateBills<
 >(
   params: SearchStateBillsParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchStateBills>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchStateBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getSearchStateBillsQueryOptions(params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -2224,29 +1812,18 @@ export const getGetStateBillDetailQueryOptions = <
 >(
   billId: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateBillDetail>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateBillDetail>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getGetStateBillDetailQueryKey(billId);
+  const queryKey = queryOptions?.queryKey ?? getGetStateBillDetailQueryKey(billId);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getStateBillDetail>>
-  > = ({ signal }) => getStateBillDetail(billId, { signal, ...requestOptions });
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStateBillDetail>>> = ({ signal }) =>
+    getStateBillDetail(billId, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!billId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!billId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getStateBillDetail>>,
     TError,
     TData
@@ -2268,19 +1845,13 @@ export function useGetStateBillDetail<
 >(
   billId: string,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getStateBillDetail>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getStateBillDetail>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetStateBillDetailQueryOptions(billId, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -2312,13 +1883,10 @@ export const getCandidateFinance = async (
   params?: GetCandidateFinanceParams,
   options?: RequestInit,
 ): Promise<FinanceResponse> => {
-  return customFetch<FinanceResponse>(
-    getGetCandidateFinanceUrl(candidateId, params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<FinanceResponse>(getGetCandidateFinanceUrl(candidateId, params), {
+    ...options,
+    method: "GET",
+  });
 };
 
 export const getGetCandidateFinanceQueryKey = (
@@ -2335,31 +1903,18 @@ export const getGetCandidateFinanceQueryOptions = <
   candidateId: string,
   params?: GetCandidateFinanceParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getCandidateFinance>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getCandidateFinance>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ??
-    getGetCandidateFinanceQueryKey(candidateId, params);
+  const queryKey = queryOptions?.queryKey ?? getGetCandidateFinanceQueryKey(candidateId, params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getCandidateFinance>>
-  > = ({ signal }) =>
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCandidateFinance>>> = ({ signal }) =>
     getCandidateFinance(candidateId, params, { signal, ...requestOptions });
 
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!candidateId,
-    ...queryOptions,
-  } as UseQueryOptions<
+  return { queryKey, queryFn, enabled: !!candidateId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getCandidateFinance>>,
     TError,
     TData
@@ -2382,23 +1937,13 @@ export function useGetCandidateFinance<
   candidateId: string,
   params?: GetCandidateFinanceParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getCandidateFinance>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getCandidateFinance>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetCandidateFinanceQueryOptions(
-    candidateId,
-    params,
-    options,
-  );
+  const queryOptions = getGetCandidateFinanceQueryOptions(candidateId, params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
@@ -2406,9 +1951,7 @@ export function useGetCandidateFinance<
 /**
  * @summary Search for a candidate's FEC finance data by name
  */
-export const getSearchCandidateFinanceUrl = (
-  params: SearchCandidateFinanceParams,
-) => {
+export const getSearchCandidateFinanceUrl = (params: SearchCandidateFinanceParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -2428,18 +1971,13 @@ export const searchCandidateFinance = async (
   params: SearchCandidateFinanceParams,
   options?: RequestInit,
 ): Promise<FinanceSearchResponse> => {
-  return customFetch<FinanceSearchResponse>(
-    getSearchCandidateFinanceUrl(params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<FinanceSearchResponse>(getSearchCandidateFinanceUrl(params), {
+    ...options,
+    method: "GET",
+  });
 };
 
-export const getSearchCandidateFinanceQueryKey = (
-  params?: SearchCandidateFinanceParams,
-) => {
+export const getSearchCandidateFinanceQueryKey = (params?: SearchCandidateFinanceParams) => {
   return [`/api/finance/search`, ...(params ? [params] : [])] as const;
 };
 
@@ -2449,22 +1987,15 @@ export const getSearchCandidateFinanceQueryOptions = <
 >(
   params: SearchCandidateFinanceParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchCandidateFinance>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchCandidateFinance>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getSearchCandidateFinanceQueryKey(params);
+  const queryKey = queryOptions?.queryKey ?? getSearchCandidateFinanceQueryKey(params);
 
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof searchCandidateFinance>>
-  > = ({ signal }) =>
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof searchCandidateFinance>>> = ({ signal }) =>
     searchCandidateFinance(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
@@ -2489,19 +2020,13 @@ export function useSearchCandidateFinance<
 >(
   params: SearchCandidateFinanceParams,
   options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof searchCandidateFinance>>,
-      TError,
-      TData
-    >;
+    query?: UseQueryOptions<Awaited<ReturnType<typeof searchCandidateFinance>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getSearchCandidateFinanceQueryOptions(params, options);
 
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }

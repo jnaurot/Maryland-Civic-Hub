@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useParams, Link } from "wouter";
+import { useState, useEffect, useRef } from "react";
+import { useParams, Link, useSearch } from "wouter";
 import {
   useGetStateMember,
   useGetStateMemberBills,
@@ -39,24 +39,141 @@ import {
   Search,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { partyColor, voteColor, formatMoney } from "@/lib/rep-utils";
+import {
+  partyColor,
+  voteColor,
+  formatMoney,
+  BILL_STAGE_OPTIONS,
+  type BillStage,
+  getBillStageMatches,
+} from "@/lib/rep-utils";
 import { PageShell } from "@/components/layout/PageShell";
 import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
+import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
+import { useStatusFilteredList } from "@/hooks/useStatusFilteredList";
 
 function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: string; jurisdiction?: string; memberName?: string }) {
-  const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
-  const [offset, setOffset] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
+  const pageSearch = useSearch();
+  const initialParams = new URLSearchParams(pageSearch);
+  const [type, setType] = useState<"sponsored" | "cosponsored">(
+    initialParams.get("type") === "cosponsored" ? "cosponsored" : "sponsored",
+  );
+  const [statusEnabled, setStatusEnabled] = useState(
+    initialParams.get("status") === "on",
+  );
+  const [selectedStages, setSelectedStages] = useState<BillStage[]>(() => {
+    const raw = initialParams.get("stages");
+    if (!raw) return [];
+    const parsed = raw.split(",").filter((s): s is BillStage =>
+      BILL_STAGE_OPTIONS.includes(s as BillStage),
+    );
+    return parsed;
+  });
+  const listViewportRef = useRef<HTMLDivElement | null>(null);
+  const restoredScrollRef = useRef(false);
+  const [offset, setOffset] = useState(() => {
+    const raw = Number(initialParams.get("offset") ?? "0");
+    return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  });
+  const [searchQuery, setSearchQuery] = useState(initialParams.get("q") ?? "");
   const limit = 20;
 
   const queryParams = { type, jurisdiction, offset, limit, q: searchQuery || undefined };
   const { data, isLoading } = useGetStateMemberBills(memberId, queryParams, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberBillsQueryKey(memberId, queryParams) }
+    query: {
+      enabled: !!memberId,
+      queryKey: getGetStateMemberBillsQueryKey(memberId, queryParams),
+      placeholderData: (previous) => previous,
+    }
+  });
+  const {
+    statusFilterActive,
+    visibleItems: filteredBills,
+    pagedItems: pagedVisibleBills,
+    effectiveTotalCount,
+    refining: statusFilteringLoading,
+  } = useStatusFilteredList<any>({
+    statusEnabled,
+    selectedStages,
+    baseItems: data?.bills ?? [],
+    matchItem: (bill, stages) => {
+      const matches = getBillStageMatches({
+        latestAction: bill.latestAction,
+        status: bill.status,
+        introducedDate: bill.introducedDate,
+      });
+      return stages.some((stage) => matches[stage]);
+    },
+    offset,
+    limit,
+    totalCountBase: data?.totalCount ?? 0,
+    onResetOffset: () => setOffset(0),
+    fetchAllItems: async () => {
+      const pageSize = 20;
+      const encodedQ = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
+      const jurisdictionQuery = jurisdiction ? `&jurisdiction=${encodeURIComponent(jurisdiction)}` : "";
+      const base = `/api/state/members/${encodeURIComponent(
+        memberId,
+      )}/bills?type=${type}&limit=${pageSize}${jurisdictionQuery}`;
+      const firstRes = await fetch(`${base}&offset=0${encodedQ}`);
+      if (!firstRes.ok) throw new Error("Failed to load filtered bills");
+      const firstJson = await firstRes.json();
+      const total = Number(firstJson.totalCount ?? 0);
+      let all = [...(firstJson.bills ?? [])];
+      for (let nextOffset = pageSize; nextOffset < total; nextOffset += pageSize) {
+        const res = await fetch(`${base}&offset=${nextOffset}${encodedQ}`);
+        if (!res.ok) break;
+        const json = await res.json();
+        all = all.concat(json.bills ?? []);
+      }
+      return all;
+    },
+    immediateWhileRefining: true,
+    isBaseLoading: isLoading,
+    deps: [memberId, type, jurisdiction, searchQuery],
   });
 
-  const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/state/${memberId}`)}&name=${encodeURIComponent(memberName)}` : "";
+  const backPathParams = new URLSearchParams();
+  backPathParams.set("type", type);
+  backPathParams.set("offset", String(offset));
+  if (searchQuery) backPathParams.set("q", searchQuery);
+  if (statusEnabled) backPathParams.set("status", "on");
+  if (selectedStages.length > 0)
+    backPathParams.set("stages", selectedStages.join(","));
+  const backPath = `/rep/state/${memberId}?${backPathParams.toString()}`;
+  const scrollStorageKey = `scroll:${backPath}:bills`;
+  const fromParam = memberName
+    ? `?from=${encodeURIComponent(backPath)}&name=${encodeURIComponent(memberName)}`
+    : `?from=${encodeURIComponent(backPath)}`;
+
+  useEffect(() => {
+    restoredScrollRef.current = false;
+  }, [scrollStorageKey]);
+
+  useEffect(() => {
+    if (isLoading || statusFilteringLoading) return;
+    if (restoredScrollRef.current) return;
+    if (typeof window === "undefined") return;
+    const raw = window.sessionStorage.getItem(scrollStorageKey);
+    if (!raw) {
+      restoredScrollRef.current = true;
+      return;
+    }
+    const scrollTop = Number(raw);
+    if (!Number.isFinite(scrollTop)) {
+      restoredScrollRef.current = true;
+      return;
+    }
+    const id = window.requestAnimationFrame(() => {
+      if (listViewportRef.current) {
+        listViewportRef.current.scrollTop = scrollTop;
+      }
+      restoredScrollRef.current = true;
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [isLoading, statusFilteringLoading, scrollStorageKey]);
 
   return (
     <div className="flex flex-col h-full pb-4">
@@ -64,8 +181,32 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
         <div className="flex gap-2">
           <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => { setType("sponsored"); setOffset(0); }}>Sponsored</Button>
           <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
+          <StatusFilterControls
+            statusEnabled={statusEnabled}
+            onToggleStatus={() => {
+              setStatusEnabled((prev) => {
+                const next = !prev;
+                if (!next) setSelectedStages([]);
+                return next;
+              });
+              setOffset(0);
+            }}
+          />
         </div>
       </FilterBar>
+      {statusEnabled && (
+        <StatusStagePills
+          selectedStages={selectedStages}
+          onToggleStage={(stage) => {
+            setSelectedStages((prev) =>
+              prev.includes(stage)
+                ? prev.filter((s) => s !== stage)
+                : [...prev, stage],
+            );
+            setOffset(0);
+          }}
+        />
+      )}
       <FilterBar className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -79,25 +220,34 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
       <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2 shrink-0">
         {type === "cosponsored" ? "Cosponsored Bills" : "Sponsored Bills"}
       </p>
-      <ListViewport className="space-y-3">
-        {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
+      <ListViewport ref={listViewportRef} className="space-y-3">
+        {(isLoading || statusFilteringLoading) && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
-        {!isLoading && data?.bills?.length === 0 && (
+        {!isLoading && !statusFilteringLoading && filteredBills.length === 0 && (
           <p className="text-muted-foreground text-center py-10">No bills found.</p>
         )}
 
-        {!isLoading && data?.bills?.map((bill) => (
-          <Link key={bill.id} href={`/bills/state/${encodeURIComponent(bill.id)}${fromParam}`}>
+        {!isLoading && !statusFilteringLoading && pagedVisibleBills.map((bill) => (
+          <Link
+            key={bill.id}
+            href={`/bills/state/${encodeURIComponent(bill.id)}${fromParam}`}
+            onClick={() => {
+              if (typeof window === "undefined") return;
+              const top = listViewportRef.current?.scrollTop ?? 0;
+              window.sessionStorage.setItem(scrollStorageKey, String(top));
+            }}
+          >
             <Card className="hover:border-primary transition-colors cursor-pointer">
-              <CardContent className="p-4">
+              <CardContent className={statusFilterActive ? "p-3" : "p-4"}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       {bill.identifier && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.identifier}</Badge>}
+                      {bill.session && <Badge variant="outline" className="text-xs shrink-0">Session {bill.session}</Badge>}
                       {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
                     </div>
-                    <p className="font-medium text-sm line-clamp-2">{bill.title}</p>
-                    {bill.latestAction && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{bill.latestAction}</p>}
+                    <p className={`font-medium ${statusFilterActive ? "text-sm line-clamp-1" : "text-sm line-clamp-2"}`}>{bill.title}</p>
+                    {bill.latestAction && <p className={`text-muted-foreground mt-1 ${statusFilterActive ? "text-[11px] line-clamp-1" : "text-xs line-clamp-1"}`}>{bill.latestAction}</p>}
                   </div>
                   {bill.introducedDate && <span className="text-xs text-muted-foreground shrink-0">{bill.introducedDate}</span>}
                 </div>
@@ -110,7 +260,7 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
       <PaginationFooter
         offset={offset}
         limit={limit}
-        totalCount={data?.totalCount ?? 0}
+        totalCount={effectiveTotalCount}
         onPrevious={() => setOffset(Math.max(0, offset - limit))}
         onNext={() => setOffset(offset + limit)}
       />

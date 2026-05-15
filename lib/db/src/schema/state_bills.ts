@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, uniqueIndex, index, customType } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, uniqueIndex, index, customType, boolean } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 
 const tsvector = customType<{ data: string }>({
@@ -15,6 +15,12 @@ export const stateBillsTable = pgTable("state_bills", {
   chamber: text("chamber"),
   status: text("status"),
   introducedDate: text("introduced_date"),
+  stageIntroduced: boolean("stage_introduced").default(false).notNull(),
+  stageCommittee: boolean("stage_committee").default(false).notNull(),
+  stageFloorVote: boolean("stage_floor_vote").default(false).notNull(),
+  stagePassed: boolean("stage_passed").default(false).notNull(),
+  stageSignedEnacted: boolean("stage_signed_enacted").default(false).notNull(),
+  stageDead: boolean("stage_dead").default(false).notNull(),
   summary: text("summary"),
   subjects: text("subjects").array(),
   url: text("url"),
@@ -28,6 +34,8 @@ export const stateBillsTable = pgTable("state_bills", {
   index("idx_state_bills_jurisdiction").on(table.jurisdiction),
   index("idx_state_bills_search").using("gin", table.searchVector),
   index("idx_state_bills_fetched_at").on(table.fetchedAt),
+  index("idx_state_bills_stage_signed").on(table.jurisdiction, table.stageSignedEnacted, table.chamber, table.introducedDate),
+  index("idx_state_bills_stage_committee").on(table.jurisdiction, table.stageCommittee, table.chamber, table.introducedDate),
 ]);
 
 export const insertStateBillSchema = z.object({

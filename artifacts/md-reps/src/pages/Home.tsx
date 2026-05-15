@@ -23,7 +23,6 @@ import { Search, AlertTriangle, FileText } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { US_STATES, getStateName, getStateFlagUrl } from "@/lib/states";
 import { partyColor } from "@/lib/rep-utils";
-import { useIsMobile } from "@/hooks/use-mobile";
 import type { Representative } from "@workspace/api-client-react";
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -36,22 +35,19 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 export function Home() {
-  const isMobile = useIsMobile();
   const { selectedState, setSelectedState, lastSearchedAddress, setLastSearchedAddress } = useAppState();
   const [homeDropdownState, setHomeDropdownState] = useState(lastSearchedAddress ? "" : (selectedState ?? ""));
-  const [addressInput, setAddressInput] = useState(lastSearchedAddress ?? "");
   const [searchAddress, setSearchAddress] = useState(lastSearchedAddress ?? "");
-  const [textQuery, setTextQuery] = useState("");
   const [activeTextQuery, setActiveTextQuery] = useState("");
-  const [mobileQuery, setMobileQuery] = useState("");
-  const [mobileFallbackQuery, setMobileFallbackQuery] = useState<string | null>(null);
-  const [mobileAddressAttemptPending, setMobileAddressAttemptPending] = useState(false);
-  const [textInputFocused, setTextInputFocused] = useState(false);
-  const debouncedTextQuery = useDebounce(textQuery.trim(), 250);
+  const [query, setQuery] = useState(lastSearchedAddress ?? "");
+  const [fallbackQuery, setFallbackQuery] = useState<string | null>(null);
+  const [addressAttemptPending, setAddressAttemptPending] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const debouncedQuery = useDebounce(query.trim(), 250);
 
   const acLimit = 5;
-  const acEnabled = !!debouncedTextQuery && textInputFocused;
-  const acQuery = { q: debouncedTextQuery, limit: acLimit };
+  const acEnabled = !!debouncedQuery && inputFocused;
+  const acQuery = { q: debouncedQuery, limit: acLimit };
   const { data: acFederalBills } = useSearchFederalBills(acQuery, {
     query: { enabled: acEnabled, queryKey: ["autocomplete", "federalBills", acQuery] as const },
   });
@@ -99,37 +95,9 @@ export function Home() {
     },
   );
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = addressInput.trim();
-    if (trimmed) {
-      setSearchAddress(trimmed);
-      setLastSearchedAddress(trimmed);
-      setHomeDropdownState("");
-      setSelectedState(null);
-      setActiveTextQuery("");
-    } else {
-      setSearchAddress("");
-      setLastSearchedAddress(null);
-      setActiveTextQuery("");
-    }
-  };
-
-  const handleTextSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = textQuery.trim();
-    if (trimmed) {
-      setActiveTextQuery(trimmed);
-      setSearchAddress("");
-      setLastSearchedAddress(null);
-    } else {
-      setActiveTextQuery("");
-    }
-  };
-
-  const handleMobileSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = mobileQuery.trim();
+    const trimmed = query.trim();
     if (!trimmed) return;
 
     // Address-first path
@@ -138,11 +106,10 @@ export function Home() {
     setHomeDropdownState("");
     setSelectedState(null);
     setActiveTextQuery("");
-    setTextQuery(trimmed);
 
     // Keep pending fallback until address query resolves
-    setMobileFallbackQuery(trimmed);
-    setMobileAddressAttemptPending(true);
+    setFallbackQuery(trimmed);
+    setAddressAttemptPending(true);
   };
 
   const textSearchLimit = 5;
@@ -172,7 +139,7 @@ export function Home() {
   const flagUrl = getStateFlagUrl(activeStateCode) ?? getStateFlagUrl("US");
 
   useEffect(() => {
-    if (!isMobile || !mobileAddressAttemptPending) return;
+    if (!addressAttemptPending) return;
     if (!searchAddress) return;
     if (isLoading) return;
 
@@ -180,23 +147,22 @@ export function Home() {
     const hasAddressSignal = !!(data?.normalizedAddress || data?.stateCode || repsCount > 0);
     const addressFailed = !!error || !hasAddressSignal;
 
-    if (addressFailed && mobileFallbackQuery) {
+    if (addressFailed && fallbackQuery) {
       // Fallback to bills/representatives text search if address lookup failed
       setSearchAddress("");
       setLastSearchedAddress(null);
-      setActiveTextQuery(mobileFallbackQuery);
+      setActiveTextQuery(fallbackQuery);
     }
 
-    setMobileAddressAttemptPending(false);
-    setMobileFallbackQuery(null);
+    setAddressAttemptPending(false);
+    setFallbackQuery(null);
   }, [
-    isMobile,
-    mobileAddressAttemptPending,
+    addressAttemptPending,
     searchAddress,
     isLoading,
     error,
     data,
-    mobileFallbackQuery,
+    fallbackQuery,
     setLastSearchedAddress,
   ]);
 
@@ -430,57 +396,112 @@ export function Home() {
           </p>
 
           <div className="flex flex-col gap-4 max-w-xl mx-auto">
-            {isMobile ? (
-              <form onSubmit={handleMobileSearch} className="flex flex-col gap-4">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative flex-grow">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input
-                      type="text"
-                      placeholder="Enter address, bill, or representative... then hit <return>"
-                      className="pl-10 h-14 text-lg bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
-                      value={mobileQuery}
-                      onChange={(e) => setMobileQuery(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-sm text-primary-foreground/70">Or select a state:</span>
-                  <Select
-                    value={homeDropdownState}
-                    onValueChange={(v) => {
-                      setHomeDropdownState(v);
-                      setSelectedState(v || null);
-                      setAddressInput("");
-                      setSearchAddress("");
-                      setLastSearchedAddress(null);
-                      setActiveTextQuery("");
-                      setMobileQuery("");
-                    }}
-                  >
-                    <SelectTrigger className="w-56 bg-background text-foreground border-0 shadow-lg rounded-xl">
-                      <SelectValue placeholder="Select a state" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {US_STATES.map((s) => (
-                        <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </form>
-            ) : (
-            <form onSubmit={handleSearch} className="flex flex-col gap-4">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-grow">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     type="text"
-                    placeholder="Enter your address..."
+                    placeholder="Enter address, bill, or representative... then hit <return>"
                     className="pl-10 h-14 text-lg bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
-                    value={addressInput}
-                    onChange={(e) => setAddressInput(e.target.value)}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onFocus={() => setInputFocused(true)}
+                    onBlur={(e) => {
+                      const related = e.relatedTarget as HTMLElement | null;
+                      const container = e.currentTarget.closest(".relative");
+                      if (!container?.contains(related)) setInputFocused(false);
+                    }}
                   />
+                  {inputFocused && hasAcResults && (
+                    <div
+                      data-testid="global-search-autocomplete"
+                      className="absolute left-0 right-0 top-full mt-1 bg-popover border rounded-xl shadow-xl z-[100] max-h-[min(28rem,60vh)] overflow-y-auto text-left"
+                    >
+                      {(acFederalMembers?.members?.length ?? 0) > 0 && (
+                        <div className="py-2">
+                          <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Federal Representatives</p>
+                          {acFederalMembers?.members?.map((m) => (
+                            <Link key={m.bioguideId} href={`/rep/federal/${m.bioguideId}`} className="flex items-center gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
+                              onMouseDown={(e) => e.preventDefault()}
+                            >
+                              <Avatar className="h-8 w-8 border">
+                                <AvatarImage src={m.photoUrl} alt={m.name} />
+                                <AvatarFallback className="text-xs">{m.name?.substring(0, 2)}</AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{m.name}</p>
+                                <p className="text-xs text-muted-foreground">{m.chamber}{m.district ? `, District ${m.district}` : ""} · {m.state}</p>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                      {(acStateMembers?.members?.length ?? 0) > 0 && (
+                        <div className="py-2 border-t">
+                          <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Representatives</p>
+                          {acStateMembers?.members?.map((m) => (
+                            <Link key={m.id} href={`/rep/state/${encodeURIComponent(m.id)}`} className="flex items-center gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
+                              onMouseDown={(e) => e.preventDefault()}
+                            >
+                              <Avatar className="h-8 w-8 border">
+                                <AvatarImage src={m.photoUrl} alt={m.name} />
+                                <AvatarFallback className="text-xs">{m.name?.substring(0, 2)}</AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{m.name}</p>
+                                <p className="text-xs text-muted-foreground">{m.chamber}{m.district ? `, District ${m.district}` : ""} · {m.jurisdiction}</p>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                      {(acFederalBills?.bills?.length ?? 0) > 0 && (
+                        <div className="py-2 border-t">
+                          <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Federal Bills</p>
+                          {acFederalBills?.bills?.map((b) => (
+                            <Link key={b.id} href={(b.number && b.congress)
+                              ? `/bills/federal/${b.congress}/${b.number.split(" ")[0]?.toLowerCase()}/${b.number.split(" ")[1]}`
+                              : "#"}
+                              className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
+                              onMouseDown={(e) => e.preventDefault()}
+                            >
+                              <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{b.title}</p>
+                                <p className="text-xs text-muted-foreground">{b.number ?? b.id}</p>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                      {(acStateBills?.bills?.length ?? 0) > 0 && (
+                        <div className="py-2 border-t">
+                          <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Bills</p>
+                          {acStateBills?.bills?.map((b) => (
+                            <Link key={b.id} href={`/bills/state/${encodeURIComponent(b.id)}`} className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
+                              onMouseDown={(e) => e.preventDefault()}
+                            >
+                              <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{b.title}</p>
+                                <p className="text-xs text-muted-foreground">{b.identifier ?? b.id}</p>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                      <div className="border-t px-4 py-2">
+                        <button
+                          type="submit"
+                          className="text-sm text-accent font-medium hover:underline"
+                          onMouseDown={(e) => e.preventDefault()}
+                        >
+                          Search for "{debouncedQuery}"
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center justify-center gap-2">
@@ -490,7 +511,7 @@ export function Home() {
                   onValueChange={(v) => {
                     setHomeDropdownState(v);
                     setSelectedState(v || null);
-                    setAddressInput("");
+                    setQuery("");
                     setSearchAddress("");
                     setLastSearchedAddress(null);
                     setActiveTextQuery("");
@@ -507,129 +528,6 @@ export function Home() {
                 </Select>
               </div>
             </form>
-            )}
-            {!isMobile && (
-              <>
-                <div className="relative py-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-primary-foreground/20" />
-                  </div>
-                  <span className="relative px-2 text-xs text-primary-foreground/60 uppercase tracking-wide mx-auto bg-primary">or</span>
-                </div>
-                <form
-                  data-testid="global-search-form"
-                  onSubmit={handleTextSearch}
-                  className="relative flex flex-col sm:flex-row gap-3 z-30"
-                >
-                  <div className="relative flex-grow">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground z-10" />
-                    <Input
-                      type="text"
-                      placeholder="Search bills & representatives..."
-                      className="pl-10 h-12 text-lg bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent relative z-10"
-                      value={textQuery}
-                      onChange={(e) => setTextQuery(e.target.value)}
-                      onFocus={() => setTextInputFocused(true)}
-                      onBlur={(e) => {
-                        // Only blur if focus moves outside the search form container
-                        const related = e.relatedTarget as HTMLElement | null;
-                        const form = related?.closest('[data-testid="global-search-form"]');
-                        if (!form) setTextInputFocused(false);
-                      }}
-                    />
-                    {textInputFocused && hasAcResults && (
-                      <div
-                        data-testid="global-search-autocomplete"
-                        className="absolute left-0 right-0 top-full mt-1 bg-popover border rounded-xl shadow-xl z-[100] max-h-[min(28rem,60vh)] overflow-y-auto text-left"
-                      >
-                        {(acFederalMembers?.members?.length ?? 0) > 0 && (
-                          <div className="py-2">
-                            <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Federal Representatives</p>
-                            {acFederalMembers?.members?.map((m) => (
-                              <Link key={m.bioguideId} href={`/rep/federal/${m.bioguideId}`} className="flex items-center gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
-                                onMouseDown={(e) => e.preventDefault()}
-                              >
-                                <Avatar className="h-8 w-8 border">
-                                  <AvatarImage src={m.photoUrl} alt={m.name} />
-                                  <AvatarFallback className="text-xs">{m.name?.substring(0, 2)}</AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate">{m.name}</p>
-                                  <p className="text-xs text-muted-foreground">{m.chamber}{m.district ? `, District ${m.district}` : ""} · {m.state}</p>
-                                </div>
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                        {(acStateMembers?.members?.length ?? 0) > 0 && (
-                          <div className="py-2 border-t">
-                            <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Representatives</p>
-                            {acStateMembers?.members?.map((m) => (
-                              <Link key={m.id} href={`/rep/state/${encodeURIComponent(m.id)}`} className="flex items-center gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
-                                onMouseDown={(e) => e.preventDefault()}
-                              >
-                                <Avatar className="h-8 w-8 border">
-                                  <AvatarImage src={m.photoUrl} alt={m.name} />
-                                  <AvatarFallback className="text-xs">{m.name?.substring(0, 2)}</AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate">{m.name}</p>
-                                  <p className="text-xs text-muted-foreground">{m.chamber}{m.district ? `, District ${m.district}` : ""} · {m.jurisdiction}</p>
-                                </div>
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                        {(acFederalBills?.bills?.length ?? 0) > 0 && (
-                          <div className="py-2 border-t">
-                            <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Federal Bills</p>
-                            {acFederalBills?.bills?.map((b) => (
-                              <Link key={b.id} href={(b.number && b.congress)
-                                ? `/bills/federal/${b.congress}/${b.number.split(" ")[0]?.toLowerCase()}/${b.number.split(" ")[1]}`
-                                : "#"}
-                                className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
-                                onMouseDown={(e) => e.preventDefault()}
-                              >
-                                <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate">{b.title}</p>
-                                  <p className="text-xs text-muted-foreground">{b.number ?? b.id}</p>
-                                </div>
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                        {(acStateBills?.bills?.length ?? 0) > 0 && (
-                          <div className="py-2 border-t">
-                            <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Bills</p>
-                            {acStateBills?.bills?.map((b) => (
-                              <Link key={b.id} href={`/bills/state/${encodeURIComponent(b.id)}`} className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
-                                onMouseDown={(e) => e.preventDefault()}
-                              >
-                                <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate">{b.title}</p>
-                                  <p className="text-xs text-muted-foreground">{b.identifier ?? b.id}</p>
-                                </div>
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                        <div className="border-t px-4 py-2">
-                          <button
-                            type="submit"
-                            className="text-sm text-accent font-medium hover:underline"
-                            onMouseDown={(e) => e.preventDefault()}
-                          >
-                            Search for "{debouncedTextQuery}"
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                </div>
-                </form>
-              </>
-            )}
           </div>
         </div>
       </div>
@@ -740,7 +638,7 @@ export function Home() {
                 <Search className="h-10 w-10 opacity-50" />
               </div>
               <h2 className="text-2xl font-semibold mb-2">Ready to search</h2>
-              <p className="max-w-md mx-auto">Enter your full address above or select a state to find out who represents you in Congress, the State House, and locally.</p>
+              <p className="max-w-md mx-auto">Enter an address, bill, or representative above, or select a state to explore.</p>
             </div>
           )}
         </div>

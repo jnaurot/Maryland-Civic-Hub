@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useParams, Link } from "wouter";
+import { useEffect, useRef, useState } from "react";
+import { useParams, Link, useSearch } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetFederalMember,
@@ -48,11 +48,19 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { RepNameLink } from "@/components/RepNameLink";
-import { partyColor, voteBadgeClass, formatMoney } from "@/lib/rep-utils";
+import {
+  partyColor,
+  voteBadgeClass,
+  formatMoney,
+  BILL_STAGE_OPTIONS,
+  BILL_STAGE_QUERY_KEYS,
+  type BillStage,
+} from "@/lib/rep-utils";
 import { PageShell } from "@/components/layout/PageShell";
 import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
+import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
 
 function PolicyAreaChart({
   policyAreas,
@@ -135,13 +143,45 @@ function BillsList({
   onBillRoleChange: (role: "sponsored" | "cosponsored") => void;
 }) {
   const queryClient = useQueryClient();
-  const [billView, setBillView] = useState<"list" | "breakdown">("list");
+  const pageSearch = useSearch();
+  const initialParams = new URLSearchParams(pageSearch);
+  const [billView, setBillView] = useState<"list" | "breakdown">(
+    initialParams.get("billView") === "breakdown" ? "breakdown" : "list",
+  );
   const [category, setCategory] = useState<
     "all" | "bill" | "resolution" | "amendment" | "other"
-  >("all");
-  const [offset, setOffset] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
+  >(() => {
+    const value = initialParams.get("category");
+    return value === "bill" ||
+      value === "resolution" ||
+      value === "amendment" ||
+      value === "other"
+      ? value
+      : "all";
+  });
+  const [statusEnabled, setStatusEnabled] = useState(
+    initialParams.get("status") === "on",
+  );
+  const [selectedStages, setSelectedStages] = useState<BillStage[]>(() => {
+    const raw = initialParams.get("stages");
+    if (!raw) return [];
+    const parsed = raw.split(",").filter((s): s is BillStage =>
+      BILL_STAGE_OPTIONS.includes(s as BillStage),
+    );
+    return parsed;
+  });
+  const listViewportRef = useRef<HTMLDivElement | null>(null);
+  const restoredScrollRef = useRef(false);
+  const [offset, setOffset] = useState(() => {
+    const raw = Number(initialParams.get("offset") ?? "0");
+    return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  });
+  const [searchQuery, setSearchQuery] = useState(initialParams.get("q") ?? "");
   const limit = 20;
+  const selectedStatusActive = statusEnabled && selectedStages.length > 0;
+  const stageQuery = selectedStatusActive
+    ? selectedStages.map((stage) => BILL_STAGE_QUERY_KEYS[stage]).join(",")
+    : undefined;
 
   const queryParams = {
     type: billRole,
@@ -149,6 +189,7 @@ function BillsList({
     limit,
     q: searchQuery || undefined,
     category,
+    stages: stageQuery,
   };
   const { data, isLoading } = useGetFederalMemberBills(
     bioguideId,
@@ -157,8 +198,7 @@ function BillsList({
       query: {
         enabled: !!bioguideId,
         queryKey: getGetFederalMemberBillsQueryKey(bioguideId, queryParams),
-        refetchInterval: (query) =>
-          query.state.data?.fullyIngested === false ? 3000 : false,
+        placeholderData: (previous) => previous,
       },
     },
   );
@@ -185,9 +225,19 @@ function BillsList({
     },
   });
 
+  const backPathParams = new URLSearchParams();
+  backPathParams.set("billView", billView);
+  backPathParams.set("category", category);
+  backPathParams.set("offset", String(offset));
+  if (searchQuery) backPathParams.set("q", searchQuery);
+  if (statusEnabled) backPathParams.set("status", "on");
+  if (selectedStages.length > 0)
+    backPathParams.set("stages", selectedStages.join(","));
+  const backPath = `/rep/federal/${bioguideId}?${backPathParams.toString()}`;
+  const scrollStorageKey = `scroll:${backPath}:bills`;
   const fromParam = memberName
-    ? `?from=${encodeURIComponent(`/rep/federal/${bioguideId}`)}&name=${encodeURIComponent(memberName)}`
-    : "";
+    ? `?from=${encodeURIComponent(backPath)}&name=${encodeURIComponent(memberName)}`
+    : `?from=${encodeURIComponent(backPath)}`;
   const categoryOptions: Array<{
     value: typeof category;
     label: string;
@@ -203,6 +253,49 @@ function BillsList({
     billRole === "cosponsored"
       ? "Cosponsored Legislation"
       : "Sponsored Legislation";
+  const statusFilterActive = selectedStatusActive;
+  const displayedBills = data?.bills ?? [];
+  const displayedPagedBills = displayedBills;
+  const displayedTotalCount = data?.totalCount ?? 0;
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!statusFilterActive) return;
+    if (offset >= displayedTotalCount && offset !== 0) setOffset(0);
+  }, [
+    displayedTotalCount,
+    isLoading,
+    offset,
+    statusFilterActive,
+  ]);
+
+  useEffect(() => {
+    restoredScrollRef.current = false;
+  }, [scrollStorageKey]);
+
+  useEffect(() => {
+    if (billView !== "list") return;
+    if (isLoading) return;
+    if (restoredScrollRef.current) return;
+    if (typeof window === "undefined") return;
+    const raw = window.sessionStorage.getItem(scrollStorageKey);
+    if (!raw) {
+      restoredScrollRef.current = true;
+      return;
+    }
+    const scrollTop = Number(raw);
+    if (!Number.isFinite(scrollTop)) {
+      restoredScrollRef.current = true;
+      return;
+    }
+    const id = window.requestAnimationFrame(() => {
+      if (listViewportRef.current) {
+        listViewportRef.current.scrollTop = scrollTop;
+      }
+      restoredScrollRef.current = true;
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [billView, isLoading, scrollStorageKey]);
 
   function internalBillHref(bill: {
     number?: string;
@@ -260,6 +353,17 @@ function BillsList({
           >
             Breakdown
           </Button>
+          <StatusFilterControls
+            statusEnabled={statusEnabled}
+            onToggleStatus={() => {
+              setStatusEnabled((prev) => {
+                const next = !prev;
+                if (!next) setSelectedStages([]);
+                return next;
+              });
+              setOffset(0);
+            }}
+          />
           <Button
             size="sm"
             variant="outline"
@@ -278,9 +382,23 @@ function BillsList({
           </Button>
         </div>
       </div>
+      {statusEnabled && (
+        <StatusStagePills
+          selectedStages={selectedStages}
+          onToggleStage={(stage) => {
+            setSelectedStages((prev) =>
+              prev.includes(stage)
+                ? prev.filter((s) => s !== stage)
+                : [...prev, stage],
+            );
+            setOffset(0);
+          }}
+        />
+      )}
       <FilterBar className="flex flex-wrap gap-2 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:pb-1 max-sm:[&>*]:shrink-0">
         {categoryOptions.map((option) => {
-          const count = data?.categoryCounts?.[option.value] ?? 0;
+          const count =
+            data?.categoryCounts?.[option.value] ?? 0;
           if (option.hideWhenZero && count === 0) return null;
           return (
             <Button
@@ -292,7 +410,7 @@ function BillsList({
                 setOffset(0);
               }}
             >
-              {option.label} ({count})
+              {`${option.label} (${count})`}
             </Button>
           );
         })}
@@ -320,7 +438,7 @@ function BillsList({
               Indexing sponsored legislation. Counts may update.
             </p>
           )}
-          <ListViewport>
+          <ListViewport ref={listViewportRef}>
             <div className="space-y-3">
               {isLoading && (
                 <>
@@ -330,15 +448,16 @@ function BillsList({
                 </>
               )}
 
-              {!isLoading && data?.bills?.length === 0 && (
+              {!isLoading && displayedBills.length === 0 && (
                 <p className="text-muted-foreground text-center py-10">
                   No legislation found.
                 </p>
               )}
 
               {!isLoading &&
-                data?.bills?.map((bill) => {
+                displayedPagedBills.map((bill) => {
                   const href = internalBillHref(bill);
+                  const compactMode = statusFilterActive;
                   const card = (
                     <Card
                       className={
@@ -347,7 +466,7 @@ function BillsList({
                           : "transition-colors"
                       }
                     >
-                      <CardContent className="p-4">
+                      <CardContent className={compactMode ? "p-3" : "p-4"}>
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
@@ -373,11 +492,15 @@ function BillsList({
                                 </Badge>
                               )}
                             </div>
-                            <p className="font-medium text-sm line-clamp-2">
+                            <p
+                              className={`font-medium ${compactMode ? "text-sm line-clamp-1" : "text-sm line-clamp-2"}`}
+                            >
                               {bill.title}
                             </p>
                             {bill.latestAction && (
-                              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                              <p
+                                className={`text-muted-foreground mt-1 ${compactMode ? "text-[11px] line-clamp-1" : "text-xs line-clamp-1"}`}
+                              >
                                 {bill.latestAction}
                               </p>
                             )}
@@ -405,20 +528,30 @@ function BillsList({
                     </Card>
                   );
                   return href ? (
-                    <Link key={bill.id} href={href}>
+                    <Link
+                      key={bill.id}
+                      href={href}
+                      onClick={() => {
+                        if (typeof window === "undefined") return;
+                        const top = listViewportRef.current?.scrollTop ?? 0;
+                        window.sessionStorage.setItem(
+                          scrollStorageKey,
+                          String(top),
+                        );
+                      }}
+                    >
                       {card}
                     </Link>
                   ) : (
                     <div key={bill.id}>{card}</div>
                   );
                 })}
-
             </div>
           </ListViewport>
           <PaginationFooter
             offset={offset}
             limit={limit}
-            totalCount={data?.totalCount ?? 0}
+            totalCount={displayedTotalCount}
             onPrevious={() => setOffset(Math.max(0, offset - limit))}
             onNext={() => setOffset(offset + limit)}
           />
@@ -440,9 +573,11 @@ function BillsList({
                 fullyIngested={data?.fullyIngested}
                 category={category}
                 categoryTotal={
-                  category === "all"
-                    ? data.categoryCounts?.all
-                    : data.categoryCounts?.[category]
+                  statusFilterActive
+                    ? displayedTotalCount
+                    : category === "all"
+                      ? data.categoryCounts?.all
+                      : data.categoryCounts?.[category]
                 }
               />
               {data?.fullyIngested === false && (
@@ -864,6 +999,7 @@ export function FederalRepDetail() {
           offset: 0,
           limit: 1,
         }),
+        placeholderData: (previous) => previous,
       },
     },
   );
