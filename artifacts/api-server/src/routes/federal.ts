@@ -46,6 +46,7 @@ import {
   shouldResumeMemberLegislationIngestion,
   type FederalLegislationCategory,
 } from "../lib/federalMemberLegislation";
+import { computeFederalBillProgress, getCurrentCongressNumber } from "../lib/federalBillProgress";
 
 const router = Router();
 
@@ -673,8 +674,7 @@ router.post("/federal/members/:bioguideId/refresh", async (req, res) => {
 });
 
 function getCurrentCongress() {
-  const currentYear = new Date().getFullYear();
-  return String(Math.floor((currentYear - 1789) / 2) + 1);
+  return String(getCurrentCongressNumber());
 }
 
 const activeBillIngestions = new Set<string>();
@@ -2172,7 +2172,7 @@ router.get(
         ),
         congressFetch(
           `/bill/${congress}/${billType}/${billNumber}/actions`,
-          { limit: 20 },
+          { limit: 250 },
           req.log,
         ),
         congressFetch(
@@ -2216,6 +2216,12 @@ router.get(
               type: a.type,
             }))
           : [];
+      const progress = computeFederalBillProgress({
+        congress,
+        latestAction: bill.latestAction?.text,
+        laws: bill.laws,
+        actions,
+      });
 
       const summary =
         summaryData.status === "fulfilled"
@@ -2299,6 +2305,7 @@ router.get(
         cosponsors,
         committees,
         actions,
+        progress,
         url: bill.url,
         textUrl,
         policyArea: bill.policyArea?.name ?? undefined,

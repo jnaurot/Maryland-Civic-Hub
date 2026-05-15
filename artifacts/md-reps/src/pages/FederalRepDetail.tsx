@@ -997,8 +997,10 @@ export function FederalRepDetail() {
                         </div>
                         {billSummaryData?.policyAreas &&
                           billSummaryData.policyAreas.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-2 mb-3">
-                              <span className="text-xs text-muted-foreground font-medium">
+                            <div
+                              className={`mb-3 flex items-center gap-2 ${topIssuesExpanded ? "flex-wrap" : "flex-nowrap min-w-0"}`}
+                            >
+                              <span className="text-xs text-muted-foreground font-medium shrink-0">
                                 {billRole === "cosponsored"
                                   ? "Top Support Areas"
                                   : "Top Sponsored Issues"}
@@ -1019,7 +1021,7 @@ export function FederalRepDetail() {
                                   <Badge
                                     key={topPolicyAreas[0].name}
                                     variant="outline"
-                                    className="text-xs bg-primary/5 border-primary/20 shrink-0"
+                                    className="text-xs bg-primary/5 border-primary/20 min-w-0 max-w-[36ch] truncate"
                                   >
                                     {topPolicyAreas[0].name}
                                   </Badge>
@@ -1030,7 +1032,7 @@ export function FederalRepDetail() {
                                   type="button"
                                   variant="ghost"
                                   size="sm"
-                                  className="h-6 px-2 text-xs"
+                                  className="h-6 px-2 text-xs shrink-0"
                                   onClick={() =>
                                     setTopIssuesExpanded((prev) => !prev)
                                   }

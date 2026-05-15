@@ -10,17 +10,40 @@ import { ChevronLeft, ExternalLink, CheckCircle2, Circle } from "lucide-react";
 import { RepNameLink } from "@/components/RepNameLink";
 import { partyColor, SummarySearch } from "@/lib/rep-utils";
 
-function BillProgressBar({ actions }: { actions?: { date: string; text: string; type?: string }[] }) {
+function BillProgressBar({
+  actions,
+  progress,
+}: {
+  actions?: { date: string; text: string; type?: string }[];
+  progress?: {
+    introduced?: boolean;
+    committee?: boolean;
+    floorVote?: boolean;
+    passed?: boolean;
+    signed?: boolean;
+  };
+}) {
   const stages = ["Introduced", "Committee", "Floor Vote", "Passed", "Signed"];
   const actionTexts = (actions ?? []).map((a) => a.text.toLowerCase());
 
   const isReached = (stage: string) => {
+    if (progress) {
+      switch (stage) {
+        case "Introduced": return !!progress.introduced;
+        case "Committee": return !!progress.committee;
+        case "Floor Vote": return !!progress.floorVote;
+        case "Passed": return !!progress.passed;
+        case "Signed": return !!progress.signed;
+        default: return false;
+      }
+    }
+
     switch (stage) {
       case "Introduced": return true;
       case "Committee": return actionTexts.some((t) => t.includes("committee") || t.includes("referred"));
       case "Floor Vote": return actionTexts.some((t) => t.includes("vote") || t.includes("passed") || t.includes("agreed"));
       case "Passed": return actionTexts.some((t) => t.includes("passed") || t.includes("agreed to"));
-      case "Signed": return actionTexts.some((t) => t.includes("signed") || t.includes("became law"));
+      case "Signed": return actionTexts.some((t) => t.includes("signed") || t.includes("became law") || t.includes("public law"));
       default: return false;
     }
   };
@@ -62,6 +85,7 @@ export function FederalBillDetail() {
       queryKey: getGetFederalBillDetailQueryKey(congress, billType, billNumber)
     }
   });
+  const progress = (bill as any)?.progress;
 
   return (
     <div className="min-h-screen bg-muted/20">
@@ -86,7 +110,7 @@ export function FederalBillDetail() {
                 </div>
                 <h1 className="text-2xl font-black leading-tight mb-4">{bill.title}</h1>
 
-                <BillProgressBar actions={bill.actions} />
+                <BillProgressBar actions={bill.actions} progress={progress} />
 
                 {bill.latestAction && (
                   <div className="bg-muted/50 rounded-lg p-3 text-sm">
