@@ -215,7 +215,7 @@ function BillsList({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full pb-4">
       <div className="flex justify-between items-center shrink-0 pb-4 gap-2 flex-wrap">
         <div className="flex gap-2">
           <Button
@@ -407,33 +407,33 @@ function BillsList({
                   );
                 })}
 
-              {data && (data.totalCount ?? 0) > limit && (
-                <div className="flex justify-between items-center pt-3 pb-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={offset === 0}
-                    onClick={() => setOffset(Math.max(0, offset - limit))}
-                  >
-                    Previous
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    {offset + 1}–
-                    {Math.min(offset + limit, data.totalCount ?? 0)} of{" "}
-                    {data.totalCount}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={offset + limit >= (data.totalCount ?? 0)}
-                    onClick={() => setOffset(offset + limit)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
+          {data && (data.totalCount ?? 0) > limit && (
+            <div className="flex justify-between items-center pt-3 pb-3 mt-2 shrink-0 border-t bg-muted/20 rounded-md px-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={offset === 0}
+                onClick={() => setOffset(Math.max(0, offset - limit))}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {offset + 1}–
+                {Math.min(offset + limit, data.totalCount ?? 0)} of{" "}
+                {data.totalCount}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={offset + limit >= (data.totalCount ?? 0)}
+                onClick={() => setOffset(offset + limit)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto pr-1">
@@ -943,7 +943,7 @@ export function FederalRepDetail() {
   };
 
   return (
-    <div className="h-[calc(100dvh-4rem)] flex flex-col bg-muted/20">
+    <div className="h-[calc(100dvh-4rem)] flex flex-col overflow-hidden bg-muted/20">
       <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
         <Link
           href="/"

@@ -341,7 +341,7 @@ export function StateRepDetail() {
   };
 
   return (
-    <div className="h-[calc(100dvh-4rem)] flex flex-col bg-muted/20">
+    <div className="h-[calc(100dvh-4rem)] flex flex-col overflow-hidden bg-muted/20">
       <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
         <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors shrink-0">
           <ChevronLeft className="h-4 w-4" /> Back to search

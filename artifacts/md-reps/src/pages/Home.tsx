@@ -356,7 +356,7 @@ export function Home() {
   };
 
   return (
-    <div className="h-[calc(100dvh-4rem)] flex flex-col">
+    <div className="h-[calc(100dvh-4rem)] flex flex-col overflow-hidden">
       {/* Hero Section */}
       <div
         data-testid="home-hero"
@@ -565,7 +565,7 @@ export function Home() {
       )}
 
       {/* Scrollable results */}
-      <div className="flex-1 overflow-y-auto bg-muted/30">
+      <div className="flex-1 min-h-0 overflow-y-auto bg-muted/30">
         <div className="container mx-auto px-4 pt-6 pb-12">
           {(isLoading || stateMembersLoading) && (
             <div className="text-center py-20">

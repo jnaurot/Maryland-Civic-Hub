@@ -33,10 +33,10 @@ const queryClient = new QueryClient({
 
 function Router() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-dvh flex flex-col overflow-hidden">
       <ScrollToTop />
       <Navbar />
-      <main className="flex-1">
+      <main className="flex-1 min-h-0 overflow-hidden">
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/rep/federal/:bioguideId" component={FederalRepDetail} />

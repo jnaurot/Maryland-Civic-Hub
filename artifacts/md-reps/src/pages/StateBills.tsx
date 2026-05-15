@@ -66,8 +66,8 @@ export function StateBills() {
   }
 
   return (
-    <div className="h-[calc(100dvh-4rem)] flex flex-col bg-muted/20">
-      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
+    <div className="h-[calc(100dvh-4rem)] flex flex-col overflow-hidden bg-muted/20">
+      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full pb-4">
         <div className="mb-8 shrink-0">
           <h1 className="text-4xl font-black mb-2">{stateName} State Bills</h1>
           <p className="text-muted-foreground">Bills being considered in the {stateName} legislature</p>
@@ -139,7 +139,7 @@ export function StateBills() {
         </div>
 
         {data && (data.totalCount ?? 0) > limit && (
-          <div className="flex justify-between items-center pt-6 shrink-0">
+          <div className="flex justify-between items-center pt-3 pb-3 mt-2 shrink-0 border-t bg-muted/20 rounded-md px-2">
             <Button variant="outline" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
             <span className="text-sm text-muted-foreground">
               {offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount?.toLocaleString()}
