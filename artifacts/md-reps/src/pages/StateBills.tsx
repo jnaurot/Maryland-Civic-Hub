@@ -6,12 +6,15 @@ import {
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, ChevronRight } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { US_STATES, getStateName } from "@/lib/states";
+import { PageShell } from "@/components/layout/PageShell";
+import { ListViewport } from "@/components/layout/ListViewport";
+import { PaginationFooter } from "@/components/layout/PaginationFooter";
+import { FilterBar } from "@/components/layout/FilterBar";
 
 type Chamber = "upper" | "lower" | "all";
 
@@ -66,14 +69,13 @@ export function StateBills() {
   }
 
   return (
-    <div className="h-[calc(100dvh-4rem)] flex flex-col overflow-hidden bg-muted/20">
-      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full pb-4">
+    <PageShell contentClassName="pb-4">
         <div className="mb-8 shrink-0">
           <h1 className="text-4xl font-black mb-2">{stateName} State Bills</h1>
           <p className="text-muted-foreground">Bills being considered in the {stateName} legislature</p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6 shrink-0">
+        <FilterBar className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-2">
           <Select value={chamber} onValueChange={handleChamberChange}>
             <SelectTrigger className="w-56">
               <SelectValue placeholder="Filter by chamber" />
@@ -87,9 +89,9 @@ export function StateBills() {
           {data?.totalCount !== undefined && (
             <span className="text-sm text-muted-foreground">{data.totalCount.toLocaleString()} bills</span>
           )}
-        </div>
+        </FilterBar>
 
-        <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-3">
+        <ListViewport className="space-y-3">
           {isLoading && (
             <div className="space-y-3">
               {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
@@ -136,18 +138,15 @@ export function StateBills() {
               </Card>
             </Link>
           ))}
-        </div>
+        </ListViewport>
 
-        {data && (data.totalCount ?? 0) > limit && (
-          <div className="flex justify-between items-center pt-3 pb-3 mt-2 shrink-0 border-t bg-muted/20 rounded-md px-2">
-            <Button variant="outline" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
-            <span className="text-sm text-muted-foreground">
-              {offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount?.toLocaleString()}
-            </span>
-            <Button variant="outline" disabled={offset + limit >= (data.totalCount ?? 0)} onClick={() => setOffset(offset + limit)}>Next</Button>
-          </div>
-        )}
-      </div>
-    </div>
+        <PaginationFooter
+          offset={offset}
+          limit={limit}
+          totalCount={data?.totalCount ?? 0}
+          onPrevious={() => setOffset(Math.max(0, offset - limit))}
+          onNext={() => setOffset(offset + limit)}
+        />
+    </PageShell>
   );
 }

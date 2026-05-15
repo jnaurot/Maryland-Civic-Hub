@@ -40,6 +40,10 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { partyColor, voteColor, formatMoney } from "@/lib/rep-utils";
+import { PageShell } from "@/components/layout/PageShell";
+import { ListViewport } from "@/components/layout/ListViewport";
+import { PaginationFooter } from "@/components/layout/PaginationFooter";
+import { FilterBar } from "@/components/layout/FilterBar";
 
 function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: string; jurisdiction?: string; memberName?: string }) {
   const [type, setType] = useState<"sponsored" | "cosponsored">("sponsored");
@@ -55,14 +59,14 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
   const fromParam = memberName ? `?from=${encodeURIComponent(`/rep/state/${memberId}`)}&name=${encodeURIComponent(memberName)}` : "";
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center shrink-0 pb-4 gap-2 flex-wrap">
+    <div className="flex flex-col h-full pb-4">
+      <FilterBar className="flex justify-between items-center gap-2 flex-wrap">
         <div className="flex gap-2">
           <Button size="sm" variant={type === "sponsored" ? "default" : "outline"} onClick={() => { setType("sponsored"); setOffset(0); }}>Sponsored</Button>
           <Button size="sm" variant={type === "cosponsored" ? "default" : "outline"} onClick={() => { setType("cosponsored"); setOffset(0); }}>Cosponsored</Button>
         </div>
-      </div>
-      <div className="relative shrink-0 pb-4">
+      </FilterBar>
+      <FilterBar className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search bills..."
@@ -70,12 +74,12 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
           onChange={(e) => { setSearchQuery(e.target.value); setOffset(0); }}
           className="pl-9"
         />
-      </div>
+      </FilterBar>
 
       <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2 shrink-0">
         {type === "cosponsored" ? "Cosponsored Bills" : "Sponsored Bills"}
       </p>
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+      <ListViewport className="space-y-3">
         {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
         {!isLoading && data?.bills?.length === 0 && (
@@ -101,15 +105,15 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
             </Card>
           </Link>
         ))}
-      </div>
+      </ListViewport>
 
-      {data && (data.totalCount ?? 0) > limit && (
-        <div className="flex justify-between items-center pt-6 shrink-0">
-          <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
-          <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount}</span>
-          <Button variant="outline" size="sm" disabled={offset + limit >= (data.totalCount ?? 0)} onClick={() => setOffset(offset + limit)}>Next</Button>
-        </div>
-      )}
+      <PaginationFooter
+        offset={offset}
+        limit={limit}
+        totalCount={data?.totalCount ?? 0}
+        onPrevious={() => setOffset(Math.max(0, offset - limit))}
+        onNext={() => setOffset(offset + limit)}
+      />
     </div>
   );
 }
@@ -135,7 +139,7 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
 
   return (
     <div className="flex flex-col h-full">
-      <div className="relative shrink-0 pb-4">
+      <FilterBar className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search votes..."
@@ -143,8 +147,8 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
           onChange={(e) => { setSearchQuery(e.target.value); setOffset(0); }}
           className="pl-9"
         />
-      </div>
-      <div className="flex flex-wrap gap-2 shrink-0 pb-4">
+      </FilterBar>
+      <FilterBar className="flex flex-wrap gap-2">
         {voteFilters.map((f) => (
           <Button
             key={f.value}
@@ -155,9 +159,9 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
             {f.label}
           </Button>
         ))}
-      </div>
+      </FilterBar>
 
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+      <ListViewport className="space-y-3">
         {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>}
 
         {!isLoading && !data?.votes?.length && (
@@ -181,15 +185,15 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
             </CardContent>
           </Card>
         ))}
-      </div>
+      </ListViewport>
 
-      {data && (data.totalCount ?? 0) > limit && (
-        <div className="flex justify-between items-center pt-6 shrink-0">
-          <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</Button>
-          <span className="text-sm text-muted-foreground">{offset + 1}–{Math.min(offset + limit, data.totalCount ?? 0)} of {data.totalCount}</span>
-          <Button variant="outline" size="sm" disabled={offset + limit >= (data.totalCount ?? 0)} onClick={() => setOffset(offset + limit)}>Next</Button>
-        </div>
-      )}
+      <PaginationFooter
+        offset={offset}
+        limit={limit}
+        totalCount={data?.totalCount ?? 0}
+        onPrevious={() => setOffset(Math.max(0, offset - limit))}
+        onNext={() => setOffset(offset + limit)}
+      />
     </div>
   );
 }
@@ -206,7 +210,7 @@ function StateFinanceTab({ name, state }: { name: string; state?: string }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-6 pr-1">
+      <ListViewport className="space-y-6">
         {(searchLoading || financeLoading) && <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>}
 
         {!searchLoading && !financeLoading && !candidateId && (
@@ -272,7 +276,7 @@ function StateFinanceTab({ name, state }: { name: string; state?: string }) {
             </div>
           </>
         )}
-      </div>
+      </ListViewport>
     </div>
   );
 }
@@ -280,12 +284,12 @@ function StateFinanceTab({ name, state }: { name: string; state?: string }) {
 function CommitteesFromBills() {
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+      <ListViewport>
         <div className="text-center py-10 text-muted-foreground">
           <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
           <p>Committee memberships for state legislators are available through the state legislature website.</p>
         </div>
-      </div>
+      </ListViewport>
     </div>
   );
 }
@@ -341,8 +345,7 @@ export function StateRepDetail() {
   };
 
   return (
-    <div className="h-[calc(100dvh-4rem)] flex flex-col overflow-hidden bg-muted/20">
-      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
+    <PageShell>
         <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors shrink-0">
           <ChevronLeft className="h-4 w-4" /> Back to search
         </Link>
@@ -436,7 +439,6 @@ export function StateRepDetail() {
         ) : (
           <div className="text-center py-20 text-muted-foreground">Member not found.</div>
         )}
-      </div>
-    </div>
+    </PageShell>
   );
 }

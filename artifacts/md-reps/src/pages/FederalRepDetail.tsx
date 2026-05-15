@@ -47,6 +47,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { RepNameLink } from "@/components/RepNameLink";
 import { partyColor, voteBadgeClass, formatMoney } from "@/lib/rep-utils";
+import { PageShell } from "@/components/layout/PageShell";
+import { ListViewport } from "@/components/layout/ListViewport";
+import { PaginationFooter } from "@/components/layout/PaginationFooter";
+import { FilterBar } from "@/components/layout/FilterBar";
 
 function PolicyAreaChart({
   policyAreas,
@@ -272,7 +276,7 @@ function BillsList({
           </Button>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2 shrink-0 pb-4">
+      <FilterBar className="flex flex-wrap gap-2">
         {categoryOptions.map((option) => {
           const count = data?.categoryCounts?.[option.value] ?? 0;
           if (option.hideWhenZero && count === 0) return null;
@@ -290,8 +294,8 @@ function BillsList({
             </Button>
           );
         })}
-      </div>
-      <div className="relative shrink-0 pb-4">
+      </FilterBar>
+      <FilterBar className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search bills..."
@@ -302,7 +306,7 @@ function BillsList({
           }}
           className="pl-9"
         />
-      </div>
+      </FilterBar>
 
       {billView === "list" ? (
         <div className="flex-1 min-h-0 flex flex-col">
@@ -314,7 +318,7 @@ function BillsList({
               Indexing sponsored legislation. Counts may update.
             </p>
           )}
-          <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+          <ListViewport>
             <div className="space-y-3">
               {isLoading && (
                 <>
@@ -408,35 +412,17 @@ function BillsList({
                 })}
 
             </div>
-          </div>
-          {data && (data.totalCount ?? 0) > limit && (
-            <div className="flex justify-between items-center pt-3 pb-3 mt-2 shrink-0 border-t bg-muted/20 rounded-md px-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={offset === 0}
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                {offset + 1}–
-                {Math.min(offset + limit, data.totalCount ?? 0)} of{" "}
-                {data.totalCount}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={offset + limit >= (data.totalCount ?? 0)}
-                onClick={() => setOffset(offset + limit)}
-              >
-                Next
-              </Button>
-            </div>
-          )}
+          </ListViewport>
+          <PaginationFooter
+            offset={offset}
+            limit={limit}
+            totalCount={data?.totalCount ?? 0}
+            onPrevious={() => setOffset(Math.max(0, offset - limit))}
+            onNext={() => setOffset(offset + limit)}
+          />
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+        <ListViewport>
           {isLoading && (
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
@@ -470,7 +456,7 @@ function BillsList({
                 No policy area data available.
               </p>
             )}
-        </div>
+        </ListViewport>
       )}
     </div>
   );
@@ -530,7 +516,7 @@ function VotesList({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="relative shrink-0 pb-4">
+      <FilterBar className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search votes..."
@@ -541,8 +527,8 @@ function VotesList({
           }}
           className="pl-9"
         />
-      </div>
-      <div className="flex flex-wrap gap-2 shrink-0 pb-4">
+      </FilterBar>
+      <FilterBar className="flex flex-wrap gap-2">
         {voteFilters.map((f) => (
           <Button
             key={f.value}
@@ -556,9 +542,9 @@ function VotesList({
             {f.label}
           </Button>
         ))}
-      </div>
+      </FilterBar>
 
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+      <ListViewport className="space-y-3">
         {isLoading && (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
@@ -619,31 +605,15 @@ function VotesList({
               </CardContent>
             </Card>
           ))}
-      </div>
+      </ListViewport>
 
-      {totalCount > limit && (
-        <div className="flex justify-between items-center pt-6 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - limit))}
-          >
-            Previous
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            {offset + 1}–{Math.min(offset + limit, totalCount)} of {totalCount}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={offset + limit >= totalCount}
-            onClick={() => setOffset(offset + limit)}
-          >
-            Next
-          </Button>
-        </div>
-      )}
+      <PaginationFooter
+        offset={offset}
+        limit={limit}
+        totalCount={totalCount}
+        onPrevious={() => setOffset(Math.max(0, offset - limit))}
+        onNext={() => setOffset(offset + limit)}
+      />
     </div>
   );
 }
@@ -658,7 +628,7 @@ function CommitteesList({ bioguideId }: { bioguideId: string }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+      <ListViewport className="space-y-3">
         {isLoading && (
           <div className="space-y-3">
             {[...Array(3)].map((_, i) => (
@@ -722,7 +692,7 @@ function CommitteesList({ bioguideId }: { bioguideId: string }) {
               )}
             </Card>
           ))}
-      </div>
+      </ListViewport>
     </div>
   );
 }
@@ -758,7 +728,7 @@ function FinanceTab({ name, state }: { name: string; state?: string }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-6 pr-1">
+      <ListViewport className="space-y-6">
         {(searchLoading || financeLoading) && (
           <div className="space-y-3">
             {[...Array(3)].map((_, i) => (
@@ -859,7 +829,7 @@ function FinanceTab({ name, state }: { name: string; state?: string }) {
             </div>
           </>
         )}
-      </div>
+      </ListViewport>
     </div>
   );
 }
@@ -943,8 +913,7 @@ export function FederalRepDetail() {
   };
 
   return (
-    <div className="h-[calc(100dvh-4rem)] flex flex-col overflow-hidden bg-muted/20">
-      <div className="container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full">
+    <PageShell>
         <Link
           href="/"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors shrink-0"
@@ -1154,7 +1123,6 @@ export function FederalRepDetail() {
             Member not found.
           </div>
         )}
-      </div>
-    </div>
+    </PageShell>
   );
 }

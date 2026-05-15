@@ -35,8 +35,12 @@ function getPageSource(name: string): string {
   return readFileSync(path, "utf8");
 }
 
-const scrollConstrainedPages = [
-  "Home",
+function getLayoutSource(name: string): string {
+  const path = resolve(import.meta.dirname, `../components/layout/${name}.tsx`);
+  return readFileSync(path, "utf8");
+}
+
+const pageShellPages = [
   "FederalRepDetail",
   "StateRepDetail",
   "FederalBills",
@@ -44,28 +48,34 @@ const scrollConstrainedPages = [
 ];
 
 describe("Scroll layout regression", () => {
-  it.each(scrollConstrainedPages)(
-    "%s outer page container never scrolls (overflow-hidden + h-[calc(100dvh-4rem)])",
-    (name) => {
-      const source = getPageSource(name);
-      const matches = findElementsWithClass(source, "overflow-hidden");
+  it("PageShell keeps fixed viewport and non-scrolling outer container", () => {
+    const source = getLayoutSource("PageShell");
+    expect(source.includes("h-[calc(100dvh-4rem)]")).toBe(true);
+    expect(source.includes("overflow-hidden")).toBe(true);
+  });
 
-      // The outer container must have BOTH overflow-hidden and h-[calc(100dvh-4rem)]
-      const outer = matches.find((m) =>
-        m.className.includes("h-[calc(100dvh-4rem)]") &&
-        m.className.includes("overflow-hidden"),
-      );
+  it("ListViewport enforces a single inner scroll region", () => {
+    const source = getLayoutSource("ListViewport");
+    expect(source.includes("overflow-y-auto")).toBe(true);
+    expect(source.includes("min-h-0")).toBe(true);
+    expect(source.includes("pr-1")).toBe(true);
+  });
 
-      expect(outer, `Expected ${name} outer container to have overflow-hidden and h-[calc(100dvh-4rem)]`).toBeTruthy();
-    },
-  );
+  it.each(pageShellPages)("%s uses shared PageShell and ListViewport", (name) => {
+    const source = getPageSource(name);
+    expect(source.includes("<PageShell")).toBe(true);
+    expect(source.includes("<ListViewport")).toBe(true);
+  });
 
-  it.each(scrollConstrainedPages)(
-    "%s inner content area can scroll (overflow-y-auto)",
-    (name) => {
-      const source = getPageSource(name);
-      const matches = findElementsWithClass(source, "overflow-y-auto");
-      expect(matches.length, `Expected ${name} to contain at least one overflow-y-auto element`).toBeGreaterThan(0);
-    },
-  );
+  it("Home keeps fixed outer container and inner scrolling area", () => {
+    const source = getPageSource("Home");
+    const outerMatches = findElementsWithClass(source, "overflow-hidden");
+    const outer = outerMatches.find((m) =>
+      m.className.includes("h-[calc(100dvh-4rem)]") &&
+      m.className.includes("overflow-hidden"),
+    );
+    const inner = findElementsWithClass(source, "overflow-y-auto");
+    expect(outer).toBeTruthy();
+    expect(inner.length).toBeGreaterThan(0);
+  });
 });
