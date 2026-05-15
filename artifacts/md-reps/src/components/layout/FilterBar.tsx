@@ -8,5 +8,5 @@ export function FilterBar({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cn("shrink-0 pb-4", className)}>{children}</div>;
+  return <div className={cn("shrink-0 pb-4 max-sm:pb-3", className)}>{children}</div>;
 }

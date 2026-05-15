@@ -13,6 +13,7 @@ import { PageShell } from "@/components/layout/PageShell";
 import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
+import { GlobalSearchBar } from "@/components/layout/GlobalSearchBar";
 
 type Chamber = "both" | "house" | "senate";
 
@@ -32,14 +33,16 @@ export function FederalBills() {
 
   return (
     <PageShell contentClassName="pb-4">
-        <div className="mb-8 shrink-0">
-          <h1 className="text-4xl font-black mb-2">Federal Bills</h1>
-          <p className="text-muted-foreground">Bills currently being considered in the U.S. Congress</p>
+        <div className="mb-8 shrink-0 max-sm:mb-5">
+          <h1 className="text-4xl font-black mb-2 max-sm:text-3xl">Federal Bills</h1>
+          <p className="text-muted-foreground max-sm:hidden">Bills currently being considered in the U.S. Congress</p>
         </div>
+
+        <GlobalSearchBar />
 
         <FilterBar className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-2">
           <Select value={chamber} onValueChange={handleChamberChange}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="Filter by chamber" />
             </SelectTrigger>
             <SelectContent>

@@ -19,7 +19,7 @@ export function PageShell({
     >
       <div
         className={cn(
-          "container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full",
+          "container mx-auto px-4 pt-8 max-w-4xl flex flex-col h-full max-sm:px-3 max-sm:pt-4",
           contentClassName,
         )}
       >

@@ -15,6 +15,7 @@ import { PageShell } from "@/components/layout/PageShell";
 import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
+import { GlobalSearchBar } from "@/components/layout/GlobalSearchBar";
 
 type Chamber = "upper" | "lower" | "all";
 
@@ -45,7 +46,7 @@ export function StateBills() {
       <div className="min-h-screen bg-muted/20">
         <div className="container mx-auto px-4 py-8 max-w-4xl">
           <div className="mb-8">
-            <h1 className="text-4xl font-black mb-2">State Bills</h1>
+            <h1 className="text-4xl font-black mb-2 max-sm:text-3xl">State Bills</h1>
             <p className="text-muted-foreground">Bills being considered in state legislatures across the country</p>
           </div>
 
@@ -53,7 +54,7 @@ export function StateBills() {
             <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
             <p className="text-lg mb-4">Select a state to view state legislation.</p>
             <Select value={selectedState ?? ""} onValueChange={(v) => setSelectedState(v || null)}>
-              <SelectTrigger className="w-56 mx-auto">
+              <SelectTrigger className="w-full max-w-56 mx-auto">
                 <SelectValue placeholder="Select a state" />
               </SelectTrigger>
               <SelectContent>
@@ -70,14 +71,16 @@ export function StateBills() {
 
   return (
     <PageShell contentClassName="pb-4">
-        <div className="mb-8 shrink-0">
-          <h1 className="text-4xl font-black mb-2">{stateName} State Bills</h1>
-          <p className="text-muted-foreground">Bills being considered in the {stateName} legislature</p>
+        <div className="mb-8 shrink-0 max-sm:mb-5">
+          <h1 className="text-4xl font-black mb-2 max-sm:text-3xl">{stateName} State Bills</h1>
+          <p className="text-muted-foreground max-sm:hidden">Bills being considered in the {stateName} legislature</p>
         </div>
+
+        <GlobalSearchBar />
 
         <FilterBar className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-2">
           <Select value={chamber} onValueChange={handleChamberChange}>
-            <SelectTrigger className="w-56">
+            <SelectTrigger className="w-full sm:w-56">
               <SelectValue placeholder="Filter by chamber" />
             </SelectTrigger>
             <SelectContent>

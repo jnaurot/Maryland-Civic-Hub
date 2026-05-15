@@ -9,7 +9,7 @@ export function ListViewport({
   className?: string;
 }) {
   return (
-    <div className={cn("flex-1 min-h-0 overflow-y-auto pr-1", className)}>
+    <div className={cn("flex-1 min-h-0 overflow-y-auto pr-1 max-sm:pr-0", className)}>
       {children}
     </div>
   );

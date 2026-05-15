@@ -35,6 +35,8 @@ import { toast } from "@/hooks/use-toast";
 import {
   ExternalLink,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Users,
   FileText,
   Vote,
@@ -276,7 +278,7 @@ function BillsList({
           </Button>
         </div>
       </div>
-      <FilterBar className="flex flex-wrap gap-2">
+      <FilterBar className="flex flex-wrap gap-2 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:pb-1 max-sm:[&>*]:shrink-0">
         {categoryOptions.map((option) => {
           const count = data?.categoryCounts?.[option.value] ?? 0;
           if (option.hideWhenZero && count === 0) return null;
@@ -528,7 +530,7 @@ function VotesList({
           className="pl-9"
         />
       </FilterBar>
-      <FilterBar className="flex flex-wrap gap-2">
+      <FilterBar className="flex flex-wrap gap-2 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:pb-1 max-sm:[&>*]:shrink-0">
         {voteFilters.map((f) => (
           <Button
             key={f.value}
@@ -850,6 +852,7 @@ export function FederalRepDetail() {
   const [billRole, setBillRole] = useState<"sponsored" | "cosponsored">(
     "sponsored",
   );
+  const [topIssuesExpanded, setTopIssuesExpanded] = useState(false);
   const { data: billSummaryData } = useGetFederalMemberBills(
     bioguideId,
     { type: billRole, offset: 0, limit: 1 },
@@ -866,6 +869,10 @@ export function FederalRepDetail() {
   );
 
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const topPolicyAreas = (billSummaryData?.policyAreas ?? [])
+    .filter((p) => p.name && p.name !== "Other")
+    .slice(0, 8);
 
   const refreshMutation = useRefreshFederalMember({
     mutation: {
@@ -997,10 +1004,8 @@ export function FederalRepDetail() {
                                   : "Top Sponsored Issues"}
                                 :
                               </span>
-                              {billSummaryData.policyAreas
-                                .slice(0, 5)
-                                .filter((p) => p.name && p.name !== "Other")
-                                .map((area) => (
+                              {topIssuesExpanded ? (
+                                topPolicyAreas.map((area) => (
                                   <Badge
                                     key={area.name}
                                     variant="outline"
@@ -1008,7 +1013,40 @@ export function FederalRepDetail() {
                                   >
                                     {area.name}
                                   </Badge>
-                                ))}
+                                ))
+                              ) : (
+                                topPolicyAreas[0] && (
+                                  <Badge
+                                    key={topPolicyAreas[0].name}
+                                    variant="outline"
+                                    className="text-xs bg-primary/5 border-primary/20 shrink-0"
+                                  >
+                                    {topPolicyAreas[0].name}
+                                  </Badge>
+                                )
+                              )}
+                              {topPolicyAreas.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs"
+                                  onClick={() =>
+                                    setTopIssuesExpanded((prev) => !prev)
+                                  }
+                                >
+                                  {topIssuesExpanded ? (
+                                    <>
+                                      Hide <ChevronUp className="h-3 w-3 ml-1" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      show more...{" "}
+                                      <ChevronDown className="h-3 w-3 ml-1" />
+                                    </>
+                                  )}
+                                </Button>
+                              )}
                             </div>
                           )}
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
@@ -1065,7 +1103,7 @@ export function FederalRepDetail() {
             </Card>
 
             <Tabs defaultValue="bills" className="flex flex-col flex-1 min-h-0">
-              <TabsList className="w-full mb-6 shrink-0">
+              <TabsList className="w-full mb-6 shrink-0 max-sm:mb-4">
                 <TabsTrigger value="bills" className="flex-1 gap-1.5">
                   <FileText className="h-4 w-4" />
                   <span className="hidden sm:inline">Bills</span>

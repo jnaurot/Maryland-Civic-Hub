@@ -30,7 +30,7 @@ export function PaginationFooter({
   return (
     <div
       className={cn(
-        "flex justify-between items-center pt-3 pb-3 mt-2 shrink-0 border-t bg-muted/20 rounded-md px-2",
+        "flex justify-between items-center gap-2 pt-3 pb-3 mt-2 shrink-0 border-t bg-muted/20 rounded-md px-2 max-sm:rounded-none max-sm:border-x-0 max-sm:px-1.5 max-sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))]",
         className,
       )}
     >
@@ -42,7 +42,7 @@ export function PaginationFooter({
       >
         Previous
       </Button>
-      <span className="text-sm text-muted-foreground">
+      <span className="text-sm text-muted-foreground text-center max-sm:text-xs">
         {formatCount(start)}–{formatCount(end)} of {formatCount(safeTotal)}
       </span>
       <Button

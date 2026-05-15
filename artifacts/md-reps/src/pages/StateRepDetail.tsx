@@ -148,7 +148,7 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
           className="pl-9"
         />
       </FilterBar>
-      <FilterBar className="flex flex-wrap gap-2">
+      <FilterBar className="flex flex-wrap gap-2 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:pb-1 max-sm:[&>*]:shrink-0">
         {voteFilters.map((f) => (
           <Button
             key={f.value}
@@ -423,7 +423,7 @@ export function StateRepDetail() {
             </Card>
 
             <Tabs defaultValue="bills" className="flex flex-col flex-1 min-h-0">
-              <TabsList className="w-full mb-6 shrink-0">
+              <TabsList className="w-full mb-6 shrink-0 max-sm:mb-4">
                 <TabsTrigger value="bills" className="flex-1 gap-1.5"><FileText className="h-4 w-4" /><span className="hidden sm:inline">Bills</span></TabsTrigger>
                 <TabsTrigger value="votes" className="flex-1 gap-1.5"><Vote className="h-4 w-4" /><span className="hidden sm:inline">Votes</span></TabsTrigger>
                 <TabsTrigger value="committees" className="flex-1 gap-1.5"><Users className="h-4 w-4" /><span className="hidden sm:inline">Committees</span></TabsTrigger>
