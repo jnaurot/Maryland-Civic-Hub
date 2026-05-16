@@ -18,9 +18,8 @@ import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { GlobalSearchBar } from "@/components/layout/GlobalSearchBar";
-import { BILL_STAGE_OPTIONS, type BillStage, getBillStageMatches } from "@/lib/rep-utils";
+import { BILL_STAGE_OPTIONS, BILL_STAGE_QUERY_KEYS, type BillStage } from "@/lib/rep-utils";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
-import { useStatusFilteredList } from "@/hooks/useStatusFilteredList";
 
 type Chamber = "upper" | "lower" | "all";
 
@@ -54,19 +53,25 @@ export function StateBills() {
 
   const stateCode = selectedState;
   const stateName = getStateName(stateCode);
+  const statusFilterActive = statusEnabled && selectedStages.length > 0;
+  const stageQuery = statusFilterActive
+    ? selectedStages.map((stage) => BILL_STAGE_QUERY_KEYS[stage]).join(",")
+    : undefined;
 
   const params = chamber === "all"
-    ? { offset, limit, jurisdiction: stateCode?.toLowerCase() ?? "md" }
-    : { chamber: chamber as "upper" | "lower", offset, limit, jurisdiction: stateCode?.toLowerCase() ?? "md" };
+    ? { offset, limit, jurisdiction: stateCode?.toLowerCase() ?? "md", stages: stageQuery }
+    : { chamber: chamber as "upper" | "lower", offset, limit, jurisdiction: stateCode?.toLowerCase() ?? "md", stages: stageQuery };
 
   const { data, isLoading, error } = useGetStateBills(params, {
     query: {
       queryKey: getGetStateBillsQueryKey(params),
-      enabled: !!stateCode,
+      enabled: !!stateCode && searchQuery.length === 0,
       placeholderData: (previous) => previous,
     }
   });
-  const searchParams = { q: searchQuery, jurisdiction: stateCode?.toLowerCase() ?? "md", offset, limit };
+  const searchParams = chamber === "all"
+    ? { q: searchQuery, jurisdiction: stateCode?.toLowerCase() ?? "md", offset, limit, stages: stageQuery }
+    : { q: searchQuery, jurisdiction: stateCode?.toLowerCase() ?? "md", chamber: chamber as "upper" | "lower", offset, limit, stages: stageQuery };
   const { data: searchData, isLoading: isSearchLoading } = useSearchStateBills(searchParams, {
     query: {
       enabled: !!stateCode && searchQuery.length > 0,
@@ -82,63 +87,9 @@ export function StateBills() {
   const baseBills = searchQuery.length > 0 ? (searchData?.bills ?? []) : (data?.bills ?? []);
   const totalCountBase = searchQuery.length > 0 ? (searchData?.totalCount ?? 0) : (data?.totalCount ?? 0);
   const loadingBase = searchQuery.length > 0 ? isSearchLoading : isLoading;
-  const {
-    visibleItems: visibleBills,
-    pagedItems: pagedVisibleBills,
-    effectiveTotalCount,
-    refining: statusFilteringLoading,
-  } = useStatusFilteredList<any>({
-    statusEnabled,
-    selectedStages,
-    baseItems: baseBills,
-    matchItem: (bill, stages) => {
-      const matches = getBillStageMatches({
-        latestAction: bill.latestAction,
-        status: bill.status,
-        introducedDate: bill.introducedDate,
-      });
-      return stages.some((stage) => matches[stage]);
-    },
-    offset,
-    limit,
-    totalCountBase,
-    onResetOffset: () => setOffset(0),
-    fetchAllItems: stateCode
-      ? async () => {
-          const pageSize = 100;
-          const chamberParam = chamber !== "all" ? `&chamber=${chamber}` : "";
-          const jurisdictionParam = `&jurisdiction=${encodeURIComponent(
-            stateCode.toLowerCase(),
-          )}`;
-          const queryParam = searchQuery
-            ? `&q=${encodeURIComponent(searchQuery)}`
-            : "";
-          const endpoint = searchQuery.length > 0
-            ? "/api/state/bills/search"
-            : "/api/state/bills";
-          const base = `${endpoint}?limit=${pageSize}${jurisdictionParam}${chamberParam}${queryParam}`;
-          const firstRes = await fetch(`${base}&offset=0`);
-          if (!firstRes.ok) throw new Error("Failed to load filtered bills");
-          const firstJson = await firstRes.json();
-          const total = Number(firstJson.totalCount ?? 0);
-          let all = [...(firstJson.bills ?? [])];
-          for (
-            let nextOffset = pageSize;
-            nextOffset < total;
-            nextOffset += pageSize
-          ) {
-            const res = await fetch(`${base}&offset=${nextOffset}`);
-            if (!res.ok) break;
-            const json = await res.json();
-            all = all.concat(json.bills ?? []);
-          }
-          return all;
-        }
-      : undefined,
-    immediateWhileRefining: true,
-    isBaseLoading: loadingBase,
-    deps: [stateCode, chamber, searchQuery],
-  });
+  const visibleBills = baseBills;
+  const pagedVisibleBills = baseBills;
+  const effectiveTotalCount = totalCountBase;
   const backPathParams = new URLSearchParams();
   backPathParams.set("chamber", chamber);
   backPathParams.set("offset", String(offset));
@@ -152,6 +103,11 @@ export function StateBills() {
   useEffect(() => {
     restoredScrollRef.current = false;
   }, [scrollStorageKey]);
+
+  useEffect(() => {
+    if (loadingBase) return;
+    if (offset >= effectiveTotalCount && offset !== 0) setOffset(0);
+  }, [loadingBase, offset, effectiveTotalCount]);
 
   useEffect(() => {
     if (loadingBase) return;
@@ -265,20 +221,20 @@ export function StateBills() {
         </FilterBar>
 
         <ListViewport ref={listViewportRef} className="space-y-3">
-          {(loadingBase || statusFilteringLoading) && (
+          {loadingBase && (
             <div className="space-y-3">
               {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
             </div>
           )}
 
-          {!loadingBase && !statusFilteringLoading && (error || visibleBills.length === 0) && (
+          {!loadingBase && (error || visibleBills.length === 0) && (
             <div className="text-center py-20 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
               <p>{error ? `State legislative data is not available for ${stateName}.` : `No bills found${statusEnabled && selectedStages.length > 0 ? " for selected status filters" : ""}.`}</p>
             </div>
           )}
 
-          {!loadingBase && !statusFilteringLoading && pagedVisibleBills.map((bill) => (
+          {!loadingBase && pagedVisibleBills.map((bill) => (
             <Link
               key={bill.id}
               href={`/bills/state/${encodeURIComponent(bill.id)}?from=${encodeURIComponent(backPath)}&name=${encodeURIComponent(`${stateName} State Bills`)}`}

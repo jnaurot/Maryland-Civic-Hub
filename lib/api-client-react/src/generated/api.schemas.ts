@@ -115,6 +115,8 @@ export interface BillAction {
   date: string;
   text: string;
   type?: string;
+  organizationName?: string;
+  organizationClassification?: string;
 }
 
 export interface BillDetail {
@@ -324,7 +326,13 @@ export interface StateBill {
 
 export interface StateBillVote {
   date: string;
+  startDate?: string;
   chamber?: string;
+  organizationName?: string;
+  organizationClassification?: string;
+  motionText?: string;
+  motionClassification?: string[];
+  sourceUrl?: string;
   result: string;
   yesCount?: number;
   noCount?: number;
@@ -570,6 +578,10 @@ export type GetStateMemberBillsParams = {
    * Search query to filter bills by title or identifier
    */
   q?: string;
+  /**
+   * Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead
+   */
+  stages?: string;
 };
 
 export type GetStateMemberBillsType =
@@ -607,6 +619,10 @@ export type GetStateBillsParams = {
   offset?: number;
   limit?: number;
   jurisdiction?: string;
+  /**
+   * Comma-separated normalized stage filters: introduced, committee, floor_vote, passed, signed_enacted, dead
+   */
+  stages?: string;
 };
 
 export type GetStateBillsChamber = (typeof GetStateBillsChamber)[keyof typeof GetStateBillsChamber];
@@ -619,9 +635,22 @@ export const GetStateBillsChamber = {
 export type SearchStateBillsParams = {
   q: string;
   jurisdiction?: string;
+  chamber?: SearchStateBillsChamber;
+  /**
+   * Comma-separated normalized stage filters: introduced, committee, floor_vote, passed, signed_enacted, dead
+   */
+  stages?: string;
   offset?: number;
   limit?: number;
 };
+
+export type SearchStateBillsChamber =
+  (typeof SearchStateBillsChamber)[keyof typeof SearchStateBillsChamber];
+
+export const SearchStateBillsChamber = {
+  upper: "upper",
+  lower: "lower",
+} as const;
 
 export type GetCandidateFinanceParams = {
   cycle?: number;

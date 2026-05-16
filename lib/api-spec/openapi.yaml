@@ -526,6 +526,11 @@ paths:
           schema:
             type: string
           description: Search query to filter bills by title or identifier
+        - name: stages
+          in: query
+          schema:
+            type: string
+          description: "Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead"
       responses:
         "200":
           description: State bills list
@@ -605,6 +610,11 @@ paths:
           schema:
             type: string
             default: md
+        - name: stages
+          in: query
+          schema:
+            type: string
+          description: "Comma-separated normalized stage filters: introduced, committee, floor_vote, passed, signed_enacted, dead"
       responses:
         "200":
           description: State bills list
@@ -629,6 +639,16 @@ paths:
           schema:
             type: string
             default: md
+        - name: chamber
+          in: query
+          schema:
+            type: string
+            enum: [upper, lower]
+        - name: stages
+          in: query
+          schema:
+            type: string
+          description: "Comma-separated normalized stage filters: introduced, committee, floor_vote, passed, signed_enacted, dead"
         - name: offset
           in: query
           schema:
@@ -928,6 +948,10 @@ components:
         text:
           type: string
         type:
+          type: string
+        organizationName:
+          type: string
+        organizationClassification:
           type: string
       required: [date, text]
 
@@ -1306,7 +1330,21 @@ components:
       properties:
         date:
           type: string
+        startDate:
+          type: string
         chamber:
+          type: string
+        organizationName:
+          type: string
+        organizationClassification:
+          type: string
+        motionText:
+          type: string
+        motionClassification:
+          type: array
+          items:
+            type: string
+        sourceUrl:
           type: string
         result:
           type: string

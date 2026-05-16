@@ -409,11 +409,7 @@ function BillsList({
         <StatusStagePills
           selectedStages={selectedStages}
           onToggleStage={(stage) => {
-            setSelectedStages((prev) =>
-              prev.includes(stage)
-                ? prev.filter((s) => s !== stage)
-                : [...prev, stage],
-            );
+            setSelectedStages((prev) => (prev.includes(stage) ? [] : [stage]));
             setOffset(0);
           }}
         />

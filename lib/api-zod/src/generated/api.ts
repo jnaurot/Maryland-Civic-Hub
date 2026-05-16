@@ -598,6 +598,8 @@ export const GetFederalBillDetailResponse = zod.object({
         date: zod.string(),
         text: zod.string(),
         type: zod.string().optional(),
+        organizationName: zod.string().optional(),
+        organizationClassification: zod.string().optional(),
       }),
     )
     .optional(),
@@ -716,6 +718,12 @@ export const GetStateMemberBillsQueryParams = zod.object({
   offset: zod.coerce.number().default(getStateMemberBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getStateMemberBillsQueryLimitDefault),
   q: zod.coerce.string().optional().describe("Search query to filter bills by title or identifier"),
+  stages: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead",
+    ),
 });
 
 export const GetStateMemberBillsResponse = zod.object({
@@ -794,6 +802,12 @@ export const GetStateBillsQueryParams = zod.object({
   offset: zod.coerce.number().default(getStateBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getStateBillsQueryLimitDefault),
   jurisdiction: zod.coerce.string().default(getStateBillsQueryJurisdictionDefault),
+  stages: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Comma-separated normalized stage filters: introduced, committee, floor_vote, passed, signed_enacted, dead",
+    ),
 });
 
 export const GetStateBillsResponse = zod.object({
@@ -833,6 +847,13 @@ export const searchStateBillsQueryLimitDefault = 20;
 export const SearchStateBillsQueryParams = zod.object({
   q: zod.coerce.string(),
   jurisdiction: zod.coerce.string().default(searchStateBillsQueryJurisdictionDefault),
+  chamber: zod.enum(["upper", "lower"]).optional(),
+  stages: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Comma-separated normalized stage filters: introduced, committee, floor_vote, passed, signed_enacted, dead",
+    ),
   offset: zod.coerce.number().default(searchStateBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(searchStateBillsQueryLimitDefault),
 });
@@ -917,6 +938,8 @@ export const GetStateBillDetailResponse = zod.object({
         date: zod.string(),
         text: zod.string(),
         type: zod.string().optional(),
+        organizationName: zod.string().optional(),
+        organizationClassification: zod.string().optional(),
       }),
     )
     .optional(),
@@ -924,7 +947,13 @@ export const GetStateBillDetailResponse = zod.object({
     .array(
       zod.object({
         date: zod.string(),
+        startDate: zod.string().optional(),
         chamber: zod.string().optional(),
+        organizationName: zod.string().optional(),
+        organizationClassification: zod.string().optional(),
+        motionText: zod.string().optional(),
+        motionClassification: zod.array(zod.string()).optional(),
+        sourceUrl: zod.string().optional(),
         result: zod.string(),
         yesCount: zod.number().optional(),
         noCount: zod.number().optional(),

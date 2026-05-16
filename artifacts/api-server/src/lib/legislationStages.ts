@@ -32,12 +32,12 @@ export function computeLegislationStageFlags({
   const text = `${latestAction ?? ""} ${status ?? ""}`.toLowerCase();
   const introduced = !!introducedDate || text.length >= 0;
   const committee = /(committee|referred|reported)/i.test(text);
-  const floorVote = /(roll|yea|nay|vote|agreed to|floor)/i.test(text);
+  const floorVote = /\b(roll|yea|nay|vote|floor)\b|agreed to/i.test(text);
   const signedOrEnacted =
-    /(signed|became public law|became law|public law|enacted)/i.test(text);
+    /(signed|became public law|became law|public law|enacted|approved by the governor)/i.test(text);
   const passed =
     signedOrEnacted ||
-    /(passed house|passed senate|passed\/agreed|agreed to in house|agreed to in senate|passed by|adopted|adopted by)/i.test(
+    /(passed house|passed senate|passed\/agreed|agreed to in house|agreed to in senate|passed by|passed enrolled|returned passed|third reading passed|adopted|adopted by)/i.test(
       text,
     );
   const dead =

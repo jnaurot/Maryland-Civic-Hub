@@ -44,15 +44,31 @@ import {
   voteColor,
   formatMoney,
   BILL_STAGE_OPTIONS,
+  BILL_STAGE_QUERY_KEYS,
   type BillStage,
-  getBillStageMatches,
 } from "@/lib/rep-utils";
 import { PageShell } from "@/components/layout/PageShell";
 import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
-import { useStatusFilteredList } from "@/hooks/useStatusFilteredList";
+
+function getApiErrorStatus(error: unknown) {
+  return typeof error === "object" && error !== null && "status" in error
+    ? Number((error as { status?: unknown }).status)
+    : undefined;
+}
+
+function getApiErrorMessage(error: unknown) {
+  if (typeof error === "object" && error !== null && "data" in error) {
+    const data = (error as { data?: unknown }).data;
+    if (typeof data === "object" && data !== null && "error" in data) {
+      const message = (data as { error?: unknown }).error;
+      if (typeof message === "string" && message.trim()) return message;
+    }
+  }
+  return error instanceof Error ? error.message : "Request failed. Please try again later.";
+}
 
 function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: string; jurisdiction?: string; memberName?: string }) {
   const pageSearch = useSearch();
@@ -79,61 +95,30 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
   });
   const [searchQuery, setSearchQuery] = useState(initialParams.get("q") ?? "");
   const limit = 20;
+  const statusFilterActive = statusEnabled && selectedStages.length > 0;
+  const stageQuery = statusFilterActive
+    ? selectedStages.map((stage) => BILL_STAGE_QUERY_KEYS[stage]).join(",")
+    : undefined;
 
-  const queryParams = { type, jurisdiction, offset, limit, q: searchQuery || undefined };
-  const { data, isLoading } = useGetStateMemberBills(memberId, queryParams, {
+  const queryParams = {
+    type,
+    jurisdiction,
+    offset,
+    limit,
+    q: searchQuery || undefined,
+    stages: stageQuery,
+  };
+  const { data, isLoading, error } = useGetStateMemberBills(memberId, queryParams, {
     query: {
       enabled: !!memberId,
       queryKey: getGetStateMemberBillsQueryKey(memberId, queryParams),
       placeholderData: (previous) => previous,
     }
   });
-  const {
-    statusFilterActive,
-    visibleItems: filteredBills,
-    pagedItems: pagedVisibleBills,
-    effectiveTotalCount,
-    refining: statusFilteringLoading,
-  } = useStatusFilteredList<any>({
-    statusEnabled,
-    selectedStages,
-    baseItems: data?.bills ?? [],
-    matchItem: (bill, stages) => {
-      const matches = getBillStageMatches({
-        latestAction: bill.latestAction,
-        status: bill.status,
-        introducedDate: bill.introducedDate,
-      });
-      return stages.some((stage) => matches[stage]);
-    },
-    offset,
-    limit,
-    totalCountBase: data?.totalCount ?? 0,
-    onResetOffset: () => setOffset(0),
-    fetchAllItems: async () => {
-      const pageSize = 20;
-      const encodedQ = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
-      const jurisdictionQuery = jurisdiction ? `&jurisdiction=${encodeURIComponent(jurisdiction)}` : "";
-      const base = `/api/state/members/${encodeURIComponent(
-        memberId,
-      )}/bills?type=${type}&limit=${pageSize}${jurisdictionQuery}`;
-      const firstRes = await fetch(`${base}&offset=0${encodedQ}`);
-      if (!firstRes.ok) throw new Error("Failed to load filtered bills");
-      const firstJson = await firstRes.json();
-      const total = Number(firstJson.totalCount ?? 0);
-      let all = [...(firstJson.bills ?? [])];
-      for (let nextOffset = pageSize; nextOffset < total; nextOffset += pageSize) {
-        const res = await fetch(`${base}&offset=${nextOffset}${encodedQ}`);
-        if (!res.ok) break;
-        const json = await res.json();
-        all = all.concat(json.bills ?? []);
-      }
-      return all;
-    },
-    immediateWhileRefining: true,
-    isBaseLoading: isLoading,
-    deps: [memberId, type, jurisdiction, searchQuery],
-  });
+  const visibleBills = data?.bills ?? [];
+  const effectiveTotalCount = data?.totalCount ?? 0;
+  const rateLimited = getApiErrorStatus(error) === 429;
+  const errorMessage = error ? getApiErrorMessage(error) : undefined;
 
   const backPathParams = new URLSearchParams();
   backPathParams.set("type", type);
@@ -153,7 +138,7 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
   }, [scrollStorageKey]);
 
   useEffect(() => {
-    if (isLoading || statusFilteringLoading) return;
+    if (isLoading) return;
     if (restoredScrollRef.current) return;
     if (typeof window === "undefined") return;
     const raw = window.sessionStorage.getItem(scrollStorageKey);
@@ -173,7 +158,7 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
       restoredScrollRef.current = true;
     });
     return () => window.cancelAnimationFrame(id);
-  }, [isLoading, statusFilteringLoading, scrollStorageKey]);
+  }, [isLoading, scrollStorageKey]);
 
   return (
     <div className="flex flex-col h-full pb-4">
@@ -198,11 +183,7 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
         <StatusStagePills
           selectedStages={selectedStages}
           onToggleStage={(stage) => {
-            setSelectedStages((prev) =>
-              prev.includes(stage)
-                ? prev.filter((s) => s !== stage)
-                : [...prev, stage],
-            );
+            setSelectedStages((prev) => (prev.includes(stage) ? [] : [stage]));
             setOffset(0);
           }}
         />
@@ -221,13 +202,27 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
         {type === "cosponsored" ? "Cosponsored Bills" : "Sponsored Bills"}
       </p>
       <ListViewport ref={listViewportRef} className="space-y-3">
-        {(isLoading || statusFilteringLoading) && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
+        {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
-        {!isLoading && !statusFilteringLoading && filteredBills.length === 0 && (
+        {!isLoading && error && (
+          <Card className={rateLimited ? "border-amber-300 bg-amber-50" : "border-destructive/40"}>
+            <CardContent className="flex gap-3 p-4 text-sm">
+              <AlertTriangle className={rateLimited ? "mt-0.5 h-4 w-4 shrink-0 text-amber-600" : "mt-0.5 h-4 w-4 shrink-0 text-destructive"} />
+              <div>
+                <p className="font-semibold">
+                  {rateLimited ? "OpenStates rate limit reached" : "Could not load state bills"}
+                </p>
+                <p className="mt-1 text-muted-foreground">{errorMessage}</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!isLoading && !error && visibleBills.length === 0 && (
           <p className="text-muted-foreground text-center py-10">No bills found.</p>
         )}
 
-        {!isLoading && !statusFilteringLoading && pagedVisibleBills.map((bill) => (
+        {!isLoading && !error && visibleBills.map((bill) => (
           <Link
             key={bill.id}
             href={`/bills/state/${encodeURIComponent(bill.id)}${fromParam}`}

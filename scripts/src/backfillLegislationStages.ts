@@ -10,11 +10,12 @@ if (!DATABASE_URL) {
 
 const pool = new Pool({ connectionString: DATABASE_URL });
 
-const signedPattern = "(signed|became public law|became law|public law|enacted)";
+const signedPattern =
+  "(signed|became public law|became law|public law|enacted|approved by the governor)";
 const passedPattern =
-  "(passed house|passed senate|passed/agreed|agreed to in house|agreed to in senate|passed by|adopted|adopted by)";
+  "(passed house|passed senate|passed/agreed|agreed to in house|agreed to in senate|passed by|passed enrolled|returned passed|third reading passed|adopted|adopted by)";
 const committeePattern = "(committee|referred|reported)";
-const floorVotePattern = "(roll|yea|nay|vote|agreed to|floor)";
+const floorVotePattern = "\\m(roll|yea|nay|vote|floor)\\M|agreed to";
 const deadPattern =
   "(died|dead|failed|vetoed|tabled indefinitely|indefinitely postponed|withdrawn)";
 

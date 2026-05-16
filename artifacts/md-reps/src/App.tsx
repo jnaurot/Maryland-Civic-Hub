@@ -25,7 +25,13 @@ function ScrollToTop() {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: (failureCount, error) => {
+        const status = typeof error === "object" && error !== null && "status" in error
+          ? Number((error as { status?: unknown }).status)
+          : undefined;
+        if (status === 429) return false;
+        return failureCount < 1;
+      },
       staleTime: 5 * 60 * 1000,
     },
   },

@@ -1,6 +1,7 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { db, stateLegislatorsTable, providerStatusTable } from "@workspace/db";
 import { fetchWithTimeout as fetch } from "./http";
+import { ProviderRateLimitError } from "./respond";
 
 const OPENSTATES_API_KEY = process.env.OPENSTATES_API_KEY;
 const OPENSTATES_BASE = "https://v3.openstates.org";
@@ -93,7 +94,10 @@ async function openStatesFetch(
 ) {
   if (!OPENSTATES_API_KEY) throw new Error("OPENSTATES_API_KEY not configured");
   if (await isRateLimited())
-    throw new Error("OpenStates rate limit active. Please try again later.");
+    throw new ProviderRateLimitError({
+      provider: "OpenStates",
+      detail: "Temporary API request limit is active.",
+    });
   const url = new URL(`${OPENSTATES_BASE}${path}`);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
@@ -108,6 +112,17 @@ async function openStatesFetch(
       (res.status === 403 && text.toLowerCase().includes("rate"))
     ) {
       await recordRateLimit(res.status, text);
+      let detail = text.trim() || undefined;
+      try {
+        const parsed = JSON.parse(text) as { detail?: unknown };
+        if (typeof parsed.detail === "string") detail = parsed.detail;
+      } catch {
+        // Keep the raw response text as the detail.
+      }
+      throw new ProviderRateLimitError({
+        provider: "OpenStates",
+        detail,
+      });
     }
     throw new Error(`OpenStates API error ${res.status}: ${text}`);
   }

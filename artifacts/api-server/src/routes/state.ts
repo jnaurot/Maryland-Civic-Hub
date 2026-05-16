@@ -21,12 +21,24 @@ import {
   recordRateLimit,
 } from "../lib/stateLegislatorCache";
 import { fetchWithTimeout as fetch } from "../lib/http";
-import { sendInternalError } from "../lib/respond";
-import { computeLegislationStageFlags } from "../lib/legislationStages";
+import {
+  ProviderRateLimitError,
+  isProviderRateLimitError,
+  sendInternalError,
+  sendProviderRateLimitError,
+} from "../lib/respond";
+import {
+  computeLegislationStageFlags,
+  parseStageQuery,
+  type LegislationStageKey,
+} from "../lib/legislationStages";
 
 async function checkRateLimited() {
   if (await isRateLimited()) {
-    throw new Error("OpenStates rate limit active. Please try again later.");
+    throw new ProviderRateLimitError({
+      provider: "OpenStates",
+      detail: "Temporary API request limit is active.",
+    });
   }
 }
 
@@ -39,6 +51,33 @@ const stateMemberBillsCache = new Map<
   string,
   { fetchedAt: number; bills: ReturnType<typeof mapStateBill>[]; totalCount: number }
 >();
+
+function getOpenStatesRateLimitDetail(text: string) {
+  try {
+    const parsed = JSON.parse(text) as { detail?: unknown };
+    if (typeof parsed.detail === "string") return parsed.detail;
+  } catch {
+    // Fall back to the raw response text below.
+  }
+  return text.trim() || undefined;
+}
+
+function stateStageColumn(stage: LegislationStageKey) {
+  switch (stage) {
+    case "introduced":
+      return stateBillsTable.stageIntroduced;
+    case "committee":
+      return stateBillsTable.stageCommittee;
+    case "floor_vote":
+      return stateBillsTable.stageFloorVote;
+    case "passed":
+      return stateBillsTable.stagePassed;
+    case "signed_enacted":
+      return stateBillsTable.stageSignedEnacted;
+    case "dead":
+      return stateBillsTable.stageDead;
+  }
+}
 
 async function openStatesFetch(
   path: string,
@@ -60,6 +99,10 @@ async function openStatesFetch(
       (res.status === 403 && text.toLowerCase().includes("rate"))
     ) {
       await recordRateLimit(res.status, text);
+      throw new ProviderRateLimitError({
+        provider: "OpenStates",
+        detail: getOpenStatesRateLimitDetail(text),
+      });
     }
     throw new Error(`OpenStates API error ${res.status}: ${text}`);
   }
@@ -265,6 +308,10 @@ router.get("/state/members/:memberId", async (req, res) => {
     );
     return res.json(result);
   } catch (err) {
+    if (isProviderRateLimitError(err)) {
+      req.log.warn({ err }, "State member request blocked by provider rate limit");
+      return sendProviderRateLimitError(res, err);
+    }
     req.log.error({ err }, "Error fetching state member");
     return sendInternalError(res);
   }
@@ -278,6 +325,10 @@ router.post("/state/members/:memberId/refresh", async (req, res) => {
     const result = await refreshStateLegislator(memberId, req.log);
     return res.json(result);
   } catch (err) {
+    if (isProviderRateLimitError(err)) {
+      req.log.warn({ err }, "State member refresh blocked by provider rate limit");
+      return sendProviderRateLimitError(res, err);
+    }
     req.log.error({ err }, "Error refreshing state member");
     return sendInternalError(res);
   }
@@ -290,9 +341,77 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
     return res.status(400).json({ error: "Invalid params" });
 
   try {
-    const { jurisdiction, offset, limit, q, type } = queryParsed.data;
+    const { jurisdiction, offset, limit, q, type, stages } = queryParsed.data;
     const sponsorClassification =
       type === "cosponsored" ? "cosponsor" : "primary";
+    const selectedStages = parseStageQuery(stages);
+
+    if (selectedStages.length > 0) {
+      const sponsorCondition = sql`exists (
+        select 1
+        from jsonb_array_elements(coalesce(${stateBillsTable.raw}->'sponsorships', '[]'::jsonb)) as s
+        where coalesce(
+          s->'person'->>'id',
+          s->>'person_id',
+          s->>'id'
+        ) = ${memberId}
+        and (
+          ${sponsorClassification} = 'primary'
+          and (
+            s->>'classification' = 'primary'
+            or s->>'primary' = 'true'
+          )
+          or ${sponsorClassification} = 'cosponsor'
+          and coalesce(s->>'classification', '') in ('cosponsor', 'cosponsor-primary')
+        )
+      )`;
+      const stageCondition = or(
+        ...selectedStages.map((stage) => eq(stateStageColumn(stage), true)),
+      );
+      const searchCondition = q
+        ? sql`${stateBillsTable.searchVector} @@ websearch_to_tsquery('english', ${q})`
+        : undefined;
+      const conditions = [
+        eq(stateBillsTable.jurisdiction, jurisdiction),
+        sponsorCondition,
+        ...(stageCondition ? [stageCondition] : []),
+        ...(searchCondition ? [searchCondition] : []),
+      ];
+
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(stateBillsTable)
+        .where(and(...conditions));
+      const totalCount = Number(countResult[0]?.count ?? 0);
+      const rows = await db
+        .select()
+        .from(stateBillsTable)
+        .where(and(...conditions))
+        .orderBy(desc(stateBillsTable.introducedDate))
+        .limit(limit)
+        .offset(offset);
+
+      req.log.info(
+        {
+          memberId,
+          jurisdiction,
+          type,
+          stages,
+          offset,
+          limit,
+          totalCount,
+          source: "db",
+        },
+        "Serving state member bills from DB stage index",
+      );
+
+      return res.json({
+        bills: rows.map(mapDbStateBillRow),
+        totalCount,
+        offset,
+      });
+    }
+
     const perPage = Math.min(limit, 20);
     const page = Math.floor(offset / perPage) + 1;
     const cacheKey = [
@@ -372,6 +491,10 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
       offset,
     });
   } catch (err) {
+    if (isProviderRateLimitError(err)) {
+      req.log.warn({ err }, "State member bills request blocked by provider rate limit");
+      return sendProviderRateLimitError(res, err);
+    }
     req.log.error({ err }, "Error fetching state member bills");
     return sendInternalError(res);
   }
@@ -581,6 +704,10 @@ router.get("/state/members/:memberId/votes", async (req, res) => {
 
     return res.json({ votes, totalCount, offset });
   } catch (err) {
+    if (isProviderRateLimitError(err)) {
+      req.log.warn({ err }, "State member votes request blocked by provider rate limit");
+      return sendProviderRateLimitError(res, err);
+    }
     req.log.error({ err }, "Error fetching state member votes");
     return sendInternalError(res);
   }
@@ -590,12 +717,18 @@ router.get("/state/bills", async (req, res) => {
   const parsed = GetStateBillsQueryParams.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
 
-  const { chamber, offset, limit, jurisdiction } = parsed.data;
+  const { chamber, offset, limit, jurisdiction, stages } = parsed.data;
+  const selectedStages = parseStageQuery(stages);
 
   try {
+    const stageCondition =
+      selectedStages.length > 0
+        ? or(...selectedStages.map((stage) => eq(stateStageColumn(stage), true)))
+        : undefined;
     const dbConditions = [
       eq(stateBillsTable.jurisdiction, jurisdiction),
       ...(chamber ? [eq(stateBillsTable.chamber, chamber)] : []),
+      ...(stageCondition ? [stageCondition] : []),
     ];
     const dbCountResult = await db
       .select({ count: sql<number>`count(*)` })
@@ -603,7 +736,7 @@ router.get("/state/bills", async (req, res) => {
       .where(and(...dbConditions));
     const dbTotalCount = Number(dbCountResult[0]?.count ?? 0);
 
-    if (dbTotalCount > offset) {
+    if (dbTotalCount > offset || selectedStages.length > 0) {
       const rows = await db
         .select()
         .from(stateBillsTable)
@@ -612,7 +745,7 @@ router.get("/state/bills", async (req, res) => {
         .limit(limit)
         .offset(offset);
       req.log.info(
-        { jurisdiction, chamber, offset, limit, totalCount: dbTotalCount, source: "db" },
+        { jurisdiction, chamber, stages, offset, limit, totalCount: dbTotalCount, source: "db" },
         "Serving state bills from DB cache",
       );
       return res.json({
@@ -663,6 +796,10 @@ router.get("/state/bills", async (req, res) => {
       offset,
     });
   } catch (err) {
+    if (isProviderRateLimitError(err)) {
+      req.log.warn({ err }, "State bills request blocked by provider rate limit");
+      return sendProviderRateLimitError(res, err);
+    }
     req.log.error({ err }, "Error fetching state bills");
     return sendInternalError(res);
   }
@@ -673,18 +810,27 @@ router.get("/state/bills/search", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid query parameters" });
   }
-  const { q, jurisdiction, limit: rawLimit, offset } = parsed.data;
+  const { q, jurisdiction, chamber, stages, limit: rawLimit, offset } = parsed.data;
   const limit = Math.min(rawLimit, 100);
+  const selectedStages = parseStageQuery(stages);
 
   try {
     req.log.info(
-      { q, jurisdiction, source: "db" },
+      { q, jurisdiction, chamber, stages, source: "db" },
       "Searching state bills from DB cache",
     );
     const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
     const conditions = [sql`${stateBillsTable.searchVector} @@ ${searchQuery}`];
     if (jurisdiction)
       conditions.push(eq(stateBillsTable.jurisdiction, jurisdiction));
+    if (chamber)
+      conditions.push(eq(stateBillsTable.chamber, chamber));
+    const stageCondition =
+      selectedStages.length > 0
+        ? or(...selectedStages.map((stage) => eq(stateStageColumn(stage), true)))
+        : undefined;
+    if (stageCondition)
+      conditions.push(stageCondition);
 
     const rows = await db
       .select()
@@ -703,19 +849,7 @@ router.get("/state/bills/search", async (req, res) => {
 
     const totalCount = Number(countResult[0]?.count ?? 0);
 
-    const bills = rows.map((b) => ({
-      id: b.id,
-      identifier: b.identifier,
-      title: b.title,
-      session: b.session,
-      chamber: b.chamber,
-      status: b.status,
-      introducedDate: b.introducedDate,
-      summary: b.summary,
-      subjects: b.subjects,
-      url: b.url,
-      jurisdiction: b.jurisdiction,
-    }));
+    const bills = rows.map(mapDbStateBillRow);
 
     return res.json({ bills, totalCount, offset });
   } catch (err) {
@@ -747,6 +881,16 @@ router.get("/state/bills/:billId", async (req, res) => {
     }
     const data = (await res2.json()) as any;
     const latestAction = data.actions?.[data.actions.length - 1];
+    const introducedDate =
+      data.first_action_date ?? data.created_at?.split("T")[0] ?? null;
+    const actionHistoryText = Array.isArray(data.actions)
+      ? data.actions.map((action: any) => action?.description).filter(Boolean).join(" ")
+      : "";
+    const stageFlags = computeLegislationStageFlags({
+      latestAction: latestAction?.description,
+      status: actionHistoryText,
+      introducedDate,
+    });
     const subjects = Array.isArray(data.subject)
       ? data.subject
       : data.subject
@@ -764,8 +908,13 @@ router.get("/state/bills/:billId", async (req, res) => {
         session: data.legislative_session ?? null,
         chamber: data.from_organization?.classification ?? null,
         status: latestAction?.description ?? null,
-        introducedDate:
-          data.first_action_date ?? data.created_at?.split("T")[0] ?? null,
+        introducedDate,
+        stageIntroduced: stageFlags.introduced,
+        stageCommittee: stageFlags.committee,
+        stageFloorVote: stageFlags.floor_vote,
+        stagePassed: stageFlags.passed,
+        stageSignedEnacted: stageFlags.signed_enacted,
+        stageDead: stageFlags.dead,
         summary: data.abstract ?? null,
         subjects,
         url: data.openstates_url ?? null,
@@ -780,6 +929,13 @@ router.get("/state/bills/:billId", async (req, res) => {
           title: data.title ?? "Untitled",
           identifier: data.identifier ?? null,
           status: latestAction?.description ?? null,
+          introducedDate,
+          stageIntroduced: stageFlags.introduced,
+          stageCommittee: stageFlags.committee,
+          stageFloorVote: stageFlags.floor_vote,
+          stagePassed: stageFlags.passed,
+          stageSignedEnacted: stageFlags.signed_enacted,
+          stageDead: stageFlags.dead,
           summary: data.abstract ?? null,
           subjects,
           url: data.openstates_url ?? null,
@@ -798,7 +954,7 @@ router.get("/state/bills/:billId", async (req, res) => {
       session: data.legislative_session,
       chamber: data.from_organization?.classification,
       status: latestAction?.description,
-      introducedDate: data.first_action_date ?? data.created_at?.split("T")[0],
+      introducedDate,
       summary: data.abstract,
       sponsors:
         data.sponsorships
@@ -834,11 +990,19 @@ router.get("/state/bills/:billId", async (req, res) => {
           date: a.date ?? "",
           text: a.description ?? "",
           type: a.classification?.[0],
+          organizationName: a.organization?.name,
+          organizationClassification: a.organization?.classification,
         })) ?? [],
       votes:
         data.votes?.map((v: any) => ({
-          date: v.date ?? "",
-          chamber: v.chamber,
+          date: v.date ?? v.start_date ?? "",
+          startDate: v.start_date,
+          chamber: v.chamber ?? v.organization?.classification,
+          organizationName: v.organization?.name,
+          organizationClassification: v.organization?.classification,
+          motionText: v.motion_text,
+          motionClassification: v.motion_classification,
+          sourceUrl: v.sources?.[0]?.url,
           result: v.result,
           yesCount: v.counts?.find((c: any) => c.option === "yes")?.value,
           noCount: v.counts?.find((c: any) => c.option === "no")?.value,
@@ -849,6 +1013,10 @@ router.get("/state/bills/:billId", async (req, res) => {
       subjects,
     });
   } catch (err) {
+    if (isProviderRateLimitError(err)) {
+      req.log.warn({ err }, "State bill detail request blocked by provider rate limit");
+      return sendProviderRateLimitError(res, err);
+    }
     req.log.error({ err }, "Error fetching state bill detail");
     return sendInternalError(res);
   }
