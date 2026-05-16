@@ -213,6 +213,7 @@ export const GetFederalMemberBillsQueryParams = zod.object({
     .describe(
       "Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead",
     ),
+  policyArea: zod.coerce.string().optional().describe("Filter by policy area name"),
 });
 
 export const GetFederalMemberBillsResponse = zod.object({
@@ -435,6 +436,7 @@ export const getFederalBillsQueryLimitDefault = 20;
 
 export const GetFederalBillsQueryParams = zod.object({
   chamber: zod.enum(["house", "senate", "both"]).default(getFederalBillsQueryChamberDefault),
+  policyArea: zod.coerce.string().optional(),
   offset: zod.coerce.number().default(getFederalBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getFederalBillsQueryLimitDefault),
 });
@@ -484,13 +486,14 @@ export const GetFederalBillsResponse = zod.object({
 });
 
 /**
- * @summary Search federal bills by full-text query
+ * @summary Search federal bills by full-text query or policy area
  */
 export const searchFederalBillsQueryOffsetDefault = 0;
 export const searchFederalBillsQueryLimitDefault = 20;
 
 export const SearchFederalBillsQueryParams = zod.object({
-  q: zod.coerce.string(),
+  q: zod.coerce.string().optional(),
+  policyArea: zod.coerce.string().optional(),
   offset: zod.coerce.number().default(searchFederalBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(searchFederalBillsQueryLimitDefault),
 });

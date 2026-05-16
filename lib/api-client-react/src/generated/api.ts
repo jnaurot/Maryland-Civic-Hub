@@ -1043,9 +1043,9 @@ export function useGetFederalBills<
 }
 
 /**
- * @summary Search federal bills by full-text query
+ * @summary Search federal bills by full-text query or policy area
  */
-export const getSearchFederalBillsUrl = (params: SearchFederalBillsParams) => {
+export const getSearchFederalBillsUrl = (params?: SearchFederalBillsParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -1062,7 +1062,7 @@ export const getSearchFederalBillsUrl = (params: SearchFederalBillsParams) => {
 };
 
 export const searchFederalBills = async (
-  params: SearchFederalBillsParams,
+  params?: SearchFederalBillsParams,
   options?: RequestInit,
 ): Promise<BillsListResponse> => {
   return customFetch<BillsListResponse>(getSearchFederalBillsUrl(params), {
@@ -1079,7 +1079,7 @@ export const getSearchFederalBillsQueryOptions = <
   TData = Awaited<ReturnType<typeof searchFederalBills>>,
   TError = ErrorType<unknown>,
 >(
-  params: SearchFederalBillsParams,
+  params?: SearchFederalBillsParams,
   options?: {
     query?: UseQueryOptions<Awaited<ReturnType<typeof searchFederalBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;
@@ -1105,14 +1105,14 @@ export type SearchFederalBillsQueryResult = NonNullable<
 export type SearchFederalBillsQueryError = ErrorType<unknown>;
 
 /**
- * @summary Search federal bills by full-text query
+ * @summary Search federal bills by full-text query or policy area
  */
 
 export function useSearchFederalBills<
   TData = Awaited<ReturnType<typeof searchFederalBills>>,
   TError = ErrorType<unknown>,
 >(
-  params: SearchFederalBillsParams,
+  params?: SearchFederalBillsParams,
   options?: {
     query?: UseQueryOptions<Awaited<ReturnType<typeof searchFederalBills>>, TError, TData>;
     request?: SecondParameter<typeof customFetch>;

@@ -452,6 +452,10 @@ export type GetFederalMemberBillsParams = {
    * Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead
    */
   stages?: string;
+  /**
+   * Filter by policy area name
+   */
+  policyArea?: string;
 };
 
 export type GetFederalMemberBillsType =
@@ -529,6 +533,7 @@ export const GetFederalMemberSenateVotesFilter = {
 
 export type GetFederalBillsParams = {
   chamber?: GetFederalBillsChamber;
+  policyArea?: string;
   offset?: number;
   limit?: number;
 };
@@ -543,7 +548,8 @@ export const GetFederalBillsChamber = {
 } as const;
 
 export type SearchFederalBillsParams = {
-  q: string;
+  q?: string;
+  policyArea?: string;
   offset?: number;
   limit?: number;
 };

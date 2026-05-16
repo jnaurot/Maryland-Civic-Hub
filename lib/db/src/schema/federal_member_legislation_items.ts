@@ -72,6 +72,12 @@ export const federalMemberLegislationItemsTable = pgTable(
       table.category,
       table.introducedDate,
     ),
+    index("idx_federal_member_legislation_policy_area").on(
+      table.bioguideId,
+      table.role,
+      table.policyArea,
+      table.introducedDate,
+    ),
   ],
 );
 

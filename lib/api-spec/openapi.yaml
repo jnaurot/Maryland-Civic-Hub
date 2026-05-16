@@ -181,6 +181,11 @@ paths:
           schema:
             type: string
           description: "Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead"
+        - name: policyArea
+          in: query
+          schema:
+            type: string
+          description: Filter by policy area name
       responses:
         "200":
           description: Bills list
@@ -330,6 +335,10 @@ paths:
             type: string
             enum: [house, senate, both]
             default: both
+        - name: policyArea
+          in: query
+          schema:
+            type: string
         - name: offset
           in: query
           schema:
@@ -352,11 +361,14 @@ paths:
     get:
       operationId: searchFederalBills
       tags: [federal]
-      summary: Search federal bills by full-text query
+      summary: Search federal bills by full-text query or policy area
       parameters:
         - name: q
           in: query
-          required: true
+          schema:
+            type: string
+        - name: policyArea
+          in: query
           schema:
             type: string
         - name: offset

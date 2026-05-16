@@ -45,6 +45,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Search,
+  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { RepNameLink } from "@/components/RepNameLink";
@@ -68,12 +69,14 @@ function PolicyAreaChart({
   fullyIngested,
   category,
   categoryTotal,
+  onPolicyAreaClick,
 }: {
   policyAreas?: Array<{ name?: string; count?: number; pct?: number }>;
   type?: "sponsored" | "cosponsored";
   fullyIngested?: boolean;
   category: "all" | "bill" | "resolution" | "amendment" | "other";
   categoryTotal?: number;
+  onPolicyAreaClick?: (area: string) => void;
 }) {
   if (!policyAreas || policyAreas.length === 0) return null;
 
@@ -108,9 +111,14 @@ function PolicyAreaChart({
       <div className="space-y-1.5">
         {policyAreas.map((item) => (
           <div key={item.name} className="flex items-center gap-2">
-            <span className="text-xs w-24 truncate shrink-0" title={item.name}>
+            <button
+              type="button"
+              onClick={() => onPolicyAreaClick?.(item.name ?? "")}
+              className="text-xs w-24 truncate shrink-0 hover:underline hover:text-primary transition-colors text-left"
+              title={item.name}
+            >
               {item.name}
-            </span>
+            </button>
             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
               <div
                 className="h-full bg-primary rounded-full"
@@ -177,7 +185,20 @@ function BillsList({
     return Number.isFinite(raw) && raw >= 0 ? raw : 0;
   });
   const [searchQuery, setSearchQuery] = useState(initialParams.get("q") ?? "");
+  const [policyArea, setPolicyArea] = useState(initialParams.get("policyArea") ?? "");
   const limit = 20;
+
+  // Sync policyArea state with URL param changes (direct nav / back button)
+  useEffect(() => {
+    const params = new URLSearchParams(pageSearch);
+    const urlPolicyArea = params.get("policyArea") ?? "";
+    setPolicyArea((prev) => {
+      if (prev !== urlPolicyArea) {
+        setOffset(0);
+      }
+      return urlPolicyArea;
+    });
+  }, [pageSearch]);
   const selectedStatusActive = statusEnabled && selectedStages.length > 0;
   const stageQuery = selectedStatusActive
     ? selectedStages.map((stage) => BILL_STAGE_QUERY_KEYS[stage]).join(",")
@@ -190,6 +211,7 @@ function BillsList({
     q: searchQuery || undefined,
     category,
     stages: stageQuery,
+    policyArea: policyArea || undefined,
   };
   const { data, isLoading } = useGetFederalMemberBills(
     bioguideId,
@@ -230,6 +252,7 @@ function BillsList({
   backPathParams.set("category", category);
   backPathParams.set("offset", String(offset));
   if (searchQuery) backPathParams.set("q", searchQuery);
+  if (policyArea) backPathParams.set("policyArea", policyArea);
   if (statusEnabled) backPathParams.set("status", "on");
   if (selectedStages.length > 0)
     backPathParams.set("stages", selectedStages.join(","));
@@ -427,6 +450,24 @@ function BillsList({
           className="pl-9"
         />
       </FilterBar>
+      {policyArea && (
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="flex items-center gap-1.5">
+            Policy: {policyArea}
+            <button
+              type="button"
+              onClick={() => {
+                setPolicyArea("");
+                setOffset(0);
+              }}
+              className="ml-1 rounded-full hover:bg-muted p-0.5"
+              aria-label="Clear policy area filter"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        </div>
+      )}
 
       {billView === "list" ? (
         <div className="flex-1 min-h-0 flex flex-col">
@@ -579,6 +620,11 @@ function BillsList({
                       ? data.categoryCounts?.all
                       : data.categoryCounts?.[category]
                 }
+                onPolicyAreaClick={(area) => {
+                  setPolicyArea(area);
+                  setOffset(0);
+                  setBillView("list");
+                }}
               />
               {data?.fullyIngested === false && (
                 <p className="text-xs text-amber-600 mt-2">
@@ -1155,7 +1201,6 @@ export function FederalRepDetail() {
                               ) : (
                                 topPolicyAreas[0] && (
                                   <Badge
-                                    key={topPolicyAreas[0].name}
                                     variant="outline"
                                     className="text-xs bg-primary/5 border-primary/20 min-w-0 max-w-[36ch] truncate"
                                   >

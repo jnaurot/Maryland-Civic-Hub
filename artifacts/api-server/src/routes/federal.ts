@@ -968,7 +968,7 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
     return res.status(400).json({ error: "Invalid params" });
 
   const { bioguideId } = paramsParsed.data;
-  const { type, offset, limit, q, stages } = queryParsed.data;
+  const { type, offset, limit, q, stages, policyArea } = queryParsed.data;
   const category = (
     typeof req.query.category === "string" ? req.query.category : "all"
   ) as FederalLegislationCategory;
@@ -995,6 +995,9 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
             ),
           )
         : undefined;
+    const policyAreaCondition = policyArea
+      ? eq(federalMemberLegislationItemsTable.policyArea, policyArea)
+      : undefined;
 
     // Check if we have cached bills for this member+role
     const cachedCountResult = await db
@@ -1114,6 +1117,7 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       ...(categoryCondition ? [categoryCondition] : []),
       ...(stageCondition ? [stageCondition] : []),
       ...(searchCondition ? [searchCondition] : []),
+      ...(policyAreaCondition ? [policyAreaCondition] : []),
     ];
 
     // Fetch paginated legislation from the classified DB cache
@@ -2112,7 +2116,7 @@ router.get("/federal/bills", async (req, res) => {
   const parsed = GetFederalBillsQueryParams.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
 
-  const { chamber, offset, limit } = parsed.data;
+  const { chamber, policyArea, offset, limit } = parsed.data;
 
   try {
     // Calculate current congress (1st Congress was 1789-1791)
@@ -2127,6 +2131,7 @@ router.get("/federal/bills", async (req, res) => {
     const dbConditions = [
       eq(federalBillsTable.congress, String(currentCongress)),
       ...(chamberFilter ? [eq(federalBillsTable.chamber, chamberFilter)] : []),
+      ...(policyArea ? [eq(federalBillsTable.policyArea, policyArea)] : []),
     ];
     const dbCountResult = await db
       .select({ count: sql<number>`count(*)` })
@@ -2134,7 +2139,7 @@ router.get("/federal/bills", async (req, res) => {
       .where(and(...dbConditions));
     const dbTotalCount = Number(dbCountResult[0]?.count ?? 0);
 
-    if (dbTotalCount > offset) {
+    if (dbTotalCount > offset || policyArea) {
       const rows = await db
         .select({
           id: federalBillsTable.id,
@@ -2173,6 +2178,7 @@ router.get("/federal/bills", async (req, res) => {
       req.log.info(
         {
           chamber,
+          policyArea,
           offset,
           limit,
           totalCount: dbTotalCount,
@@ -2278,22 +2284,31 @@ router.get("/federal/bills/search", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid query parameters" });
   }
-  const { q, limit: rawLimit, offset } = parsed.data;
+  const { q, policyArea, limit: rawLimit, offset } = parsed.data;
+  if (!q && !policyArea) {
+    return res.status(400).json({ error: "Provide q or policyArea" });
+  }
   const limit = Math.min(rawLimit, 100);
 
   try {
-    req.log.info({ q, source: "db" }, "Searching federal bills from DB cache");
-    const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
-    const conditions = [
-      sql`${federalBillsTable.searchVector} @@ ${searchQuery}`,
-    ];
+    req.log.info({ q, policyArea, source: "db" }, "Searching federal bills from DB cache");
+    const conditions = [];
+    if (q) {
+      const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
+      conditions.push(sql`${federalBillsTable.searchVector} @@ ${searchQuery}`);
+    }
+    if (policyArea) {
+      conditions.push(eq(federalBillsTable.policyArea, policyArea));
+    }
 
     const rows = await db
       .select()
       .from(federalBillsTable)
       .where(and(...conditions))
       .orderBy(
-        sql`ts_rank(${federalBillsTable.searchVector}, ${searchQuery}) desc`,
+        q
+          ? sql`ts_rank(${federalBillsTable.searchVector}, websearch_to_tsquery('english', ${q})) desc`
+          : desc(federalBillsTable.introducedDate),
       )
       .limit(limit)
       .offset(offset);

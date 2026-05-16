@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, ChevronRight } from "lucide-react";
+import { FileText, ChevronRight, X } from "lucide-react";
 import { PageShell } from "@/components/layout/PageShell";
 import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
@@ -34,6 +34,7 @@ export function FederalBills() {
     return Number.isFinite(raw) && raw >= 0 ? raw : 0;
   });
   const [searchQuery, setSearchQuery] = useState(initialParams.get("q") ?? "");
+  const [policyArea, setPolicyArea] = useState(initialParams.get("policyArea") ?? "");
   const [statusEnabled, setStatusEnabled] = useState(
     initialParams.get("status") === "on",
   );
@@ -49,16 +50,16 @@ export function FederalBills() {
   const listViewportRef = useRef<HTMLDivElement | null>(null);
   const restoredScrollRef = useRef(false);
 
-  const { data, isLoading } = useGetFederalBills({ chamber, offset, limit }, {
+  const { data, isLoading } = useGetFederalBills({ chamber, policyArea, offset, limit }, {
     query: {
-      queryKey: getGetFederalBillsQueryKey({ chamber, offset, limit }),
+      queryKey: getGetFederalBillsQueryKey({ chamber, policyArea, offset, limit }),
       placeholderData: (previous) => previous,
     }
   });
-  const searchParams = { q: searchQuery, offset, limit };
+  const searchParams = { q: searchQuery, policyArea, offset, limit };
   const { data: searchData, isLoading: isSearchLoading } = useSearchFederalBills(searchParams, {
     query: {
-      enabled: searchQuery.length > 0,
+      enabled: searchQuery.length > 0 || !!policyArea,
       queryKey: getSearchFederalBillsQueryKey(searchParams),
       placeholderData: (previous) => previous,
     },
@@ -68,9 +69,10 @@ export function FederalBills() {
     setChamber(v as Chamber);
     setOffset(0);
   };
-  const baseBills = searchQuery.length > 0 ? (searchData?.bills ?? []) : (data?.bills ?? []);
-  const totalCountBase = searchQuery.length > 0 ? (searchData?.totalCount ?? 0) : (data?.totalCount ?? 0);
-  const loadingBase = searchQuery.length > 0 ? isSearchLoading : isLoading;
+  const useSearchResults = searchQuery.length > 0 || !!policyArea;
+  const baseBills = useSearchResults ? (searchData?.bills ?? []) : (data?.bills ?? []);
+  const totalCountBase = useSearchResults ? (searchData?.totalCount ?? 0) : (data?.totalCount ?? 0);
+  const loadingBase = useSearchResults ? isSearchLoading : isLoading;
   const {
     visibleItems: visibleBills,
     pagedItems: pagedVisibleBills,
@@ -96,8 +98,9 @@ export function FederalBills() {
       const pageSize = 100;
       const chamberParam = chamber !== "both" ? `&chamber=${chamber}` : "";
       const queryParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
-      const endpoint = searchQuery.length > 0 ? "/api/federal/bills/search" : "/api/federal/bills";
-      const base = `${endpoint}?limit=${pageSize}${chamberParam}${queryParam}`;
+      const policyAreaParam = policyArea ? `&policyArea=${encodeURIComponent(policyArea)}` : "";
+      const endpoint = (searchQuery.length > 0 || policyArea) ? "/api/federal/bills/search" : "/api/federal/bills";
+      const base = `${endpoint}?limit=${pageSize}${chamberParam}${queryParam}${policyAreaParam}`;
       const firstRes = await fetch(`${base}&offset=0`);
       if (!firstRes.ok) throw new Error("Failed to load filtered bills");
       const firstJson = await firstRes.json();
@@ -113,12 +116,13 @@ export function FederalBills() {
     },
     immediateWhileRefining: true,
     isBaseLoading: loadingBase,
-    deps: [chamber, searchQuery],
+    deps: [chamber, searchQuery, policyArea],
   });
   const backPathParams = new URLSearchParams();
   backPathParams.set("chamber", chamber);
   backPathParams.set("offset", String(offset));
   if (searchQuery) backPathParams.set("q", searchQuery);
+  if (policyArea) backPathParams.set("policyArea", policyArea);
   if (statusEnabled) backPathParams.set("status", "on");
   if (selectedStages.length > 0)
     backPathParams.set("stages", selectedStages.join(","));
@@ -196,6 +200,25 @@ export function FederalBills() {
           />
         )}
 
+        {policyArea && (
+          <div className="flex items-center gap-2 mb-2">
+            <Badge variant="secondary" className="flex items-center gap-1.5">
+              Policy: {policyArea}
+              <button
+                type="button"
+                onClick={() => {
+                  setPolicyArea("");
+                  setOffset(0);
+                }}
+                className="ml-1 rounded-full hover:bg-muted p-0.5"
+                aria-label="Clear policy area filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          </div>
+        )}
+
         <FilterBar className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-2">
           <Select value={chamber} onValueChange={handleChamberChange}>
             <SelectTrigger className="w-full sm:w-48">
@@ -222,7 +245,7 @@ export function FederalBills() {
           {!loadingBase && !statusFilteringLoading && visibleBills.length === 0 && (
             <div className="text-center py-20 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p>No bills found{statusEnabled && selectedStages.length > 0 ? " for selected status filters" : ""}.</p>
+              <p>No bills found{statusEnabled && selectedStages.length > 0 ? " for selected status filters" : policyArea ? ` in policy area "${policyArea}"` : ""}.</p>
             </div>
           )}
 

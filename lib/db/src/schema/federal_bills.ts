@@ -26,6 +26,7 @@ export const federalBillsTable = pgTable("federal_bills", {
 }, (table) => [
   uniqueIndex("federal_bills_id_idx").on(table.id),
   index("idx_federal_bills_congress").on(table.congress),
+  index("idx_federal_bills_policy_area").on(table.policyArea),
   index("idx_federal_bills_search").using("gin", table.searchVector),
   index("idx_federal_bills_fetched_at").on(table.fetchedAt),
 ]);
