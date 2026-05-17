@@ -347,24 +347,21 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
     const selectedStages = parseStageQuery(stages);
 
     if (selectedStages.length > 0) {
-      const sponsorCondition = sql`exists (
-        select 1
-        from jsonb_array_elements(coalesce(${stateBillsTable.raw}->'sponsorships', '[]'::jsonb)) as s
-        where coalesce(
-          s->'person'->>'id',
-          s->>'person_id',
-          s->>'id'
-        ) = ${memberId}
-        and (
-          ${sponsorClassification} = 'primary'
-          and (
-            s->>'classification' = 'primary'
-            or s->>'primary' = 'true'
-          )
-          or ${sponsorClassification} = 'cosponsor'
-          and coalesce(s->>'classification', '') in ('cosponsor', 'cosponsor-primary')
-        )
-      )`;
+      // Use @> containment against the GIN-indexed raw->'sponsorships' expression.
+      // Each @> call is independently indexable; PostgreSQL bitmap-ORs the results.
+      const primaryContainment = [
+        sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, classification: "primary" }])}::jsonb`,
+        sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, primary: true }])}::jsonb`,
+      ];
+      const cosponsorContainment = [
+        sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, classification: "cosponsor" }])}::jsonb`,
+        sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, classification: "cosponsor-primary" }])}::jsonb`,
+      ];
+      const sponsorCondition =
+        sponsorClassification === "primary"
+          ? or(...primaryContainment)
+          : or(...cosponsorContainment);
+
       const stageCondition = or(
         ...selectedStages.map((stage) => eq(stateStageColumn(stage), true)),
       );
@@ -378,18 +375,20 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
         ...(searchCondition ? [searchCondition] : []),
       ];
 
-      const countResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(stateBillsTable)
-        .where(and(...conditions));
+      const [countResult, rows] = await Promise.all([
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(stateBillsTable)
+          .where(and(...conditions)),
+        db
+          .select()
+          .from(stateBillsTable)
+          .where(and(...conditions))
+          .orderBy(desc(stateBillsTable.introducedDate))
+          .limit(limit)
+          .offset(offset),
+      ]);
       const totalCount = Number(countResult[0]?.count ?? 0);
-      const rows = await db
-        .select()
-        .from(stateBillsTable)
-        .where(and(...conditions))
-        .orderBy(desc(stateBillsTable.introducedDate))
-        .limit(limit)
-        .offset(offset);
 
       req.log.info(
         {
@@ -815,10 +814,6 @@ router.get("/state/bills/search", async (req, res) => {
   const selectedStages = parseStageQuery(stages);
 
   try {
-    req.log.info(
-      { q, jurisdiction, chamber, stages, source: "db" },
-      "Searching state bills from DB cache",
-    );
     const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
     const conditions = [sql`${stateBillsTable.searchVector} @@ ${searchQuery}`];
     if (jurisdiction)
@@ -832,27 +827,81 @@ router.get("/state/bills/search", async (req, res) => {
     if (stageCondition)
       conditions.push(stageCondition);
 
-    const rows = await db
-      .select()
-      .from(stateBillsTable)
-      .where(and(...conditions))
-      .orderBy(
-        sql`ts_rank(${stateBillsTable.searchVector}, ${searchQuery}) desc`,
-      )
-      .limit(limit)
-      .offset(offset);
+    const [countResult, rows] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(stateBillsTable).where(and(...conditions)),
+      db.select().from(stateBillsTable).where(and(...conditions))
+        .orderBy(sql`ts_rank(${stateBillsTable.searchVector}, ${searchQuery}) desc`)
+        .limit(limit)
+        .offset(offset),
+    ]);
 
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(stateBillsTable)
-      .where(and(...conditions));
+    const dbCount = Number(countResult[0]?.count ?? 0);
 
-    const totalCount = Number(countResult[0]?.count ?? 0);
+    if (dbCount > 0 || offset > 0) {
+      req.log.info(
+        { q, jurisdiction, chamber, stages, totalCount: dbCount, source: "db" },
+        "Serving state bill search from DB cache",
+      );
+      return res.json({ bills: rows.map(mapDbStateBillRow), totalCount: dbCount, offset });
+    }
 
-    const bills = rows.map(mapDbStateBillRow);
+    // DB cache miss — fall through to OpenStates full-text search
+    req.log.info(
+      { q, jurisdiction, chamber, source: "openstates" },
+      "State bill search DB miss; querying OpenStates",
+    );
 
-    return res.json({ bills, totalCount, offset });
+    const params: Record<string, string | number> = {
+      q,
+      per_page: limit,
+      page: 1,
+    };
+    if (jurisdiction) params.jurisdiction = jurisdiction;
+    if (chamber) params.chamber = chamber;
+
+    const data = await openStatesFetch("/bills", params);
+    const sourceBills: any[] = data.results ?? [];
+    let bills = sourceBills.map(mapStateBill);
+
+    // Upsert into DB so subsequent pages and repeated searches hit the cache
+    for (const [idx, bill] of bills.entries()) {
+      const sourceBill = sourceBills[idx];
+      const billJurisdiction =
+        jurisdiction ??
+        sourceBill?.jurisdiction?.name ??
+        sourceBill?.jurisdiction ??
+        "unknown";
+      await upsertStateBill({ bill, sourceBill, jurisdiction: billJurisdiction });
+    }
+
+    // Stage filters are derived from action text — apply in memory since OpenStates
+    // doesn't expose stage boolean fields directly.
+    if (selectedStages.length > 0) {
+      bills = bills.filter((bill) => {
+        const flags = computeLegislationStageFlags({
+          latestAction: bill.latestAction,
+          status: bill.status,
+          introducedDate: bill.introducedDate,
+        });
+        return selectedStages.some((stage) => flags[stage]);
+      });
+    }
+
+    const totalCount = selectedStages.length > 0
+      ? bills.length
+      : Number(data.pagination?.total_items ?? bills.length);
+
+    req.log.info(
+      { q, jurisdiction, totalCount, source: "openstates" },
+      "Served state bill search from OpenStates",
+    );
+
+    return res.json({ bills: bills.slice(0, limit), totalCount, offset: 0 });
   } catch (err) {
+    if (isProviderRateLimitError(err)) {
+      req.log.warn({ err }, "State bill search blocked by provider rate limit");
+      return sendProviderRateLimitError(res, err);
+    }
     req.log.error({ err }, "Error searching state bills");
     return sendInternalError(res);
   }

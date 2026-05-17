@@ -35,12 +35,17 @@ export function computeLegislationStageFlags({
   const floorVote = /\b(roll|yea|nay|vote|floor)\b|agreed to/i.test(text);
   const signedOrEnacted =
     /(signed|became public law|became law|public law|enacted|approved by the governor)/i.test(text);
+  // "not agreed to in Senate/House" is a failed vote — must be excluded before
+  // testing "agreed to in Senate/House" or the substring match produces a false positive.
+  const notAgreedTo = /\bnot agreed to\b/i.test(text);
   const passed =
-    signedOrEnacted ||
-    /(passed house|passed senate|passed\/agreed|agreed to in house|agreed to in senate|passed by|passed enrolled|returned passed|third reading passed|adopted|adopted by)/i.test(
-      text,
-    );
+    !notAgreedTo &&
+    (signedOrEnacted ||
+      /(passed house|passed senate|passed\/agreed|agreed to in house|agreed to in senate|passed by|passed enrolled|returned passed|third reading passed|adopted|adopted by)/i.test(
+        text,
+      ));
   const dead =
+    notAgreedTo ||
     /(died|dead|failed|vetoed|tabled indefinitely|indefinitely postponed|withdrawn)/i.test(
       text,
     );

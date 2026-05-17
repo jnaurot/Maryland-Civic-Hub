@@ -439,6 +439,12 @@ export const GetFederalBillsQueryParams = zod.object({
   policyArea: zod.coerce.string().optional(),
   offset: zod.coerce.number().default(getFederalBillsQueryOffsetDefault),
   limit: zod.coerce.number().default(getFederalBillsQueryLimitDefault),
+  stages: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead",
+    ),
 });
 
 export const GetFederalBillsResponse = zod.object({

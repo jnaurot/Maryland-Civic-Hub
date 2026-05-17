@@ -340,7 +340,7 @@ export function StateBillDetail() {
                   <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Votes</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-0 space-y-3">
-                  {bill.votes.map((v, i) => {
+                  {[...bill.votes].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((v, i) => {
                     const voteDisplay = getVoteDisplay(v, bill.actions);
 
                     return (
@@ -378,7 +378,7 @@ export function StateBillDetail() {
             {bill.actions && bill.actions.length > 0 && (
               <ResizableDetailCard title="Legislative History" className="h-72 min-h-56">
                 <div className="space-y-3">
-                  {bill.actions.map((a, i) => (
+                  {[...bill.actions].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((a, i) => (
                     <div key={i} className="grid grid-cols-[6rem_1fr] gap-4 text-sm">
                       <span className="text-muted-foreground">{a.date}</span>
                       <span className="min-w-0 leading-snug">{a.text}</span>

@@ -10,7 +10,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, ChevronRight } from "lucide-react";
+import { FileText, ChevronRight, AlertTriangle } from "lucide-react";
+
+function getApiErrorStatus(error: unknown) {
+  return typeof error === "object" && error !== null && "status" in error
+    ? Number((error as { status?: unknown }).status)
+    : undefined;
+}
+
+function getApiErrorMessage(error: unknown) {
+  if (typeof error === "object" && error !== null && "data" in error) {
+    const data = (error as { data?: unknown }).data;
+    if (typeof data === "object" && data !== null && "error" in data) {
+      return String((data as { error?: unknown }).error);
+    }
+  }
+  return "Search is temporarily unavailable. Please try again later.";
+}
 import { useAppState } from "@/lib/app-state";
 import { US_STATES, getStateName } from "@/lib/states";
 import { PageShell } from "@/components/layout/PageShell";
@@ -72,7 +88,7 @@ export function StateBills() {
   const searchParams = chamber === "all"
     ? { q: searchQuery, jurisdiction: stateCode?.toLowerCase() ?? "md", offset, limit, stages: stageQuery }
     : { q: searchQuery, jurisdiction: stateCode?.toLowerCase() ?? "md", chamber: chamber as "upper" | "lower", offset, limit, stages: stageQuery };
-  const { data: searchData, isLoading: isSearchLoading } = useSearchStateBills(searchParams, {
+  const { data: searchData, isLoading: isSearchLoading, error: searchError } = useSearchStateBills(searchParams, {
     query: {
       enabled: !!stateCode && searchQuery.length > 0,
       queryKey: getSearchStateBillsQueryKey(searchParams),
@@ -84,6 +100,8 @@ export function StateBills() {
     setChamber(v as Chamber);
     setOffset(0);
   };
+  const activeError = searchQuery.length > 0 ? searchError : error;
+  const isRateLimited = getApiErrorStatus(activeError) === 429;
   const baseBills = searchQuery.length > 0 ? (searchData?.bills ?? []) : (data?.bills ?? []);
   const totalCountBase = searchQuery.length > 0 ? (searchData?.totalCount ?? 0) : (data?.totalCount ?? 0);
   const loadingBase = searchQuery.length > 0 ? isSearchLoading : isLoading;
@@ -194,11 +212,7 @@ export function StateBills() {
           <StatusStagePills
             selectedStages={selectedStages}
             onToggleStage={(stage) => {
-              setSelectedStages((prev) =>
-                prev.includes(stage)
-                  ? prev.filter((s) => s !== stage)
-                  : [...prev, stage],
-              );
+              setSelectedStages((prev) => (prev.includes(stage) ? [] : [stage]));
               setOffset(0);
             }}
           />
@@ -227,10 +241,24 @@ export function StateBills() {
             </div>
           )}
 
-          {!loadingBase && (error || visibleBills.length === 0) && (
+          {!loadingBase && activeError && (
+            <Card className={isRateLimited ? "border-amber-300 bg-amber-50" : "border-destructive/40"}>
+              <CardContent className="flex gap-3 p-4 text-sm">
+                <AlertTriangle className={isRateLimited ? "mt-0.5 h-4 w-4 shrink-0 text-amber-600" : "mt-0.5 h-4 w-4 shrink-0 text-destructive"} />
+                <div>
+                  <p className="font-semibold">
+                    {isRateLimited ? "OpenStates rate limit reached" : `State legislative data is not available for ${stateName}`}
+                  </p>
+                  <p className="mt-1 text-muted-foreground">{getApiErrorMessage(activeError)}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {!loadingBase && !activeError && visibleBills.length === 0 && (
             <div className="text-center py-20 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p>{error ? `State legislative data is not available for ${stateName}.` : `No bills found${statusEnabled && selectedStages.length > 0 ? " for selected status filters" : ""}.`}</p>
+              <p>{`No bills found${statusEnabled && selectedStages.length > 0 ? " for selected status filters" : ""}.`}</p>
             </div>
           )}
 

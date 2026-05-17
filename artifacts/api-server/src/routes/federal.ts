@@ -61,6 +61,32 @@ const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 const CONGRESS_API_KEY = process.env.CONGRESS_API_KEY;
 const BASE = "https://api.congress.gov/v3";
 
+// Regex patterns matching computeLegislationStageFlags for use with ~* on latestAction text.
+const STAGE_REGEX: Record<LegislationStageKey, string | null> = {
+  introduced: null, // all bills are introduced; no filter needed
+  committee: "(committee|referred|reported)",
+  floor_vote: "\\m(roll|yea|nay|vote|floor)\\M|agreed to",
+  signed_enacted: "(signed|became public law|became law|public law|enacted|approved by the governor)",
+  passed: "(passed house|passed senate|passed/agreed|agreed to in house|agreed to in senate|passed by|passed enrolled|returned passed|third reading passed|adopted|adopted by)",
+  dead: "(died|dead|failed|vetoed|tabled indefinitely|indefinitely postponed|withdrawn)",
+};
+const NOT_AGREED_TO = "not agreed to";
+
+function federalBillStageConditions(stages: LegislationStageKey[], col: any) {
+  const clauses = stages.map((stage) => {
+    if (stage === "introduced") return sql`true`;
+    if (stage === "passed") {
+      // Must not match "not agreed to", and must match signed_enacted OR passed pattern
+      return sql`(not (coalesce(${col}, '') ~* ${NOT_AGREED_TO}) and (coalesce(${col}, '') ~* ${STAGE_REGEX.signed_enacted} or coalesce(${col}, '') ~* ${STAGE_REGEX.passed}))`;
+    }
+    if (stage === "dead") {
+      return sql`(coalesce(${col}, '') ~* ${NOT_AGREED_TO} or coalesce(${col}, '') ~* ${STAGE_REGEX.dead})`;
+    }
+    return sql`coalesce(${col}, '') ~* ${STAGE_REGEX[stage]}`;
+  });
+  return clauses.length === 1 ? clauses[0] : or(...clauses);
+}
+
 function federalStageColumn(stage: LegislationStageKey) {
   switch (stage) {
     case "introduced":
@@ -999,31 +1025,33 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       ? eq(federalMemberLegislationItemsTable.policyArea, policyArea)
       : undefined;
 
-    // Check if we have cached bills for this member+role
-    const cachedCountResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(federalMemberLegislationItemsTable)
-      .where(
-        and(
-          eq(federalMemberLegislationItemsTable.bioguideId, bioguideId),
-          eq(federalMemberLegislationItemsTable.role, role),
-        ),
-      );
-
-    const cachedCount = Number(cachedCountResult[0]?.count ?? 0);
     const currentCongress = getCurrentCongress();
 
-    const cacheStatusRows = await db
-      .select()
-      .from(federalMemberBillCacheStatusTable)
-      .where(
-        and(
-          eq(federalMemberBillCacheStatusTable.bioguideId, bioguideId),
-          eq(federalMemberBillCacheStatusTable.role, role),
-          eq(federalMemberBillCacheStatusTable.congress, currentCongress),
+    // Both cache checks are independent — run them in parallel.
+    const [cachedCountResult, cacheStatusRows] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(federalMemberLegislationItemsTable)
+        .where(
+          and(
+            eq(federalMemberLegislationItemsTable.bioguideId, bioguideId),
+            eq(federalMemberLegislationItemsTable.role, role),
+          ),
         ),
-      )
-      .limit(1);
+      db
+        .select()
+        .from(federalMemberBillCacheStatusTable)
+        .where(
+          and(
+            eq(federalMemberBillCacheStatusTable.bioguideId, bioguideId),
+            eq(federalMemberBillCacheStatusTable.role, role),
+            eq(federalMemberBillCacheStatusTable.congress, currentCongress),
+          ),
+        )
+        .limit(1),
+    ]);
+
+    const cachedCount = Number(cachedCountResult[0]?.count ?? 0);
     const cacheStatus = cacheStatusRows[0];
 
     let bills: any[] = [];
@@ -1120,77 +1148,101 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       ...(policyAreaCondition ? [policyAreaCondition] : []),
     ];
 
-    // Fetch paginated legislation from the classified DB cache
-    const rows = await db
-      .select({
-        itemId: federalMemberLegislationItemsTable.itemId,
-        title: federalMemberLegislationItemsTable.title,
-        number: federalMemberLegislationItemsTable.number,
-        congress: federalMemberLegislationItemsTable.congress,
-        introducedDate: federalMemberLegislationItemsTable.introducedDate,
-        latestAction: federalMemberLegislationItemsTable.latestAction,
-        latestActionDate: federalMemberLegislationItemsTable.latestActionDate,
-        stageIntroduced: federalMemberLegislationItemsTable.stageIntroduced,
-        stageCommittee: federalMemberLegislationItemsTable.stageCommittee,
-        stageFloorVote: federalMemberLegislationItemsTable.stageFloorVote,
-        stagePassed: federalMemberLegislationItemsTable.stagePassed,
-        stageSignedEnacted: federalMemberLegislationItemsTable.stageSignedEnacted,
-        stageDead: federalMemberLegislationItemsTable.stageDead,
-        policyArea: federalMemberLegislationItemsTable.policyArea,
-        url: federalMemberLegislationItemsTable.url,
-        category: federalMemberLegislationItemsTable.category,
-        type: federalMemberLegislationItemsTable.type,
-      })
-      .from(federalMemberLegislationItemsTable)
-      .where(and(...filterConditions))
-      .orderBy(desc(federalMemberLegislationItemsTable.introducedDate))
-      .limit(limit)
-      .offset(offset);
+    // All five reads are independent — run them in parallel.
+    const [rows, totalResult, policyAreaRows, categoryCountRows, stageRows] =
+      await Promise.all([
+        db
+          .select({
+            itemId: federalMemberLegislationItemsTable.itemId,
+            title: federalMemberLegislationItemsTable.title,
+            number: federalMemberLegislationItemsTable.number,
+            congress: federalMemberLegislationItemsTable.congress,
+            introducedDate: federalMemberLegislationItemsTable.introducedDate,
+            latestAction: federalMemberLegislationItemsTable.latestAction,
+            latestActionDate: federalMemberLegislationItemsTable.latestActionDate,
+            stageIntroduced: federalMemberLegislationItemsTable.stageIntroduced,
+            stageCommittee: federalMemberLegislationItemsTable.stageCommittee,
+            stageFloorVote: federalMemberLegislationItemsTable.stageFloorVote,
+            stagePassed: federalMemberLegislationItemsTable.stagePassed,
+            stageSignedEnacted: federalMemberLegislationItemsTable.stageSignedEnacted,
+            stageDead: federalMemberLegislationItemsTable.stageDead,
+            policyArea: federalMemberLegislationItemsTable.policyArea,
+            url: federalMemberLegislationItemsTable.url,
+            category: federalMemberLegislationItemsTable.category,
+            type: federalMemberLegislationItemsTable.type,
+          })
+          .from(federalMemberLegislationItemsTable)
+          .where(and(...filterConditions))
+          .orderBy(desc(federalMemberLegislationItemsTable.introducedDate))
+          .limit(limit)
+          .offset(offset),
 
-    const totalResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(federalMemberLegislationItemsTable)
-      .where(and(...filterConditions));
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(federalMemberLegislationItemsTable)
+          .where(and(...filterConditions)),
+
+        db
+          .select({
+            name: federalMemberLegislationItemsTable.policyArea,
+            count: sql<number>`count(*)`,
+          })
+          .from(federalMemberLegislationItemsTable)
+          .where(
+            and(
+              eq(federalMemberLegislationItemsTable.bioguideId, bioguideId),
+              eq(federalMemberLegislationItemsTable.role, role),
+              sql`${federalMemberLegislationItemsTable.policyArea} is not null`,
+              ...(categoryCondition ? [categoryCondition] : []),
+              ...(stageCondition ? [stageCondition] : []),
+              ...(searchCondition ? [searchCondition] : []),
+            ),
+          )
+          .groupBy(federalMemberLegislationItemsTable.policyArea)
+          .orderBy(sql`count(*) desc`),
+
+        db
+          .select({
+            category: federalMemberLegislationItemsTable.category,
+            count: sql<number>`count(*)`,
+          })
+          .from(federalMemberLegislationItemsTable)
+          .where(
+            and(
+              eq(federalMemberLegislationItemsTable.bioguideId, bioguideId),
+              eq(federalMemberLegislationItemsTable.role, role),
+              ...(stageCondition ? [stageCondition] : []),
+              ...(searchCondition ? [searchCondition] : []),
+            ),
+          )
+          .groupBy(federalMemberLegislationItemsTable.category),
+
+        db
+          .select({
+            category: federalMemberLegislationItemsTable.category,
+            introduced: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageIntroduced} then 1 else 0 end)`,
+            committee: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageCommittee} then 1 else 0 end)`,
+            floorVote: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageFloorVote} then 1 else 0 end)`,
+            passed: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stagePassed} then 1 else 0 end)`,
+            signedEnacted: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageSignedEnacted} then 1 else 0 end)`,
+            dead: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageDead} then 1 else 0 end)`,
+          })
+          .from(federalMemberLegislationItemsTable)
+          .where(
+            and(
+              eq(federalMemberLegislationItemsTable.bioguideId, bioguideId),
+              eq(federalMemberLegislationItemsTable.role, role),
+              ...(categoryCondition ? [categoryCondition] : []),
+              ...(searchCondition ? [searchCondition] : []),
+            ),
+          )
+          .groupBy(federalMemberLegislationItemsTable.category),
+      ]);
 
     totalCount = Number(totalResult[0]?.count ?? 0);
     bills = rows.map(mapFederalLegislationForResponse);
 
-    // Compute policy area breakdown from whatever we have cached so far
-    const policyAreaRows = await db
-      .select({
-        name: federalMemberLegislationItemsTable.policyArea,
-        count: sql<number>`count(*)`,
-      })
-      .from(federalMemberLegislationItemsTable)
-      .where(
-        and(
-          eq(federalMemberLegislationItemsTable.bioguideId, bioguideId),
-          eq(federalMemberLegislationItemsTable.role, role),
-          sql`${federalMemberLegislationItemsTable.policyArea} is not null`,
-          ...(categoryCondition ? [categoryCondition] : []),
-          ...(stageCondition ? [stageCondition] : []),
-          ...(searchCondition ? [searchCondition] : []),
-        ),
-      )
-      .groupBy(federalMemberLegislationItemsTable.policyArea)
-      .orderBy(sql`count(*) desc`);
-
     const policyAreas = computePolicyAreas(policyAreaRows);
-    const categoryCountRows = await db
-      .select({
-        category: federalMemberLegislationItemsTable.category,
-        count: sql<number>`count(*)`,
-      })
-      .from(federalMemberLegislationItemsTable)
-      .where(
-        and(
-          eq(federalMemberLegislationItemsTable.bioguideId, bioguideId),
-          eq(federalMemberLegislationItemsTable.role, role),
-          ...(stageCondition ? [stageCondition] : []),
-          ...(searchCondition ? [searchCondition] : []),
-        ),
-      )
-      .groupBy(federalMemberLegislationItemsTable.category);
     const categoryCounts: Record<string, number> = {
       all: 0,
       bill: 0,
@@ -1205,26 +1257,6 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       (sum, count) => sum + count,
       0,
     );
-    const stageRows = await db
-      .select({
-        category: federalMemberLegislationItemsTable.category,
-        introduced: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageIntroduced} then 1 else 0 end)`,
-        committee: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageCommittee} then 1 else 0 end)`,
-        floorVote: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageFloorVote} then 1 else 0 end)`,
-        passed: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stagePassed} then 1 else 0 end)`,
-        signedEnacted: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageSignedEnacted} then 1 else 0 end)`,
-        dead: sql<number>`sum(case when ${federalMemberLegislationItemsTable.stageDead} then 1 else 0 end)`,
-      })
-      .from(federalMemberLegislationItemsTable)
-      .where(
-        and(
-          eq(federalMemberLegislationItemsTable.bioguideId, bioguideId),
-          eq(federalMemberLegislationItemsTable.role, role),
-          ...(categoryCondition ? [categoryCondition] : []),
-          ...(searchCondition ? [searchCondition] : []),
-        ),
-      )
-      .groupBy(federalMemberLegislationItemsTable.category);
     const emptyCategoryCounts = () => ({
       all: 0,
       bill: 0,
@@ -2116,7 +2148,8 @@ router.get("/federal/bills", async (req, res) => {
   const parsed = GetFederalBillsQueryParams.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
 
-  const { chamber, policyArea, offset, limit } = parsed.data;
+  const { chamber, policyArea, offset, limit, stages } = parsed.data;
+  const selectedStages = parseStageQuery(stages);
 
   try {
     // Calculate current congress (1st Congress was 1789-1791)
@@ -2127,11 +2160,17 @@ router.get("/federal/bills", async (req, res) => {
         ? chamber.charAt(0).toUpperCase() + chamber.slice(1)
         : null;
 
+    const stageCondition =
+      selectedStages.length > 0
+        ? federalBillStageConditions(selectedStages, federalBillsTable.latestAction)
+        : undefined;
+
     // DB-first: serve cached page if present for this congress/chamber.
     const dbConditions = [
       eq(federalBillsTable.congress, String(currentCongress)),
       ...(chamberFilter ? [eq(federalBillsTable.chamber, chamberFilter)] : []),
       ...(policyArea ? [eq(federalBillsTable.policyArea, policyArea)] : []),
+      ...(stageCondition ? [stageCondition] : []),
     ];
     const dbCountResult = await db
       .select({ count: sql<number>`count(*)` })
@@ -2139,7 +2178,7 @@ router.get("/federal/bills", async (req, res) => {
       .where(and(...dbConditions));
     const dbTotalCount = Number(dbCountResult[0]?.count ?? 0);
 
-    if (dbTotalCount > offset || policyArea) {
+    if (dbTotalCount > offset || policyArea || selectedStages.length > 0) {
       const rows = await db
         .select({
           id: federalBillsTable.id,
@@ -2179,6 +2218,7 @@ router.get("/federal/bills", async (req, res) => {
         {
           chamber,
           policyArea,
+          stages,
           offset,
           limit,
           totalCount: dbTotalCount,

@@ -544,6 +544,10 @@ export type GetFederalBillsParams = {
   policyArea?: string;
   offset?: number;
   limit?: number;
+  /**
+   * Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead
+   */
+  stages?: string;
 };
 
 export type GetFederalBillsChamber =

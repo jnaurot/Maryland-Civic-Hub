@@ -16,6 +16,9 @@ const passedPattern =
   "(passed house|passed senate|passed/agreed|agreed to in house|agreed to in senate|passed by|passed enrolled|returned passed|third reading passed|adopted|adopted by)";
 const committeePattern = "(committee|referred|reported)";
 const floorVotePattern = "\\m(roll|yea|nay|vote|floor)\\M|agreed to";
+// "not agreed to in Senate/House" is a failed vote. Must be tested before passedPattern
+// because passedPattern's "agreed to in senate/house" is a substring of "not agreed to ...".
+const notAgreedToPattern = "not agreed to";
 const deadPattern =
   "(died|dead|failed|vetoed|tabled indefinitely|indefinitely postponed|withdrawn)";
 
@@ -29,13 +32,20 @@ async function main() {
         stage_committee = coalesce(latest_action, '') ~* $1,
         stage_floor_vote = coalesce(latest_action, '') ~* $2,
         stage_signed_enacted = coalesce(latest_action, '') ~* $3,
-        stage_passed = (coalesce(latest_action, '') ~* $3 or coalesce(latest_action, '') ~* $4),
-        stage_dead = coalesce(latest_action, '') ~* $5
+        stage_passed = (
+          not (coalesce(latest_action, '') ~* $4)
+          and (coalesce(latest_action, '') ~* $3 or coalesce(latest_action, '') ~* $5)
+        ),
+        stage_dead = (
+          coalesce(latest_action, '') ~* $4
+          or coalesce(latest_action, '') ~* $6
+        )
       `,
       [
         committeePattern,
         floorVotePattern,
         signedPattern,
+        notAgreedToPattern,
         passedPattern,
         deadPattern,
       ],
@@ -50,15 +60,22 @@ async function main() {
         stage_floor_vote = (coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $2,
         stage_signed_enacted = (coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $3,
         stage_passed = (
-          (coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $3
-          or (coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $4
+          not ((coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $4)
+          and (
+            (coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $3
+            or (coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $5
+          )
         ),
-        stage_dead = (coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $5
+        stage_dead = (
+          (coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $4
+          or (coalesce(status, '') || ' ' || coalesce(raw->>'latest_action_description', '')) ~* $6
+        )
       `,
       [
         committeePattern,
         floorVotePattern,
         signedPattern,
+        notAgreedToPattern,
         passedPattern,
         deadPattern,
       ],

@@ -45,7 +45,9 @@ export function GlobalSearchBar({
   const useDropdownMode = false;
   const query = value ?? internalQuery;
   const debounced = useDebounce(query.trim(), 250);
-  const acEnabled = !!debounced;
+  // In filter mode (showResults=false) the parent page owns the search — don't
+  // run redundant queries and don't navigate on submit.
+  const acEnabled = !!debounced && showResults;
   const params = { q: debounced, limit: 5 };
 
   const { data: federalBills } = useSearchFederalBills(params, {

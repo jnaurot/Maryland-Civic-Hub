@@ -8,6 +8,7 @@
   },
   "scripts": {
     "backfill:legislation-stages": "tsx ./src/backfillLegislationStages.ts",
+    "backfill:not-agreed-to": "tsx ./src/backfillNotAgreedTo.ts",
     "hello": "tsx ./src/hello.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, jsonb, uniqueIndex, index, customType, boolean } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 
 const tsvector = customType<{ data: string }>({
@@ -36,6 +37,10 @@ export const stateBillsTable = pgTable("state_bills", {
   index("idx_state_bills_fetched_at").on(table.fetchedAt),
   index("idx_state_bills_stage_signed").on(table.jurisdiction, table.stageSignedEnacted, table.chamber, table.introducedDate),
   index("idx_state_bills_stage_committee").on(table.jurisdiction, table.stageCommittee, table.chamber, table.introducedDate),
+  index("idx_state_bills_stage_floor_vote").on(table.jurisdiction, table.stageFloorVote, table.chamber, table.introducedDate),
+  index("idx_state_bills_stage_passed").on(table.jurisdiction, table.stagePassed, table.chamber, table.introducedDate),
+  index("idx_state_bills_stage_dead").on(table.jurisdiction, table.stageDead, table.chamber, table.introducedDate),
+  index("idx_state_bills_sponsorships_gin").using("gin", sql`(raw->'sponsorships')`),
 ]);
 
 export const insertStateBillSchema = z.object({

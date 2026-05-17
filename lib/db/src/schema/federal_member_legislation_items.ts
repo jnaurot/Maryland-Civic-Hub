@@ -78,6 +78,27 @@ export const federalMemberLegislationItemsTable = pgTable(
       table.policyArea,
       table.introducedDate,
     ),
+    index("idx_federal_member_legislation_stage_floor_vote").on(
+      table.bioguideId,
+      table.role,
+      table.stageFloorVote,
+      table.category,
+      table.introducedDate,
+    ),
+    index("idx_federal_member_legislation_stage_passed").on(
+      table.bioguideId,
+      table.role,
+      table.stagePassed,
+      table.category,
+      table.introducedDate,
+    ),
+    index("idx_federal_member_legislation_stage_dead").on(
+      table.bioguideId,
+      table.role,
+      table.stageDead,
+      table.category,
+      table.introducedDate,
+    ),
   ],
 );
 

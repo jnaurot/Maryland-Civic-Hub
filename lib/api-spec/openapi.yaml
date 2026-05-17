@@ -349,6 +349,11 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: stages
+          in: query
+          schema:
+            type: string
+          description: "Comma-separated normalized stage filters: introduced,committee,floor_vote,passed,signed_enacted,dead"
       responses:
         "200":
           description: Bills list

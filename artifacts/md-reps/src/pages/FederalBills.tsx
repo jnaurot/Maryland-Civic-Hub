@@ -16,9 +16,8 @@ import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { GlobalSearchBar } from "@/components/layout/GlobalSearchBar";
-import { BILL_STAGE_OPTIONS, type BillStage, getBillStageMatches } from "@/lib/rep-utils";
+import { BILL_STAGE_OPTIONS, BILL_STAGE_QUERY_KEYS, type BillStage } from "@/lib/rep-utils";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
-import { useStatusFilteredList } from "@/hooks/useStatusFilteredList";
 
 type Chamber = "both" | "house" | "senate";
 
@@ -50,12 +49,20 @@ export function FederalBills() {
   const listViewportRef = useRef<HTMLDivElement | null>(null);
   const restoredScrollRef = useRef(false);
 
-  const { data, isLoading } = useGetFederalBills({ chamber, policyArea, offset, limit }, {
-    query: {
-      queryKey: getGetFederalBillsQueryKey({ chamber, policyArea, offset, limit }),
-      placeholderData: (previous) => previous,
-    }
-  });
+  const stageQuery =
+    statusEnabled && selectedStages.length > 0
+      ? selectedStages.map((s) => BILL_STAGE_QUERY_KEYS[s]).join(",")
+      : undefined;
+
+  const { data, isLoading } = useGetFederalBills(
+    { chamber, policyArea, offset, limit, ...(stageQuery ? { stages: stageQuery } : {}) },
+    {
+      query: {
+        queryKey: getGetFederalBillsQueryKey({ chamber, policyArea, offset, limit, stages: stageQuery }),
+        placeholderData: (previous) => previous,
+      },
+    },
+  );
   const searchParams = { q: searchQuery, policyArea, offset, limit };
   const { data: searchData, isLoading: isSearchLoading } = useSearchFederalBills(searchParams, {
     query: {
@@ -70,54 +77,11 @@ export function FederalBills() {
     setOffset(0);
   };
   const useSearchResults = searchQuery.length > 0 || !!policyArea;
-  const baseBills = useSearchResults ? (searchData?.bills ?? []) : (data?.bills ?? []);
-  const totalCountBase = useSearchResults ? (searchData?.totalCount ?? 0) : (data?.totalCount ?? 0);
+  const visibleBills = useSearchResults ? (searchData?.bills ?? []) : (data?.bills ?? []);
+  const pagedVisibleBills = visibleBills;
+  const effectiveTotalCount = useSearchResults ? (searchData?.totalCount ?? 0) : (data?.totalCount ?? 0);
   const loadingBase = useSearchResults ? isSearchLoading : isLoading;
-  const {
-    visibleItems: visibleBills,
-    pagedItems: pagedVisibleBills,
-    effectiveTotalCount,
-    refining: statusFilteringLoading,
-  } = useStatusFilteredList<any>({
-    statusEnabled,
-    selectedStages,
-    baseItems: baseBills,
-    matchItem: (bill, stages) => {
-      const matches = getBillStageMatches({
-        latestAction: bill.latestAction,
-        status: bill.status,
-        introducedDate: bill.introducedDate,
-      });
-      return stages.some((stage) => matches[stage]);
-    },
-    offset,
-    limit,
-    totalCountBase,
-    onResetOffset: () => setOffset(0),
-    fetchAllItems: async () => {
-      const pageSize = 100;
-      const chamberParam = chamber !== "both" ? `&chamber=${chamber}` : "";
-      const queryParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
-      const policyAreaParam = policyArea ? `&policyArea=${encodeURIComponent(policyArea)}` : "";
-      const endpoint = (searchQuery.length > 0 || policyArea) ? "/api/federal/bills/search" : "/api/federal/bills";
-      const base = `${endpoint}?limit=${pageSize}${chamberParam}${queryParam}${policyAreaParam}`;
-      const firstRes = await fetch(`${base}&offset=0`);
-      if (!firstRes.ok) throw new Error("Failed to load filtered bills");
-      const firstJson = await firstRes.json();
-      const total = Number(firstJson.totalCount ?? 0);
-      let all = [...(firstJson.bills ?? [])];
-      for (let nextOffset = pageSize; nextOffset < total; nextOffset += pageSize) {
-        const res = await fetch(`${base}&offset=${nextOffset}`);
-        if (!res.ok) break;
-        const json = await res.json();
-        all = all.concat(json.bills ?? []);
-      }
-      return all;
-    },
-    immediateWhileRefining: true,
-    isBaseLoading: loadingBase,
-    deps: [chamber, searchQuery, policyArea],
-  });
+  const statusFilteringLoading = false;
   const backPathParams = new URLSearchParams();
   backPathParams.set("chamber", chamber);
   backPathParams.set("offset", String(offset));
@@ -190,11 +154,7 @@ export function FederalBills() {
           <StatusStagePills
             selectedStages={selectedStages}
             onToggleStage={(stage) => {
-              setSelectedStages((prev) =>
-                prev.includes(stage)
-                  ? prev.filter((s) => s !== stage)
-                  : [...prev, stage],
-              );
+              setSelectedStages((prev) => (prev.includes(stage) ? [] : [stage]));
               setOffset(0);
             }}
           />
