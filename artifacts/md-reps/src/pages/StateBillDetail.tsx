@@ -188,18 +188,20 @@ function StateBillProgressBar({ actions }: { actions?: { date: string; text: str
 function ResizableDetailCard({
   title,
   children,
-  className = "h-56",
+  className = "",
+  contentClassName = "max-h-[min(65vh,28rem)]",
 }: {
   title: string;
   children: ReactNode;
   className?: string;
+  contentClassName?: string;
 }) {
   return (
-    <Card className={`flex min-h-40 max-h-[min(70vh,32rem)] resize-y flex-col overflow-hidden ${className}`}>
-      <CardHeader className="shrink-0 pb-3">
+    <Card className={`overflow-hidden ${className}`}>
+      <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-y-auto pt-0 pr-3">
+      <CardContent className={`pt-0 pr-3 overflow-y-auto ${contentClassName}`}>
         {children}
       </CardContent>
     </Card>
@@ -315,31 +317,21 @@ export function StateBillDetail() {
             </div>
 
             {bill.cosponsors && bill.cosponsors.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                    Cosponsors ({bill.cosponsors.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                    {bill.cosponsors.map((s, i) => (
-                      <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                        <RepNameLink name={s.name} openstatesId={s.openstatesId} />
-                        {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              <ResizableDetailCard title={`Cosponsors (${bill.cosponsors.length})`} contentClassName="max-h-72">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                  {bill.cosponsors.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                      <RepNameLink name={s.name} openstatesId={s.openstatesId} />
+                      {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
+                    </div>
+                  ))}
+                </div>
+              </ResizableDetailCard>
             )}
 
             {bill.votes && bill.votes.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Votes</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0 space-y-3">
+              <ResizableDetailCard title="Votes">
+                <div className="space-y-3">
                   {[...bill.votes].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((v, i) => {
                     const voteDisplay = getVoteDisplay(v, bill.actions);
 
@@ -371,12 +363,12 @@ export function StateBillDetail() {
                       </div>
                     );
                   })}
-                </CardContent>
-              </Card>
+                </div>
+              </ResizableDetailCard>
             )}
 
             {bill.actions && bill.actions.length > 0 && (
-              <ResizableDetailCard title="Legislative History" className="h-72 min-h-56">
+              <ResizableDetailCard title="Legislative History" contentClassName="max-h-72">
                 <div className="space-y-3">
                   {[...bill.actions].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((a, i) => (
                     <div key={i} className="grid grid-cols-[6rem_1fr] gap-4 text-sm">

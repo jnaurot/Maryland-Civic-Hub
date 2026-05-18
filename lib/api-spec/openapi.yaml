@@ -907,6 +907,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BillAction"
+        votes:
+          type: array
+          items:
+            $ref: "#/components/schemas/FederalVote"
+        progress:
+          $ref: "#/components/schemas/BillProgress"
         url:
           type: string
         textUrl:
@@ -918,6 +924,44 @@ components:
           items:
             type: string
       required: [id, title]
+
+    FederalVote:
+      type: object
+      properties:
+        date:
+          type: string
+        chamber:
+          type: string
+        rollNumber:
+          type: integer
+        result:
+          type: string
+        yesCount:
+          type: integer
+        noCount:
+          type: integer
+        presentCount:
+          type: integer
+        sourceUrl:
+          type: string
+
+    BillProgress:
+      type: object
+      properties:
+        introduced:
+          type: boolean
+        committee:
+          type: boolean
+        floorVote:
+          type: boolean
+        passed:
+          type: boolean
+        signed:
+          type: boolean
+        enacted:
+          type: boolean
+        dead:
+          type: boolean
 
     SponsorInfo:
       type: object

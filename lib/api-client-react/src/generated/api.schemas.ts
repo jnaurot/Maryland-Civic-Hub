@@ -119,6 +119,27 @@ export interface BillAction {
   organizationClassification?: string;
 }
 
+export interface FederalVote {
+  date?: string;
+  chamber?: string;
+  rollNumber?: number;
+  result?: string;
+  yesCount?: number;
+  noCount?: number;
+  presentCount?: number;
+  sourceUrl?: string;
+}
+
+export interface BillProgress {
+  introduced?: boolean;
+  committee?: boolean;
+  floorVote?: boolean;
+  passed?: boolean;
+  signed?: boolean;
+  enacted?: boolean;
+  dead?: boolean;
+}
+
 export interface BillDetail {
   id: string;
   title: string;
@@ -133,6 +154,8 @@ export interface BillDetail {
   cosponsors?: SponsorInfo[];
   committees?: CommitteeRef[];
   actions?: BillAction[];
+  votes?: FederalVote[];
+  progress?: BillProgress;
   url?: string;
   textUrl?: string;
   policyArea?: string;

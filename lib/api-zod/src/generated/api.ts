@@ -609,6 +609,31 @@ export const GetFederalBillDetailResponse = zod.object({
       }),
     )
     .optional(),
+  votes: zod
+    .array(
+      zod.object({
+        date: zod.string().optional(),
+        chamber: zod.string().optional(),
+        rollNumber: zod.number().optional(),
+        result: zod.string().optional(),
+        yesCount: zod.number().optional(),
+        noCount: zod.number().optional(),
+        presentCount: zod.number().optional(),
+        sourceUrl: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  progress: zod
+    .object({
+      introduced: zod.boolean().optional(),
+      committee: zod.boolean().optional(),
+      floorVote: zod.boolean().optional(),
+      passed: zod.boolean().optional(),
+      signed: zod.boolean().optional(),
+      enacted: zod.boolean().optional(),
+      dead: zod.boolean().optional(),
+    })
+    .optional(),
   url: zod.string().optional(),
   textUrl: zod.string().optional(),
   policyArea: zod.string().optional(),

@@ -1,3 +1,4 @@
+import { type ReactNode } from "react";
 import { useParams, Link, useSearch } from "wouter";
 import {
   useGetFederalBillDetail,
@@ -9,6 +10,29 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft, ExternalLink, CheckCircle2, Circle } from "lucide-react";
 import { RepNameLink } from "@/components/RepNameLink";
 import { partyColor, SummarySearch } from "@/lib/rep-utils";
+
+function ResizableDetailCard({
+  title,
+  children,
+  className = "",
+  contentClassName = "max-h-[min(65vh,28rem)]",
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+  contentClassName?: string;
+}) {
+  return (
+    <Card className={`overflow-hidden ${className}`}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className={`pt-0 pr-3 overflow-y-auto ${contentClassName}`}>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
 
 function BillProgressBar({
   actions,
@@ -85,11 +109,11 @@ export function FederalBillDetail() {
       queryKey: getGetFederalBillDetailQueryKey(congress, billType, billNumber)
     }
   });
-  const progress = (bill as any)?.progress;
+  const progress = bill?.progress;
 
   return (
-    <div className="min-h-screen bg-muted/20">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="h-full overflow-y-auto bg-muted/20">
+      <div className="container mx-auto px-4 pt-8 pb-16 max-w-4xl">
         <Link href={fromPath} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
           <ChevronLeft className="h-4 w-4" /> {fromName ? `Back to ${fromName}` : "Back to Federal Bills"}
         </Link>
@@ -139,13 +163,8 @@ export function FederalBillDetail() {
 
             <div className="grid md:grid-cols-2 gap-6">
               {bill.sponsors && bill.sponsors.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                      Sponsor{bill.sponsors.length > 1 ? "s" : ""}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0 space-y-2">
+                <ResizableDetailCard title={`Sponsor${bill.sponsors.length > 1 ? "s" : ""}`}>
+                  <div className="space-y-2">
                     {bill.sponsors.map((s, i) => (
                       <div key={i} className="flex items-center justify-between">
                         <RepNameLink name={s.name} bioguideId={s.bioguideId} />
@@ -155,66 +174,80 @@ export function FederalBillDetail() {
                         </div>
                       </div>
                     ))}
-                  </CardContent>
-                </Card>
+                  </div>
+                </ResizableDetailCard>
               )}
 
               {bill.committees && bill.committees.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Committees</CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0 space-y-2">
+                <ResizableDetailCard title="Committees">
+                  <div className="space-y-2">
                     {bill.committees.map((c, i) => (
                       <div key={i} className="text-sm">
                         <p className="font-medium">{c.name}</p>
                         {c.chamber && <p className="text-xs text-muted-foreground">{c.chamber}</p>}
                       </div>
                     ))}
-                  </CardContent>
-                </Card>
+                  </div>
+                </ResizableDetailCard>
               )}
             </div>
 
             {bill.cosponsors && bill.cosponsors.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                    Cosponsors ({bill.cosponsors.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                    {bill.cosponsors.map((s, i) => (
-                      <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                        <RepNameLink name={s.name} bioguideId={s.bioguideId} />
-                        <div className="flex gap-1 items-center">
-                          {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
-                          {s.state && <span className="text-xs text-muted-foreground">{s.state}</span>}
-                        </div>
+              <ResizableDetailCard title={`Cosponsors (${bill.cosponsors.length})`} contentClassName="max-h-72">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                  {bill.cosponsors.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                      <RepNameLink name={s.name} bioguideId={s.bioguideId} />
+                      <div className="flex gap-1 items-center">
+                        {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
+                        {s.state && <span className="text-xs text-muted-foreground">{s.state}</span>}
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                    </div>
+                  ))}
+                </div>
+              </ResizableDetailCard>
+            )}
+
+            {bill.votes && bill.votes.length > 0 && (
+              <ResizableDetailCard title="Votes">
+                <div className="space-y-3">
+                  {[...bill.votes].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((v, i) => (
+                    <div key={i} className="flex flex-col gap-2 border-b pb-3 text-sm last:border-0 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {v.chamber && <Badge variant="secondary">{v.chamber}</Badge>}
+                          {v.rollNumber !== undefined && <Badge variant="outline">Roll #{v.rollNumber}</Badge>}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{v.date}</p>
+                        {v.result && <p className="text-xs text-muted-foreground leading-snug">{v.result}</p>}
+                        {v.sourceUrl && (
+                          <a href={v.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                            Roll-call source <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-3 text-xs sm:justify-end">
+                        {v.yesCount !== undefined && <span className="text-green-600 font-semibold">Yea: {v.yesCount}</span>}
+                        {v.noCount !== undefined && <span className="text-red-600 font-semibold">Nay: {v.noCount}</span>}
+                        {v.presentCount !== undefined && <span className="text-muted-foreground">Present: {v.presentCount}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ResizableDetailCard>
             )}
 
             {bill.actions && bill.actions.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Legislative History</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-3">
-                    {bill.actions.map((a, i) => (
-                      <div key={i} className="flex gap-4 text-sm">
-                        <span className="text-muted-foreground shrink-0 w-24">{a.date}</span>
-                        <span className="leading-snug">{a.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              <ResizableDetailCard title="Legislative History" contentClassName="max-h-72">
+                <div className="space-y-3">
+                  {[...bill.actions].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((a, i) => (
+                    <div key={i} className="grid grid-cols-[6rem_1fr] gap-4 text-sm">
+                      <span className="text-muted-foreground">{a.date}</span>
+                      <span className="min-w-0 leading-snug">{a.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </ResizableDetailCard>
             )}
           </div>
         ) : (

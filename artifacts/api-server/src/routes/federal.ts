@@ -2431,33 +2431,51 @@ router.get(
 
       const bill =
         billData.status === "fulfilled" ? (billData.value.bill ?? {}) : {};
-      const cosponsors =
-        cosponsorsData.status === "fulfilled"
-          ? (cosponsorsData.value.cosponsors?.item ?? []).map((c: any) => ({
-              name: c.fullName ?? c.name ?? "",
-              party: c.party,
-              state: c.state,
-              bioguideId: c.bioguideId,
-            }))
-          : [];
+      const rawCosponsors = cosponsorsData.status === "fulfilled" ? cosponsorsData.value.cosponsors : undefined;
+      const cosponsors = (rawCosponsors?.item ?? (Array.isArray(rawCosponsors) ? rawCosponsors : [])).map((c: any) => ({
+        name: c.fullName ?? c.name ?? "",
+        party: c.party,
+        state: c.state,
+        bioguideId: c.bioguideId,
+      }));
 
-      const committees =
-        committeesData.status === "fulfilled"
-          ? (committeesData.value.committees?.item ?? []).map((c: any) => ({
-              name: c.name ?? "",
-              chamber: c.chamber,
-              committeeCode: c.systemCode,
-            }))
-          : [];
+      const rawCommittees = committeesData.status === "fulfilled" ? committeesData.value.committees : undefined;
+      const committees = (rawCommittees?.item ?? (Array.isArray(rawCommittees) ? rawCommittees : [])).map((c: any) => ({
+        name: c.name ?? "",
+        chamber: c.chamber,
+        committeeCode: c.systemCode,
+      }));
 
-      const actions =
-        actionsData.status === "fulfilled"
-          ? (actionsData.value.actions?.item ?? []).map((a: any) => ({
-              date: a.actionDate ?? "",
-              text: a.text ?? "",
-              type: a.type,
-            }))
-          : [];
+      const rawActionsRaw = actionsData.status === "fulfilled" ? actionsData.value.actions : undefined;
+      const rawActions: any[] = rawActionsRaw?.item ?? (Array.isArray(rawActionsRaw) ? rawActionsRaw : []);
+      const seenActions = new Set<string>();
+      const actions = rawActions.flatMap((a: any) => {
+        const date = a.actionDate ?? "";
+        const text = (a.text ?? "").trim();
+        const key = `${date}|${text}`;
+        if (seenActions.has(key)) return [];
+        seenActions.add(key);
+        return [{ date, text, type: a.type }];
+      });
+      const votes = rawActions.flatMap((a: any) => {
+        const recordedVotes: any[] = a.recordedVotes ?? [];
+        if (recordedVotes.length === 0) return [];
+        const countMatch = (a.text ?? "").match(/(\d+)\s*[-–]\s*(\d+)/);
+        const yesCount = countMatch ? Number(countMatch[1]) : undefined;
+        const noCount = countMatch ? Number(countMatch[2]) : undefined;
+        const presentMatch = (a.text ?? "").match(/(\d+)\s+Present/i);
+        const presentCount = presentMatch ? Number(presentMatch[1]) : undefined;
+        return recordedVotes.map((rv: any) => ({
+          date: a.actionDate ?? "",
+          chamber: rv.chamber ?? "",
+          rollNumber: rv.rollNumber,
+          result: a.text ?? "",
+          yesCount,
+          noCount,
+          presentCount,
+          sourceUrl: rv.url,
+        }));
+      });
       const progress = computeFederalBillProgress({
         congress,
         latestAction: bill.latestAction?.text,
@@ -2484,6 +2502,11 @@ router.get(
         {
           billId: `${congress}-${billType}-${billNumber}`,
           source: "congress.gov",
+          actionsStatus: actionsData.status,
+          actionsCount: actions.length,
+          votesCount: votes.length,
+          cosponsorsCount: cosponsors.length,
+          committeesCount: committees.length,
         },
         "Fetched federal bill detail from Congress.gov",
       );
@@ -2547,6 +2570,7 @@ router.get(
         cosponsors,
         committees,
         actions,
+        votes,
         progress,
         url: bill.url,
         textUrl,
