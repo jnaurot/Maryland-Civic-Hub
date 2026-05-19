@@ -14,9 +14,9 @@ This is a **Maryland civic information web app** built as a pnpm workspace monor
 - `pnpm run test` — Run the Vitest test suite.
 - `pnpm run build` — Typecheck everything, then build all packages recursively.
 - `pnpm --filter @workspace/api-server run dev` — Build and start the API server in development mode.
-- `pnpm --filter @workspace/md-reps run dev` — Start the Vite dev server for the frontend.
-- `pnpm --filter @workspace/md-reps run build` — Build the frontend for production.
-- `pnpm --filter @workspace/md-reps run serve` — Preview the production frontend build.
+- `pnpm --filter @workspace/rep run dev` — Start the Vite dev server for the frontend.
+- `pnpm --filter @workspace/rep run build` — Build the frontend for production.
+- `pnpm --filter @workspace/rep run serve` — Preview the production frontend build.
 - `pnpm --filter @workspace/api-spec run codegen` — Regenerate React Query hooks and Zod schemas from `openapi.yaml`.
 - `pnpm --filter @workspace/db run push` — Push Drizzle schema changes to the database.
 
@@ -28,7 +28,7 @@ The workspace is organized into two main directories:
 
 - **`artifacts/`** — Deployable applications:
   - `api-server` — Express 5 API that proxies/aggregates external civic APIs.
-  - `md-reps` — Main React 19 + Vite frontend.
+  - `rep` — Main React 19 + Vite frontend.
   - `mockup-sandbox` — Secondary Vite + React playground (rarely used).
 - **`lib/`** — Shared libraries:
   - `api-spec` — OpenAPI YAML spec (`openapi.yaml`) and Orval config (`orval.config.ts`).
@@ -57,7 +57,7 @@ The generated client uses a **custom fetch** implementation (`lib/api-client-rea
 
 **Important:** If you change the API contract, run `pnpm --filter @workspace/api-spec run codegen` and then `pnpm run typecheck:libs` to update generated code before consuming it.
 
-### Frontend (`artifacts/md-reps`)
+### Frontend (`artifacts/rep`)
 
 - **Build tool:** Vite 7 with `@tailwindcss/vite` and `@vitejs/plugin-react`.
 - **Styling:** Tailwind CSS v4 with `class-variance-authority`, `tailwind-merge`, and `tw-animate-css`.

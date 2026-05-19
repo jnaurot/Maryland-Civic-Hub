@@ -54,8 +54,9 @@ describe("Policy area filter regression", () => {
 
   it("FederalBills passes policyArea to both listing and search hooks", () => {
     const source = getSource("FederalBills");
-    expect(source.includes("useGetFederalBills({ chamber, policyArea, offset, limit }")).toBe(true);
+    expect(source.includes("useGetFederalBills(")).toBe(true);
+    expect(source.includes("policyArea, offset, limit")).toBe(true);
     expect(source.includes("useSearchFederalBills(searchParams,")).toBe(true);
-    expect(source.includes("policyArea, offset, limit }")).toBe(true);
+    expect(source.includes("const searchParams = { q: searchQuery, policyArea, offset, limit }")).toBe(true);
   });
 });

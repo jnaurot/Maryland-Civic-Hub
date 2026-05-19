@@ -2,7 +2,7 @@ kind = "web"
 previewPath = "/"
 title = "Maryland Representatives"
 version = "1.0.0"
-id = "artifacts/md-reps"
+id = "artifacts/rep"
 router = "path"
 
 [[integratedSkills]]
@@ -15,11 +15,11 @@ paths = [ "/" ]
 localPort = 18928
 
 [services.development]
-run = "pnpm --filter @workspace/md-reps run dev"
+run = "pnpm --filter @workspace/rep run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/md-reps", "run", "build" ]
-publicDir = "artifacts/md-reps/dist/public"
+build = [ "pnpm", "--filter", "@workspace/rep", "run", "build" ]
+publicDir = "artifacts/rep/dist/public"
 serve = "static"
 
 [[services.production.rewrites]]

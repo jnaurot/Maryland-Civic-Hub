@@ -29,7 +29,7 @@ export default defineConfig({
   ],
   webServer: {
     command:
-      "PORT=4173 BASE_PATH=/ NODE_ENV=test pnpm --filter @workspace/md-reps run dev",
+      "PORT=4173 BASE_PATH=/ NODE_ENV=test pnpm --filter @workspace/rep run dev",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: true,
     timeout: 120000,
