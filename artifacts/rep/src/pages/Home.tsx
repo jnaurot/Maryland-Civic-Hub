@@ -377,7 +377,7 @@ export function Home() {
       {/* Hero Section */}
       <div
         data-testid="home-hero"
-        className="bg-primary text-primary-foreground py-20 px-4 relative overflow-visible shrink-0 z-20"
+        className="bg-primary text-primary-foreground py-20 max-sm:py-4 px-4 relative overflow-visible shrink-0 z-20"
       >
         <div data-testid="home-hero-background" className="absolute inset-0 overflow-hidden pointer-events-none">
           {flagUrl && (
@@ -388,22 +388,22 @@ export function Home() {
           )}
         </div>
         <div className="container mx-auto max-w-3xl relative z-10 text-center">
-          <h1 className="text-4xl md:text-5xl font-black mb-6 tracking-tight">
+          <h1 className="text-xl sm:text-4xl md:text-5xl font-black mb-6 max-sm:mb-2 tracking-tight whitespace-nowrap">
             Know Your Representatives
           </h1>
           <p className="hidden sm:block text-lg md:text-xl text-primary-foreground/80 mb-10 max-w-2xl mx-auto">
             Discover who represents you at the federal, state, and local levels. Track their bills, votes, and campaign finance.
           </p>
 
-          <div className="flex flex-col gap-4 max-w-xl mx-auto">
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 max-sm:gap-2 max-w-xl mx-auto">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-sm:gap-2">
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-grow">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     type="text"
                     placeholder="Enter address, bill, or representative... then hit <return>"
-                    className="pl-10 h-14 text-lg bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
+                    className="pl-10 h-14 max-sm:h-10 text-lg max-sm:text-sm bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onFocus={() => setInputFocused(true)}
@@ -517,7 +517,7 @@ export function Home() {
                     setActiveTextQuery("");
                   }}
                 >
-                  <SelectTrigger className="w-56 bg-background text-foreground border-0 shadow-lg rounded-xl">
+                  <SelectTrigger className="w-56 max-sm:w-44 max-sm:text-sm bg-background text-foreground border-0 shadow-lg rounded-xl">
                     <SelectValue placeholder="Select a state" />
                   </SelectTrigger>
                   <SelectContent>
@@ -546,8 +546,8 @@ export function Home() {
       {!isLoading && !stateMembersLoading && !error && showStateMembers && stateMembersData && (
         <div className="shrink-0 bg-muted/30">
           <div className="container mx-auto px-4 pt-6">
-            <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Showing federal representatives for</p>
-            <h2 className="text-2xl font-semibold">{stateMembersData.stateName ?? activeStateName}</h2>
+            <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Federal representatives for</p>
+            <h2 className="text-2xl max-sm:text-sm font-semibold">{stateMembersData.stateName ?? activeStateName}</h2>
           </div>
         </div>
       )}
@@ -579,7 +579,7 @@ export function Home() {
                   <>
                     {federal.length > 0 && (
                       <section>
-                        <h2 className="text-3xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted z-10">Federal Representatives</h2>
+                        <h2 className="text-3xl max-sm:text-xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted z-10">Federal Representatives</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {federal.map(renderRepCard)}
                         </div>
@@ -621,7 +621,7 @@ export function Home() {
             <div className="space-y-16">
               {stateMembersData.representatives && stateMembersData.representatives.length > 0 && (
                 <section>
-                  <h2 className="text-3xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted z-10">Federal Representatives</h2>
+                  <h2 className="text-3xl max-sm:text-xl font-black mb-6 border-b pb-2 sticky top-0 bg-muted z-10">Federal Representatives</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {stateMembersData.representatives.map(renderRepCard)}
                   </div>

@@ -6,11 +6,13 @@ export const ListViewport = forwardRef<
   {
     children: ReactNode;
     className?: string;
+    onScroll?: React.UIEventHandler<HTMLDivElement>;
   }
->(function ListViewport({ children, className }, ref) {
+>(function ListViewport({ children, className, onScroll }, ref) {
   return (
     <div
       ref={ref}
+      onScroll={onScroll}
       className={cn("flex-1 min-h-0 overflow-y-auto pr-1 max-sm:pr-0", className)}
     >
       {children}

@@ -47,6 +47,7 @@ import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 function getApiErrorStatus(error: unknown) {
   return typeof error === "object" && error !== null && "status" in error
@@ -66,6 +67,7 @@ function getApiErrorMessage(error: unknown) {
 }
 
 function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refreshPending, billType, onBillTypeChange }: { memberId: string; jurisdiction?: string; memberName?: string; onRefresh?: () => void; refreshPending?: boolean; billType: "sponsored" | "cosponsored"; onBillTypeChange: (t: "sponsored" | "cosponsored") => void }) {
+  const isMobile = useIsMobile();
   const pageSearch = useSearch();
   const initialParams = new URLSearchParams(pageSearch);
   const type = billType;
@@ -88,11 +90,20 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
     return Number.isFinite(raw) && raw >= 0 ? raw : 0;
   });
   const [searchQuery, setSearchQuery] = useState(initialParams.get("q") ?? "");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [allBills, setAllBills] = useState<any[]>([]);
+  const appendedOffsetRef = useRef(new Set<number>());
+  const scrollRatioRef = useRef(0);
+  const [lastVisible, setLastVisible] = useState(1);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const prevFilterKeyRef = useRef<string | null>(null);
   const limit = 20;
   const statusFilterActive = statusEnabled && selectedStages.length > 0;
   const stageQuery = statusFilterActive
     ? selectedStages.map((stage) => BILL_STAGE_QUERY_KEYS[stage]).join(",")
     : undefined;
+
+  const filterKey = `${type}|${searchQuery}|${stageQuery ?? ""}`;
 
   const queryParams = {
     type,
@@ -102,7 +113,7 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
     q: searchQuery || undefined,
     stages: stageQuery,
   };
-  const { data, isLoading, error } = useGetStateMemberBills(memberId, queryParams, {
+  const { data, isLoading, isPlaceholderData, error } = useGetStateMemberBills(memberId, queryParams, {
     query: {
       enabled: !!memberId,
       queryKey: getGetStateMemberBillsQueryKey(memberId, queryParams),
@@ -132,6 +143,7 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
   }, [scrollStorageKey]);
 
   useEffect(() => {
+    if (isMobile) return;
     if (isLoading) return;
     if (restoredScrollRef.current) return;
     if (typeof window === "undefined") return;
@@ -152,7 +164,76 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
       restoredScrollRef.current = true;
     });
     return () => window.cancelAnimationFrame(id);
-  }, [isLoading, scrollStorageKey]);
+  }, [isMobile, isLoading, scrollStorageKey]);
+
+  // Mobile: reset accumulation when filters change
+  useEffect(() => {
+    if (!isMobile) return;
+    if (prevFilterKeyRef.current === filterKey) return;
+    if (prevFilterKeyRef.current !== null) {
+      setAllBills([]);
+      appendedOffsetRef.current = new Set();
+    }
+    prevFilterKeyRef.current = filterKey;
+  }, [filterKey, isMobile]);
+
+  // Mobile: append new page to accumulated list
+  useEffect(() => {
+    if (!isMobile) return;
+    if (isLoading || isPlaceholderData) return;
+    if (appendedOffsetRef.current.has(offset)) return;
+    appendedOffsetRef.current.add(offset);
+    if (visibleBills.length > 0) {
+      setAllBills((prev) => [...prev, ...visibleBills]);
+    }
+  }, [isMobile, isLoading, isPlaceholderData, offset, visibleBills]);
+
+  // Mobile: update visible counter after allBills changes
+  useEffect(() => {
+    if (!isMobile || allBills.length === 0) return;
+    const el = listViewportRef.current;
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const ratio = scrollHeight > 0 ? (scrollTop + clientHeight) / scrollHeight : 1;
+      scrollRatioRef.current = ratio;
+      const visible = Math.max(1, Math.round(ratio * allBills.length));
+      setLastVisible(Math.min(visible, allBills.length));
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [allBills.length, isMobile]);
+
+  // Mobile: IntersectionObserver to trigger next page load
+  useEffect(() => {
+    if (!isMobile) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoading && !isPlaceholderData) {
+          const nextOffset = allBills.length;
+          if (nextOffset < effectiveTotalCount) {
+            setOffset(nextOffset);
+          }
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isMobile, isLoading, isPlaceholderData, allBills.length, effectiveTotalCount]);
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
+    if (!isMobile) return;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight <= clientHeight) return;
+    const ratio = (scrollTop + clientHeight) / scrollHeight;
+    scrollRatioRef.current = ratio;
+    const visible = Math.max(1, Math.round(ratio * allBills.length));
+    setLastVisible(Math.min(visible, allBills.length));
+  };
+
+  const billsToRender = isMobile ? (allBills as typeof visibleBills) : visibleBills;
 
   return (
     <div className="flex flex-col h-full pb-4">
@@ -207,8 +288,12 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
       <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2 shrink-0">
         {type === "cosponsored" ? "Cosponsored Bills" : "Sponsored Bills"}
       </p>
-      <ListViewport ref={listViewportRef} className="space-y-3">
-        {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
+      <ListViewport
+        ref={listViewportRef}
+        onScroll={handleScroll}
+        className={isMobile ? "[scroll-snap-type:y_proximity] space-y-3" : "space-y-3"}
+      >
+        {isLoading && !allBills.length && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>}
 
         {!isLoading && error && (
           <Card className={rateLimited ? "border-amber-300 bg-amber-50" : "border-destructive/40"}>
@@ -224,61 +309,159 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
           </Card>
         )}
 
-        {!isLoading && !error && visibleBills.length === 0 && (
+        {!isLoading && !error && billsToRender.length === 0 && (
           <p className="text-muted-foreground text-center py-10">No bills found.</p>
         )}
 
-        {!isLoading && !error && visibleBills.map((bill) => (
-          <Link
-            key={bill.id}
-            href={`/bills/state/${encodeURIComponent(bill.id)}${fromParam}`}
-            onClick={() => {
-              if (typeof window === "undefined") return;
-              const top = listViewportRef.current?.scrollTop ?? 0;
-              window.sessionStorage.setItem(scrollStorageKey, String(top));
-            }}
-          >
-            <Card className="hover:border-primary transition-colors cursor-pointer">
-              <CardContent className={statusFilterActive ? "p-3" : "p-4"}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      {bill.identifier && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.identifier}</Badge>}
-                      {bill.session && <Badge variant="outline" className="text-xs shrink-0">Session {bill.session}</Badge>}
-                      {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
+        {!error && billsToRender.map((bill, index) => {
+          const isSnapPoint = isMobile && index > 0 && index % 20 === 0;
+          return (
+            <Link
+              key={bill.id}
+              href={`/bills/state/${encodeURIComponent(bill.id)}${fromParam}`}
+              className={isSnapPoint ? "[scroll-snap-align:start]" : undefined}
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                const top = listViewportRef.current?.scrollTop ?? 0;
+                window.sessionStorage.setItem(scrollStorageKey, String(top));
+              }}
+            >
+              <Card className="hover:border-primary transition-colors cursor-pointer">
+                <CardContent className={statusFilterActive ? "p-3" : "p-4"}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        {bill.identifier && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.identifier}</Badge>}
+                        {bill.session && <Badge variant="outline" className="text-xs shrink-0">Session {bill.session}</Badge>}
+                        {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
+                      </div>
+                      <p className={`font-medium ${statusFilterActive ? "text-sm line-clamp-1" : "text-sm line-clamp-2"}`}>{bill.title}</p>
+                      {bill.latestAction && <p className={`text-muted-foreground mt-1 ${statusFilterActive ? "text-[11px] line-clamp-1" : "text-xs line-clamp-1"}`}>{bill.latestAction}</p>}
                     </div>
-                    <p className={`font-medium ${statusFilterActive ? "text-sm line-clamp-1" : "text-sm line-clamp-2"}`}>{bill.title}</p>
-                    {bill.latestAction && <p className={`text-muted-foreground mt-1 ${statusFilterActive ? "text-[11px] line-clamp-1" : "text-xs line-clamp-1"}`}>{bill.latestAction}</p>}
+                    {bill.introducedDate && <span className="text-xs text-muted-foreground shrink-0">{bill.introducedDate}</span>}
                   </div>
-                  {bill.introducedDate && <span className="text-xs text-muted-foreground shrink-0">{bill.introducedDate}</span>}
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+                </CardContent>
+              </Card>
+            </Link>
+          );
+        })}
+        {isMobile && <div ref={sentinelRef} className="h-1" />}
       </ListViewport>
 
-      <PaginationFooter
-        offset={offset}
-        limit={limit}
-        totalCount={effectiveTotalCount}
-        onPrevious={() => setOffset(Math.max(0, offset - limit))}
-        onNext={() => setOffset(offset + limit)}
-      />
+      <div className="sm:hidden text-xs text-center text-muted-foreground py-2 shrink-0">
+        {allBills.length > 0 && effectiveTotalCount > 0
+          ? `${lastVisible}/${effectiveTotalCount}${isLoading ? " ···" : ""}`
+          : isLoading ? "···" : ""}
+      </div>
+      <div className="hidden sm:block">
+        <PaginationFooter
+          offset={offset}
+          limit={limit}
+          totalCount={effectiveTotalCount}
+          onPrevious={() => setOffset(Math.max(0, offset - limit))}
+          onNext={() => setOffset(offset + limit)}
+        />
+      </div>
     </div>
   );
 }
 
 function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdiction?: string }) {
+  const isMobile = useIsMobile();
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState<"all" | "yea" | "nay" | "present" | "not-voting">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const listViewportRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [allVotes, setAllVotes] = useState<any[]>([]);
+  const appendedOffsetRef = useRef(new Set<number>());
+  const scrollRatioRef = useRef(0);
+  const [lastVisible, setLastVisible] = useState(1);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const prevFilterKeyRef = useRef<string | null>(null);
   const limit = 20;
 
   const queryParams = { jurisdiction, offset, limit, filter, q: searchQuery || undefined };
-  const { data, isLoading } = useGetStateMemberVotes(memberId, queryParams, {
-    query: { enabled: !!memberId, queryKey: getGetStateMemberVotesQueryKey(memberId, queryParams) }
+  const { data, isLoading, isPlaceholderData } = useGetStateMemberVotes(memberId, queryParams, {
+    query: {
+      enabled: !!memberId,
+      queryKey: getGetStateMemberVotesQueryKey(memberId, queryParams),
+      placeholderData: (previous) => previous,
+    }
   });
+
+  const votes = data?.votes ?? [];
+  const totalCount = data?.totalCount ?? 0;
+  const filterKey = `${filter}|${searchQuery}`;
+
+  // Mobile: reset accumulation when filters change
+  useEffect(() => {
+    if (!isMobile) return;
+    if (prevFilterKeyRef.current === filterKey) return;
+    if (prevFilterKeyRef.current !== null) {
+      setAllVotes([]);
+      appendedOffsetRef.current = new Set();
+    }
+    prevFilterKeyRef.current = filterKey;
+  }, [filterKey, isMobile]);
+
+  // Mobile: append new page to accumulated list
+  useEffect(() => {
+    if (!isMobile) return;
+    if (isLoading || isPlaceholderData) return;
+    if (appendedOffsetRef.current.has(offset)) return;
+    appendedOffsetRef.current.add(offset);
+    if (votes.length > 0) {
+      setAllVotes((prev) => [...prev, ...votes]);
+    }
+  }, [isMobile, isLoading, isPlaceholderData, offset, votes]);
+
+  // Mobile: update visible counter after allVotes changes
+  useEffect(() => {
+    if (!isMobile || allVotes.length === 0) return;
+    const el = listViewportRef.current;
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const ratio = scrollHeight > 0 ? (scrollTop + clientHeight) / scrollHeight : 1;
+      scrollRatioRef.current = ratio;
+      const visible = Math.max(1, Math.round(ratio * allVotes.length));
+      setLastVisible(Math.min(visible, allVotes.length));
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [allVotes.length, isMobile]);
+
+  // Mobile: IntersectionObserver to trigger next page load
+  useEffect(() => {
+    if (!isMobile) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoading && !isPlaceholderData) {
+          const nextOffset = allVotes.length;
+          if (nextOffset < totalCount) {
+            setOffset(nextOffset);
+          }
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isMobile, isLoading, isPlaceholderData, allVotes.length, totalCount]);
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
+    if (!isMobile) return;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight <= clientHeight) return;
+    const ratio = (scrollTop + clientHeight) / scrollHeight;
+    scrollRatioRef.current = ratio;
+    const visible = Math.max(1, Math.round(ratio * allVotes.length));
+    setLastVisible(Math.min(visible, allVotes.length));
+  };
+
+  const votesToRender = isMobile ? (allVotes as typeof votes) : votes;
 
   const voteFilters: { value: typeof filter; label: string }[] = [
     { value: "all", label: "All" },
@@ -312,39 +495,54 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
         ))}
       </FilterBar>
 
-      <ListViewport className="space-y-3">
-        {isLoading && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>}
+      <ListViewport
+        ref={listViewportRef}
+        onScroll={handleScroll}
+        className={isMobile ? "[scroll-snap-type:y_proximity] space-y-3" : "space-y-3"}
+      >
+        {isLoading && !allVotes.length && <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>}
 
-        {!isLoading && !data?.votes?.length && (
+        {!isLoading && votesToRender.length === 0 && (
           <p className="text-muted-foreground text-center py-10">No voting records found.</p>
         )}
 
-        {!isLoading && data?.votes?.map((vote, i) => (
-          <Card key={i}>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  {vote.billIdentifier && <Badge variant="outline" className="text-xs font-mono mb-1">{vote.billIdentifier}</Badge>}
-                  <p className="font-medium text-sm line-clamp-2">{vote.billTitle}</p>
+        {votesToRender.map((vote, i) => {
+          const isSnapPoint = isMobile && i > 0 && i % 20 === 0;
+          return (
+            <Card key={i} className={isSnapPoint ? "[scroll-snap-align:start]" : undefined}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    {vote.billIdentifier && <Badge variant="outline" className="text-xs font-mono mb-1">{vote.billIdentifier}</Badge>}
+                    <p className="font-medium text-sm line-clamp-2">{vote.billTitle}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={`text-sm font-bold ${voteColor(vote.position)}`}>{vote.position}</p>
+                    <p className="text-xs text-muted-foreground">{vote.date}</p>
+                  </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <p className={`text-sm font-bold ${voteColor(vote.position)}`}>{vote.position}</p>
-                  <p className="text-xs text-muted-foreground">{vote.date}</p>
-                </div>
-              </div>
-              {vote.result && <p className="text-xs text-muted-foreground mt-2 border-t pt-2">Result: {vote.result}</p>}
-            </CardContent>
-          </Card>
-        ))}
+                {vote.result && <p className="text-xs text-muted-foreground mt-2 border-t pt-2">Result: {vote.result}</p>}
+              </CardContent>
+            </Card>
+          );
+        })}
+        {isMobile && <div ref={sentinelRef} className="h-1" />}
       </ListViewport>
 
-      <PaginationFooter
-        offset={offset}
-        limit={limit}
-        totalCount={data?.totalCount ?? 0}
-        onPrevious={() => setOffset(Math.max(0, offset - limit))}
-        onNext={() => setOffset(offset + limit)}
-      />
+      <div className="sm:hidden text-xs text-center text-muted-foreground py-2 shrink-0">
+        {allVotes.length > 0 && totalCount > 0
+          ? `${lastVisible}/${totalCount}${isLoading ? " ···" : ""}`
+          : isLoading ? "···" : ""}
+      </div>
+      <div className="hidden sm:block">
+        <PaginationFooter
+          offset={offset}
+          limit={limit}
+          totalCount={totalCount}
+          onPrevious={() => setOffset(Math.max(0, offset - limit))}
+          onNext={() => setOffset(offset + limit)}
+        />
+      </div>
     </div>
   );
 }

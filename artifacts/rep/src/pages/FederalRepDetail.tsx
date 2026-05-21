@@ -56,6 +56,7 @@ import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 function PolicyAreaChart({
   policyAreas,
@@ -138,18 +139,25 @@ function BillsList({
   memberName,
   billRole,
   onBillRoleChange,
+  filtersCollapsed,
+  onBillViewChange,
 }: {
   bioguideId: string;
   memberName?: string;
   billRole: "sponsored" | "cosponsored";
   onBillRoleChange: (role: "sponsored" | "cosponsored") => void;
+  filtersCollapsed?: boolean;
+  onBillViewChange?: (view: "list" | "breakdown") => void;
 }) {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const pageSearch = useSearch();
   const initialParams = new URLSearchParams(pageSearch);
   const [billView, setBillView] = useState<"list" | "breakdown">(
     initialParams.get("billView") === "breakdown" ? "breakdown" : "list",
   );
+  const effectiveCollapsed = !!filtersCollapsed && billView === "list";
+  useEffect(() => { onBillViewChange?.(billView); }, [billView, onBillViewChange]);
   const [category, setCategory] = useState<
     "all" | "bill" | "resolution" | "amendment" | "other"
   >(() => {
@@ -180,6 +188,13 @@ function BillsList({
   });
   const [searchQuery, setSearchQuery] = useState(initialParams.get("q") ?? "");
   const [policyArea, setPolicyArea] = useState(initialParams.get("policyArea") ?? "");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [allBills, setAllBills] = useState<any[]>([]);
+  const appendedOffsetRef = useRef(new Set<number>());
+  const scrollRatioRef = useRef(0);
+  const [lastVisible, setLastVisible] = useState(1);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const prevFilterKeyRef = useRef<string | null>(null);
   const limit = 20;
 
   // Sync policyArea state with URL param changes (direct nav / back button)
@@ -198,6 +213,8 @@ function BillsList({
     ? selectedStages.map((stage) => BILL_STAGE_QUERY_KEYS[stage]).join(",")
     : undefined;
 
+  const filterKey = `${billRole}|${category}|${searchQuery}|${stageQuery ?? ""}|${policyArea}`;
+
   const queryParams = {
     type: billRole,
     offset,
@@ -207,7 +224,7 @@ function BillsList({
     stages: stageQuery,
     policyArea: policyArea || undefined,
   };
-  const { data, isLoading } = useGetFederalMemberBills(
+  const { data, isLoading, isPlaceholderData } = useGetFederalMemberBills(
     bioguideId,
     queryParams,
     {
@@ -292,6 +309,7 @@ function BillsList({
 
   useEffect(() => {
     if (billView !== "list") return;
+    if (isMobile) return;
     if (isLoading) return;
     if (restoredScrollRef.current) return;
     if (typeof window === "undefined") return;
@@ -312,7 +330,74 @@ function BillsList({
       restoredScrollRef.current = true;
     });
     return () => window.cancelAnimationFrame(id);
-  }, [billView, isLoading, scrollStorageKey]);
+  }, [billView, isMobile, isLoading, scrollStorageKey]);
+
+  // Mobile: reset accumulation when filters change
+  useEffect(() => {
+    if (!isMobile) return;
+    if (prevFilterKeyRef.current === filterKey) return;
+    if (prevFilterKeyRef.current !== null) {
+      setAllBills([]);
+      appendedOffsetRef.current = new Set();
+    }
+    prevFilterKeyRef.current = filterKey;
+  }, [filterKey, isMobile]);
+
+  // Mobile: append new page to accumulated list
+  useEffect(() => {
+    if (!isMobile) return;
+    if (isLoading || isPlaceholderData) return;
+    if (appendedOffsetRef.current.has(offset)) return;
+    appendedOffsetRef.current.add(offset);
+    if (displayedBills.length > 0) {
+      setAllBills((prev) => [...prev, ...displayedBills]);
+    }
+  }, [isMobile, isLoading, isPlaceholderData, offset, displayedBills]);
+
+  // Mobile: update visible counter after allBills changes
+  useEffect(() => {
+    if (!isMobile || allBills.length === 0) return;
+    const el = listViewportRef.current;
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const ratio = scrollHeight > 0 ? (scrollTop + clientHeight) / scrollHeight : 1;
+      scrollRatioRef.current = ratio;
+      const visible = Math.max(1, Math.round(ratio * allBills.length));
+      setLastVisible(Math.min(visible, allBills.length));
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [allBills.length, isMobile]);
+
+  // Mobile: IntersectionObserver to trigger next page load
+  useEffect(() => {
+    if (!isMobile) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoading && !isPlaceholderData) {
+          const nextOffset = allBills.length;
+          if (nextOffset < displayedTotalCount) {
+            setOffset(nextOffset);
+          }
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isMobile, isLoading, isPlaceholderData, allBills.length, displayedTotalCount]);
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
+    if (!isMobile) return;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight <= clientHeight) return;
+    const ratio = (scrollTop + clientHeight) / scrollHeight;
+    scrollRatioRef.current = ratio;
+    const visible = Math.max(1, Math.round(ratio * allBills.length));
+    setLastVisible(Math.min(visible, allBills.length));
+  };
 
   function internalBillHref(bill: {
     number?: string;
@@ -330,140 +415,146 @@ function BillsList({
     return `/bills/federal/${bill.congress}/${parts[0].toLowerCase()}/${parts[1]}${fromParam}`;
   }
 
+  const billsToRender = isMobile
+    ? (allBills as typeof displayedBills)
+    : displayedPagedBills;
+
   return (
     <div className="flex flex-col h-full pb-4">
-      <div className="flex items-center shrink-0 pb-4 gap-1 sm:gap-2 sm:justify-between">
-        <div className="flex gap-1 sm:gap-2">
-          <Button
-            size="sm"
-            variant={billRole === "sponsored" ? "default" : "outline"}
-            className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
-            onClick={() => {
-              onBillRoleChange("sponsored");
-              setOffset(0);
-            }}
-          >
-            Sponsored
-          </Button>
-          <Button
-            size="sm"
-            variant={billRole === "cosponsored" ? "default" : "outline"}
-            className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
-            onClick={() => {
-              onBillRoleChange("cosponsored");
-              setOffset(0);
-            }}
-          >
-            Cosponsored
-          </Button>
+      <div className={effectiveCollapsed ? "hidden sm:block" : undefined}>
+        <div className="flex items-center shrink-0 pb-4 gap-1 sm:gap-2 sm:justify-between">
+          <div className="flex gap-1 sm:gap-2">
+            <Button
+              size="sm"
+              variant={billRole === "sponsored" ? "default" : "outline"}
+              className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
+              onClick={() => {
+                onBillRoleChange("sponsored");
+                setOffset(0);
+              }}
+            >
+              Sponsored
+            </Button>
+            <Button
+              size="sm"
+              variant={billRole === "cosponsored" ? "default" : "outline"}
+              className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
+              onClick={() => {
+                onBillRoleChange("cosponsored");
+                setOffset(0);
+              }}
+            >
+              Cosponsored
+            </Button>
+          </div>
+          <div className="flex gap-1 sm:gap-2">
+            <Button
+              size="sm"
+              variant={billView === "list" ? "default" : "outline"}
+              className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
+              onClick={() => setBillView("list")}
+            >
+              List
+            </Button>
+            <Button
+              size="sm"
+              variant={billView === "breakdown" ? "default" : "outline"}
+              className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
+              onClick={() => setBillView("breakdown")}
+            >
+              Breakdown
+            </Button>
+            <StatusFilterControls
+              statusEnabled={statusEnabled}
+              className="max-sm:text-xs max-sm:px-2 max-sm:h-7 max-sm:mt-0"
+              onToggleStatus={() => {
+                setStatusEnabled((prev) => {
+                  const next = !prev;
+                  if (!next) setSelectedStages([]);
+                  return next;
+                });
+                setOffset(0);
+              }}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="hidden sm:inline-flex"
+              onClick={() =>
+                refreshBillsMutation.mutate({
+                  bioguideId,
+                  data: { type: billRole },
+                })
+              }
+              disabled={refreshBillsMutation.isPending}
+              title="Refresh legislation"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${refreshBillsMutation.isPending ? "animate-spin" : ""}`}
+              />
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-1 sm:gap-2">
-          <Button
-            size="sm"
-            variant={billView === "list" ? "default" : "outline"}
-            className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
-            onClick={() => setBillView("list")}
-          >
-            List
-          </Button>
-          <Button
-            size="sm"
-            variant={billView === "breakdown" ? "default" : "outline"}
-            className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
-            onClick={() => setBillView("breakdown")}
-          >
-            Breakdown
-          </Button>
-          <StatusFilterControls
-            statusEnabled={statusEnabled}
-            className="max-sm:text-xs max-sm:px-2 max-sm:h-7 max-sm:mt-0"
-            onToggleStatus={() => {
-              setStatusEnabled((prev) => {
-                const next = !prev;
-                if (!next) setSelectedStages([]);
-                return next;
-              });
+        {statusEnabled && (
+          <StatusStagePills
+            selectedStages={selectedStages}
+            onToggleStage={(stage) => {
+              setSelectedStages((prev) => (prev.includes(stage) ? [] : [stage]));
               setOffset(0);
             }}
           />
-          <Button
-            size="sm"
-            variant="outline"
-            className="hidden sm:inline-flex"
-            onClick={() =>
-              refreshBillsMutation.mutate({
-                bioguideId,
-                data: { type: billRole },
-              })
-            }
-            disabled={refreshBillsMutation.isPending}
-            title="Refresh legislation"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${refreshBillsMutation.isPending ? "animate-spin" : ""}`}
-            />
-          </Button>
-        </div>
+        )}
+        <FilterBar className="flex flex-wrap gap-2 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:pb-1 max-sm:[&>*]:shrink-0">
+          {categoryOptions.map((option) => {
+            const count =
+              data?.categoryCounts?.[option.value] ?? 0;
+            if (option.hideWhenZero && count === 0) return null;
+            return (
+              <Button
+                key={option.value}
+                size="sm"
+                variant={category === option.value ? "default" : "outline"}
+                onClick={() => {
+                  setCategory(option.value);
+                  setOffset(0);
+                }}
+              >
+                {`${option.label} (${count})`}
+              </Button>
+            );
+          })}
+        </FilterBar>
+        <FilterBar className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search bills..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setOffset(0);
+            }}
+            className="pl-9"
+          />
+        </FilterBar>
+        {policyArea && (
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="flex items-center gap-1.5">
+              Policy: {policyArea}
+              <button
+                type="button"
+                onClick={() => {
+                  setPolicyArea("");
+                  setOffset(0);
+                }}
+                className="ml-1 rounded-full hover:bg-muted p-0.5"
+                aria-label="Clear policy area filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          </div>
+        )}
       </div>
-      {statusEnabled && (
-        <StatusStagePills
-          selectedStages={selectedStages}
-          onToggleStage={(stage) => {
-            setSelectedStages((prev) => (prev.includes(stage) ? [] : [stage]));
-            setOffset(0);
-          }}
-        />
-      )}
-      <FilterBar className="flex flex-wrap gap-2 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:pb-1 max-sm:[&>*]:shrink-0">
-        {categoryOptions.map((option) => {
-          const count =
-            data?.categoryCounts?.[option.value] ?? 0;
-          if (option.hideWhenZero && count === 0) return null;
-          return (
-            <Button
-              key={option.value}
-              size="sm"
-              variant={category === option.value ? "default" : "outline"}
-              onClick={() => {
-                setCategory(option.value);
-                setOffset(0);
-              }}
-            >
-              {`${option.label} (${count})`}
-            </Button>
-          );
-        })}
-      </FilterBar>
-      <FilterBar className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search bills..."
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            setOffset(0);
-          }}
-          className="pl-9"
-        />
-      </FilterBar>
-      {policyArea && (
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="flex items-center gap-1.5">
-            Policy: {policyArea}
-            <button
-              type="button"
-              onClick={() => {
-                setPolicyArea("");
-                setOffset(0);
-              }}
-              className="ml-1 rounded-full hover:bg-muted p-0.5"
-              aria-label="Clear policy area filter"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </Badge>
-        </div>
-      )}
 
       {billView === "list" ? (
         <div className="flex-1 min-h-0 flex flex-col">
@@ -475,9 +566,13 @@ function BillsList({
               Indexing sponsored legislation. Counts may update.
             </p>
           )}
-          <ListViewport ref={listViewportRef}>
+          <ListViewport
+            ref={listViewportRef}
+            onScroll={handleScroll}
+            className={isMobile ? "[scroll-snap-type:y_proximity]" : undefined}
+          >
             <div className="space-y-3">
-              {isLoading && (
+              {isLoading && !allBills.length && (
                 <>
                   {[...Array(5)].map((_, i) => (
                     <Skeleton key={i} className="h-20 w-full" />
@@ -485,113 +580,122 @@ function BillsList({
                 </>
               )}
 
-              {!isLoading && displayedBills.length === 0 && (
+              {!isLoading && billsToRender.length === 0 && (
                 <p className="text-muted-foreground text-center py-10">
                   No legislation found.
                 </p>
               )}
 
-              {!isLoading &&
-                displayedPagedBills.map((bill) => {
-                  const href = internalBillHref(bill);
-                  const compactMode = statusFilterActive;
-                  const card = (
-                    <Card
-                      className={
-                        href
-                          ? "hover:border-primary transition-colors cursor-pointer"
-                          : "transition-colors"
-                      }
-                    >
-                      <CardContent className={compactMode ? "p-3" : "p-4"}>
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              {bill.number && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs font-mono shrink-0"
-                                >
-                                  {bill.number}
-                                </Badge>
-                              )}
-                              {bill.itemCategory && (
-                                <Badge
-                                  variant="secondary"
-                                  className="text-xs capitalize"
-                                >
-                                  {bill.itemCategory}
-                                </Badge>
-                              )}
-                              {bill.chamber && (
-                                <Badge variant="secondary" className="text-xs">
-                                  {bill.chamber}
-                                </Badge>
-                              )}
-                            </div>
-                            <p
-                              className={`font-medium ${compactMode ? "text-sm line-clamp-1" : "text-sm line-clamp-2"}`}
-                            >
-                              {bill.title}
-                            </p>
-                            {bill.latestAction && (
-                              <p
-                                className={`text-muted-foreground mt-1 ${compactMode ? "text-[11px] line-clamp-1" : "text-xs line-clamp-1"}`}
+              {billsToRender.map((bill, index) => {
+                const isSnapPoint = isMobile && index > 0 && index % 20 === 0;
+                const href = internalBillHref(bill);
+                const compactMode = statusFilterActive;
+                const card = (
+                  <Card
+                    className={
+                      href
+                        ? "hover:border-primary transition-colors cursor-pointer"
+                        : "transition-colors"
+                    }
+                  >
+                    <CardContent className={compactMode ? "p-3" : "p-4"}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            {bill.number && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs font-mono shrink-0"
                               >
-                                {bill.latestAction}
-                              </p>
+                                {bill.number}
+                              </Badge>
                             )}
-                            {!href && bill.url && (
-                              <a
-                                className="text-xs text-primary mt-2 inline-flex items-center gap-1"
-                                href={bill.url.replace(
-                                  "api.congress.gov/v3",
-                                  "www.congress.gov",
-                                )}
-                                target="_blank"
-                                rel="noreferrer"
+                            {bill.itemCategory && (
+                              <Badge
+                                variant="secondary"
+                                className="text-xs capitalize"
                               >
-                                View source <ExternalLink className="h-3 w-3" />
-                              </a>
+                                {bill.itemCategory}
+                              </Badge>
+                            )}
+                            {bill.chamber && (
+                              <Badge variant="secondary" className="text-xs">
+                                {bill.chamber}
+                              </Badge>
                             )}
                           </div>
-                          {bill.introducedDate && (
-                            <span className="text-xs text-muted-foreground shrink-0">
-                              {bill.introducedDate}
-                            </span>
+                          <p
+                            className={`font-medium ${compactMode ? "text-sm line-clamp-1" : "text-sm line-clamp-2"}`}
+                          >
+                            {bill.title}
+                          </p>
+                          {bill.latestAction && (
+                            <p
+                              className={`text-muted-foreground mt-1 ${compactMode ? "text-[11px] line-clamp-1" : "text-xs line-clamp-1"}`}
+                            >
+                              {bill.latestAction}
+                            </p>
+                          )}
+                          {!href && bill.url && (
+                            <a
+                              className="text-xs text-primary mt-2 inline-flex items-center gap-1"
+                              href={bill.url.replace(
+                                "api.congress.gov/v3",
+                                "www.congress.gov",
+                              )}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              View source <ExternalLink className="h-3 w-3" />
+                            </a>
                           )}
                         </div>
-                      </CardContent>
-                    </Card>
-                  );
-                  return href ? (
-                    <Link
-                      key={bill.id}
-                      href={href}
-                      onClick={() => {
-                        if (typeof window === "undefined") return;
-                        const top = listViewportRef.current?.scrollTop ?? 0;
-                        window.sessionStorage.setItem(
-                          scrollStorageKey,
-                          String(top),
-                        );
-                      }}
-                    >
-                      {card}
-                    </Link>
-                  ) : (
-                    <div key={bill.id}>{card}</div>
-                  );
-                })}
+                        {bill.introducedDate && (
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {bill.introducedDate}
+                          </span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+                return href ? (
+                  <Link
+                    key={bill.id}
+                    href={href}
+                    className={isSnapPoint ? "[scroll-snap-align:start]" : undefined}
+                    onClick={() => {
+                      if (typeof window === "undefined") return;
+                      const top = listViewportRef.current?.scrollTop ?? 0;
+                      window.sessionStorage.setItem(
+                        scrollStorageKey,
+                        String(top),
+                      );
+                    }}
+                  >
+                    {card}
+                  </Link>
+                ) : (
+                  <div key={bill.id} className={isSnapPoint ? "[scroll-snap-align:start]" : undefined}>{card}</div>
+                );
+              })}
+              {isMobile && <div ref={sentinelRef} className="h-1" />}
             </div>
           </ListViewport>
-          <PaginationFooter
-            offset={offset}
-            limit={limit}
-            totalCount={displayedTotalCount}
-            onPrevious={() => setOffset(Math.max(0, offset - limit))}
-            onNext={() => setOffset(offset + limit)}
-          />
+          <div className="sm:hidden text-xs text-center text-muted-foreground py-2 shrink-0">
+            {allBills.length > 0 && displayedTotalCount > 0
+              ? `${lastVisible}/${displayedTotalCount}${isLoading ? " ···" : ""}`
+              : isLoading ? "···" : ""}
+          </div>
+          <div className="hidden sm:block">
+            <PaginationFooter
+              offset={offset}
+              limit={limit}
+              totalCount={displayedTotalCount}
+              onPrevious={() => setOffset(Math.max(0, offset - limit))}
+              onNext={() => setOffset(offset + limit)}
+            />
+          </div>
         </div>
       ) : (
         <ListViewport>
@@ -648,11 +752,20 @@ function VotesList({
   bioguideId: string;
   memberChamber?: string;
 }) {
+  const isMobile = useIsMobile();
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState<
     "all" | "yea" | "nay" | "present" | "not-voting"
   >("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const listViewportRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [allVotes, setAllVotes] = useState<any[]>([]);
+  const appendedOffsetRef = useRef(new Set<number>());
+  const scrollRatioRef = useRef(0);
+  const [lastVisible, setLastVisible] = useState(1);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const prevFilterKeyRef = useRef<string | null>(null);
   const limit = 20;
 
   const normalizedChamber = memberChamber?.toLowerCase().trim() ?? "";
@@ -667,6 +780,7 @@ function VotesList({
     query: {
       enabled: !!bioguideId && isHouse,
       queryKey: getGetFederalMemberHouseVotesQueryKey(bioguideId, houseParams),
+      placeholderData: (previous) => previous,
     },
   });
 
@@ -677,13 +791,86 @@ function VotesList({
         bioguideId,
         senateParams,
       ),
+      placeholderData: (previous) => previous,
     },
   });
 
   const data = isSenator ? senateQuery.data : houseQuery.data;
   const isLoading = isSenator ? senateQuery.isLoading : houseQuery.isLoading;
+  const isPlaceholderData = isSenator ? senateQuery.isPlaceholderData : houseQuery.isPlaceholderData;
   const totalCount = data?.totalCount ?? 0;
   const votes = data?.votes ?? [];
+
+  const filterKey = `${filter}|${searchQuery}`;
+
+  // Mobile: reset accumulation when filters change
+  useEffect(() => {
+    if (!isMobile) return;
+    if (prevFilterKeyRef.current === filterKey) return;
+    if (prevFilterKeyRef.current !== null) {
+      setAllVotes([]);
+      appendedOffsetRef.current = new Set();
+    }
+    prevFilterKeyRef.current = filterKey;
+  }, [filterKey, isMobile]);
+
+  // Mobile: append new page to accumulated list
+  useEffect(() => {
+    if (!isMobile) return;
+    if (isLoading || isPlaceholderData) return;
+    if (appendedOffsetRef.current.has(offset)) return;
+    appendedOffsetRef.current.add(offset);
+    if (votes.length > 0) {
+      setAllVotes((prev) => [...prev, ...votes]);
+    }
+  }, [isMobile, isLoading, isPlaceholderData, offset, votes]);
+
+  // Mobile: update visible counter after allVotes changes
+  useEffect(() => {
+    if (!isMobile || allVotes.length === 0) return;
+    const el = listViewportRef.current;
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const ratio = scrollHeight > 0 ? (scrollTop + clientHeight) / scrollHeight : 1;
+      scrollRatioRef.current = ratio;
+      const visible = Math.max(1, Math.round(ratio * allVotes.length));
+      setLastVisible(Math.min(visible, allVotes.length));
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [allVotes.length, isMobile]);
+
+  // Mobile: IntersectionObserver to trigger next page load
+  useEffect(() => {
+    if (!isMobile) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoading && !isPlaceholderData) {
+          const nextOffset = allVotes.length;
+          if (nextOffset < totalCount) {
+            setOffset(nextOffset);
+          }
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isMobile, isLoading, isPlaceholderData, allVotes.length, totalCount]);
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
+    if (!isMobile) return;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight <= clientHeight) return;
+    const ratio = (scrollTop + clientHeight) / scrollHeight;
+    scrollRatioRef.current = ratio;
+    const visible = Math.max(1, Math.round(ratio * allVotes.length));
+    setLastVisible(Math.min(visible, allVotes.length));
+  };
+
+  const votesToRender = isMobile ? (allVotes as typeof votes) : votes;
 
   const voteFilters: { value: typeof filter; label: string }[] = [
     { value: "all", label: "All" },
@@ -723,8 +910,12 @@ function VotesList({
         ))}
       </FilterBar>
 
-      <ListViewport className="space-y-3">
-        {isLoading && (
+      <ListViewport
+        ref={listViewportRef}
+        onScroll={handleScroll}
+        className={isMobile ? "[scroll-snap-type:y_proximity] space-y-3" : "space-y-3"}
+      >
+        {isLoading && !allVotes.length && (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
               <Skeleton key={i} className="h-20 w-full" />
@@ -732,15 +923,19 @@ function VotesList({
           </div>
         )}
 
-        {!isLoading && votes.length === 0 && (
+        {!isLoading && votesToRender.length === 0 && (
           <p className="text-muted-foreground text-center py-10">
             No voting records found.
           </p>
         )}
 
-        {!isLoading &&
-          votes.map((vote: any) => (
-            <Card key={`${vote.congress}-${vote.session}-${vote.rollCallNumber}`} className="overflow-hidden">
+        {votesToRender.map((vote: any, index: number) => {
+          const isSnapPoint = isMobile && index > 0 && index % 20 === 0;
+          return (
+            <Card
+              key={`${vote.congress}-${vote.session}-${vote.rollCallNumber}`}
+              className={`overflow-hidden${isSnapPoint ? " [scroll-snap-align:start]" : ""}`}
+            >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -783,16 +978,25 @@ function VotesList({
                 </div>
               </CardContent>
             </Card>
-          ))}
+          );
+        })}
+        {isMobile && <div ref={sentinelRef} className="h-1" />}
       </ListViewport>
 
-      <PaginationFooter
-        offset={offset}
-        limit={limit}
-        totalCount={totalCount}
-        onPrevious={() => setOffset(Math.max(0, offset - limit))}
-        onNext={() => setOffset(offset + limit)}
-      />
+      <div className="sm:hidden text-xs text-center text-muted-foreground py-2 shrink-0">
+        {allVotes.length > 0 && totalCount > 0
+          ? `${lastVisible}/${totalCount}${isLoading ? " ···" : ""}`
+          : isLoading ? "···" : ""}
+      </div>
+      <div className="hidden sm:block">
+        <PaginationFooter
+          offset={offset}
+          limit={limit}
+          totalCount={totalCount}
+          onPrevious={() => setOffset(Math.max(0, offset - limit))}
+          onNext={() => setOffset(offset + limit)}
+        />
+      </div>
     </div>
   );
 }
@@ -1030,6 +1234,10 @@ export function FederalRepDetail() {
     "sponsored",
   );
   const [topIssuesExpanded, setTopIssuesExpanded] = useState(false);
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState("bills");
+  const [billsFiltersCollapsed, setBillsFiltersCollapsed] = useState(false);
+  const billViewRef = useRef<"list" | "breakdown">("list");
   const { data: billSummaryData } = useGetFederalMemberBills(
     bioguideId,
     { type: billRole, offset: 0, limit: 1 },
@@ -1262,10 +1470,25 @@ export function FederalRepDetail() {
                 </div>
             </RepProfileCard>
 
-            <Tabs defaultValue="bills" className="flex flex-col flex-1 min-h-0">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => {
+                if (v === "bills" && activeTab !== "bills") setBillsFiltersCollapsed(false);
+                setActiveTab(v);
+              }}
+              className="flex flex-col flex-1 min-h-0"
+            >
               <div className="flex items-stretch gap-1 mb-6 shrink-0 max-sm:mb-4">
                 <TabsList className="flex-1">
-                  <TabsTrigger value="bills" className="flex-1 gap-1.5">
+                  <TabsTrigger
+                    value="bills"
+                    className="flex-1 gap-1.5"
+                    onClick={() => {
+                      if (isMobile && activeTab === "bills" && billViewRef.current === "list") {
+                        setBillsFiltersCollapsed((prev) => !prev);
+                      }
+                    }}
+                  >
                     <FileText className="h-4 w-4" />
                     <span className="hidden sm:inline">Bills</span>
                   </TabsTrigger>
@@ -1303,6 +1526,8 @@ export function FederalRepDetail() {
                   memberName={member.name}
                   billRole={billRole}
                   onBillRoleChange={setBillRole}
+                  filtersCollapsed={billsFiltersCollapsed}
+                  onBillViewChange={(v) => { billViewRef.current = v; }}
                 />
               </TabsContent>
               <TabsContent
