@@ -3,7 +3,7 @@ set -e
 
 SERVER="root@194.195.92.140"
 REMOTE_BASE="/var/www/politician"
-LOCAL_BASE="$HOME/Projects/Maryland-Civic-Hub"
+LOCAL_BASE="$HOME/Projects/MyReps"
 
 echo "=== Building frontend ==="
 cd "$LOCAL_BASE/artifacts/rep"
