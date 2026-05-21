@@ -18,7 +18,7 @@ rsync -avz "$LOCAL_BASE/artifacts/rep/dist/public/" \
   "$SERVER:$REMOTE_BASE/artifacts/rep/dist/public/"
 
 echo "=== Building backend on server ==="
-ssh "$SERVER" "cd $REMOTE_BASE && pnpm install --ignore-scripts && pnpm --filter @workspace/api-server run build"
+ssh "$SERVER" "cd $REMOTE_BASE && /root/.nvm/versions/node/v24.15.0/bin/pnpm install --ignore-scripts && /root/.nvm/versions/node/v24.15.0/bin/pnpm --filter @workspace/api-server run build"
 
 echo "=== Restarting backend ==="
 ssh "$SERVER" "pm2 restart politician-api && pm2 logs politician-api --lines 10 --nostream"
