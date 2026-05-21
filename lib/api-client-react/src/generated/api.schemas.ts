@@ -596,6 +596,18 @@ export type SearchStateMembersParams = {
   limit?: number;
 };
 
+export type RefreshStateMemberBillsBodyType =
+  (typeof RefreshStateMemberBillsBodyType)[keyof typeof RefreshStateMemberBillsBodyType];
+
+export const RefreshStateMemberBillsBodyType = {
+  sponsored: "sponsored",
+  cosponsored: "cosponsored",
+} as const;
+
+export type RefreshStateMemberBillsBody = {
+  type?: RefreshStateMemberBillsBodyType;
+};
+
 export type GetStateMemberBillsParams = {
   type?: GetStateMemberBillsType;
   jurisdiction?: string;

@@ -334,6 +334,57 @@ router.post("/state/members/:memberId/refresh", async (req, res) => {
   }
 });
 
+router.post("/state/members/:memberId/bills/refresh", async (req, res) => {
+  const memberId = decodeURIComponent(req.params.memberId);
+  if (!memberId) return res.status(400).json({ error: "memberId required" });
+
+  const type = req.body?.type === "cosponsored" ? "cosponsored" : "sponsored";
+  const sponsorClassification = type === "cosponsored" ? "cosponsor" : "primary";
+
+  try {
+    // Clear all cached pages for this member so the next GET fetches fresh data
+    for (const key of stateMemberBillsCache.keys()) {
+      if (key.includes(`|${memberId}|`)) stateMemberBillsCache.delete(key);
+    }
+
+    await checkRateLimited();
+    req.log.info({ memberId, type, source: "openstates" }, "Force refreshing state member bills");
+
+    const data = await openStatesFetch("/bills", {
+      jurisdiction: req.body?.jurisdiction ?? "md",
+      per_page: 20,
+      page: 1,
+      sponsor: memberId,
+      include: "sponsorships",
+      sponsor_classification: sponsorClassification,
+      sort: "first_action_desc",
+    });
+
+    const sourceBills = data.results ?? [];
+    const bills = sortBillsNewestFirst(sourceBills.map(mapStateBill));
+    const totalCount = Number(data.pagination?.total_items ?? 0);
+
+    const jurisdiction = req.body?.jurisdiction ?? "md";
+    for (const sourceBill of sourceBills) {
+      await upsertStateBill({ bill: mapStateBill(sourceBill), sourceBill, jurisdiction });
+    }
+
+    stateMemberBillsCache.set(
+      [jurisdiction, memberId, sponsorClassification, 1, 20].join("|"),
+      { fetchedAt: Date.now(), bills, totalCount },
+    );
+
+    return res.json({ bills, totalCount, offset: 0, refreshed: true });
+  } catch (err) {
+    if (isProviderRateLimitError(err)) {
+      req.log.warn({ err }, "State member bills refresh blocked by provider rate limit");
+      return sendProviderRateLimitError(res, err);
+    }
+    req.log.error({ err }, "Error refreshing state member bills");
+    return sendInternalError(res);
+  }
+});
+
 router.get("/state/members/:memberId/bills", async (req, res) => {
   const memberId = decodeURIComponent(req.params.memberId);
   const queryParsed = GetStateMemberBillsQueryParams.safeParse(req.query);

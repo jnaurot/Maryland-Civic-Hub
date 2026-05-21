@@ -5,18 +5,21 @@ import { BILL_STAGE_OPTIONS, type BillStage } from "@/lib/rep-utils";
 export function StatusFilterControls({
   statusEnabled,
   onToggleStatus,
+  className,
 }: {
   statusEnabled: boolean;
   onToggleStatus: () => void;
+  className?: string;
 }) {
   return (
     <Button
       size="sm"
       variant="outline"
-      className={`mt-0.5 shrink-0 ${statusEnabled ? "border-green-600 text-green-700" : "border-red-500 text-red-600"}`}
+      className={`mt-0.5 shrink-0 ${statusEnabled ? "border-green-600 text-green-700" : "border-red-500 text-red-600"} ${className ?? ""}`}
       onClick={onToggleStatus}
     >
-      Status {statusEnabled ? "On" : "Off"}
+      <span className="sm:hidden">Status</span>
+      <span className="hidden sm:inline">Status {statusEnabled ? "On" : "Off"}</span>
     </Button>
   );
 }

@@ -38,6 +38,7 @@ import type {
   HealthStatus,
   HouseVotesListResponse,
   RefreshFederalMemberBillsBody,
+  RefreshStateMemberBillsBody,
   RepresentativesResponse,
   SearchCandidateFinanceParams,
   SearchFederalBillsParams,
@@ -1443,6 +1444,91 @@ export const useRefreshStateMember = <TError = ErrorType<unknown>, TContext = un
   TContext
 > => {
   return useMutation(getRefreshStateMemberMutationOptions(options));
+};
+
+/**
+ * @summary Force refresh bills for a state member
+ */
+export const getRefreshStateMemberBillsUrl = (memberId: string) => {
+  return `/api/state/members/${memberId}/bills/refresh`;
+};
+
+export const refreshStateMemberBills = async (
+  memberId: string,
+  refreshStateMemberBillsBody?: RefreshStateMemberBillsBody,
+  options?: RequestInit,
+): Promise<StateBillsListResponse> => {
+  return customFetch<StateBillsListResponse>(getRefreshStateMemberBillsUrl(memberId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(refreshStateMemberBillsBody),
+  });
+};
+
+export const getRefreshStateMemberBillsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshStateMemberBills>>,
+    TError,
+    { memberId: string; data: BodyType<RefreshStateMemberBillsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof refreshStateMemberBills>>,
+  TError,
+  { memberId: string; data: BodyType<RefreshStateMemberBillsBody> },
+  TContext
+> => {
+  const mutationKey = ["refreshStateMemberBills"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof refreshStateMemberBills>>,
+    { memberId: string; data: BodyType<RefreshStateMemberBillsBody> }
+  > = (props) => {
+    const { memberId, data } = props ?? {};
+
+    return refreshStateMemberBills(memberId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RefreshStateMemberBillsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof refreshStateMemberBills>>
+>;
+export type RefreshStateMemberBillsMutationBody = BodyType<RefreshStateMemberBillsBody>;
+export type RefreshStateMemberBillsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Force refresh bills for a state member
+ */
+export const useRefreshStateMemberBills = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshStateMemberBills>>,
+    TError,
+    { memberId: string; data: BodyType<RefreshStateMemberBillsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof refreshStateMemberBills>>,
+  TError,
+  { memberId: string; data: BodyType<RefreshStateMemberBillsBody> },
+  TContext
+> => {
+  return useMutation(getRefreshStateMemberBillsMutationOptions(options));
 };
 
 /**

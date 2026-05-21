@@ -732,6 +732,46 @@ export const RefreshStateMemberResponse = zod.object({
 });
 
 /**
+ * @summary Force refresh bills for a state member
+ */
+export const RefreshStateMemberBillsParams = zod.object({
+  memberId: zod.coerce.string(),
+});
+
+export const refreshStateMemberBillsBodyTypeDefault = `sponsored`;
+
+export const RefreshStateMemberBillsBody = zod.object({
+  type: zod.enum(["sponsored", "cosponsored"]).default(refreshStateMemberBillsBodyTypeDefault),
+});
+
+export const RefreshStateMemberBillsResponse = zod.object({
+  bills: zod.array(
+    zod.object({
+      id: zod.string(),
+      identifier: zod.string().optional(),
+      title: zod.string(),
+      session: zod.string().optional(),
+      chamber: zod.string().optional(),
+      status: zod.string().optional(),
+      introducedDate: zod.string().optional(),
+      latestAction: zod.string().optional(),
+      latestActionDate: zod.string().optional(),
+      stageIntroduced: zod.boolean().optional(),
+      stageCommittee: zod.boolean().optional(),
+      stageFloorVote: zod.boolean().optional(),
+      stagePassed: zod.boolean().optional(),
+      stageSignedEnacted: zod.boolean().optional(),
+      stageDead: zod.boolean().optional(),
+      sponsors: zod.array(zod.string()).optional(),
+      url: zod.string().optional(),
+      subjects: zod.array(zod.string()).optional(),
+    }),
+  ),
+  totalCount: zod.number().optional(),
+  offset: zod.number().optional(),
+});
+
+/**
  * @summary Get bills sponsored or cosponsored by a state member
  */
 export const GetStateMemberBillsParams = zod.object({

@@ -67,6 +67,13 @@ export function getStateName(code?: string | null): string | undefined {
   return US_STATES.find((s) => s.code === code.toUpperCase())?.name;
 }
 
+export function getStateCode(nameOrCode?: string | null): string | undefined {
+  if (!nameOrCode) return undefined;
+  const upper = nameOrCode.toUpperCase();
+  if (US_STATES.find((s) => s.code === upper)) return upper;
+  return US_STATES.find((s) => s.name.toUpperCase() === upper)?.code;
+}
+
 export function getStateFlagUrl(code?: string | null): string | undefined {
   if (!code) return undefined;
   const upper = code.toUpperCase();

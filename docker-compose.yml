@@ -1,0 +1,26 @@
+# PostgreSQL for Maryland Civic Hub
+# Run: docker compose up -d
+# Data persists in a named volume so it survives container restarts.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: civic-hub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-civic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-civic_hub}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - civic-hub-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-civic} -d ${POSTGRES_DB:-civic_hub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  civic-hub-pgdata:
+    driver: local

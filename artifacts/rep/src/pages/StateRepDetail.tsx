@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useSearch } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetStateMember,
   useGetStateMemberBills,
@@ -7,6 +8,7 @@ import {
   useSearchCandidateFinance,
   useGetCandidateFinance,
   useRefreshStateMember,
+  useRefreshStateMemberBills,
   getGetStateMemberQueryKey,
   getGetStateMemberBillsQueryKey,
   getGetStateMemberVotesQueryKey,
@@ -16,15 +18,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { RepProfileCard } from "@/components/RepProfileCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { toast } from "@/hooks/use-toast";
 import {
   ChevronLeft,
@@ -33,7 +29,6 @@ import {
   Vote,
   DollarSign,
   ExternalLink,
-  MoreHorizontal,
   RefreshCw,
   AlertTriangle,
   Search,
@@ -70,12 +65,11 @@ function getApiErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Request failed. Please try again later.";
 }
 
-function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: string; jurisdiction?: string; memberName?: string }) {
+function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refreshPending, billType, onBillTypeChange }: { memberId: string; jurisdiction?: string; memberName?: string; onRefresh?: () => void; refreshPending?: boolean; billType: "sponsored" | "cosponsored"; onBillTypeChange: (t: "sponsored" | "cosponsored") => void }) {
   const pageSearch = useSearch();
   const initialParams = new URLSearchParams(pageSearch);
-  const [type, setType] = useState<"sponsored" | "cosponsored">(
-    initialParams.get("type") === "cosponsored" ? "cosponsored" : "sponsored",
-  );
+  const type = billType;
+  const setType = onBillTypeChange;
   const [statusEnabled, setStatusEnabled] = useState(
     initialParams.get("status") === "on",
   );
@@ -177,6 +171,18 @@ function StateBillsList({ memberId, jurisdiction, memberName }: { memberId: stri
               setOffset(0);
             }}
           />
+          {onRefresh && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="hidden sm:inline-flex"
+              onClick={onRefresh}
+              disabled={refreshPending}
+              title="Refresh bills"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshPending ? "animate-spin" : ""}`} />
+            </Button>
+          )}
         </div>
       </FilterBar>
       {statusEnabled && (
@@ -442,6 +448,7 @@ function CommitteesFromBills() {
 export function StateRepDetail() {
   const { memberId } = useParams<{ memberId: string }>();
   const apiMemberId = encodeURIComponent(memberId);
+  const queryClient = useQueryClient();
 
   const { data: memberData, isLoading } = useGetStateMember(apiMemberId, {
     query: { enabled: !!apiMemberId, queryKey: getGetStateMemberQueryKey(apiMemberId) }
@@ -450,7 +457,7 @@ export function StateRepDetail() {
   const member = memberData?.legislator;
   const cache = memberData?.cache;
 
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [billType, setBillType] = useState<"sponsored" | "cosponsored">("sponsored");
 
   const refreshMutation = useRefreshStateMember({
     mutation: {
@@ -465,6 +472,29 @@ export function StateRepDetail() {
         toast({
           title: "Refresh failed",
           description: err.message || "Could not refresh from OpenStates.",
+          variant: "destructive",
+          duration: 5000,
+        });
+      },
+    },
+  });
+
+  const refreshBillsMutation = useRefreshStateMemberBills({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: getGetStateMemberBillsQueryKey(apiMemberId),
+        });
+        toast({
+          title: "Bills refreshed",
+          description: "Sponsored legislation is being updated.",
+          duration: 5000,
+        });
+      },
+      onError: (err: Error) => {
+        toast({
+          title: "Bills refresh failed",
+          description: err.message || "Could not refresh bills.",
           variant: "destructive",
           duration: 5000,
         });
@@ -487,6 +517,10 @@ export function StateRepDetail() {
     if (!apiMemberId) return;
     e?.preventDefault?.();
     refreshMutation.mutate({ memberId: apiMemberId });
+    refreshBillsMutation.mutate({
+      memberId: apiMemberId,
+      data: { type: billType },
+    });
   };
 
   return (
@@ -522,60 +556,55 @@ export function StateRepDetail() {
               </div>
             )}
 
-            <Card className="mb-6 shrink-0">
-              <CardContent className="p-6">
-                <div className="flex flex-col sm:flex-row items-start gap-6">
-                  <Avatar className="h-24 w-24 border-2 border-muted shrink-0">
-                    <AvatarImage src={member.photoUrl} alt={member.name} className="object-cover object-top" />
-                    <AvatarFallback className="text-2xl">{member.name?.substring(0, 2)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h1 className="text-3xl font-black mb-2">{member.name}</h1>
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          {member.party && <Badge className={partyColor(member.party)}>{member.party}</Badge>}
-                          {member.chamber && <Badge variant="outline">{member.chamber}</Badge>}
-                          {member.district && <Badge variant="secondary">District {member.district}</Badge>}
-                        </div>
-                        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                          {member.email && <a href={`mailto:${member.email}`} className="hover:text-foreground transition-colors">{member.email}</a>}
-                          {member.phone && <span>{member.phone}</span>}
-                        </div>
-                        {member.openstatesUrl && (
-                          <a href={member.openstatesUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2">
-                            OpenStates Profile <ExternalLink className="h-3 w-3" />
-                          </a>
-                        )}
-                      </div>
-                      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="shrink-0">
-                            <MoreHorizontal className="h-5 w-5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setMenuOpen(false); handleRefresh(); }} disabled={refreshMutation.isPending}>
-                            <RefreshCw className={`h-4 w-4 mr-2 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
-                            Refresh data
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+            <RepProfileCard
+              photoUrl={member.photoUrl}
+              name={member.name}
+              belowPhoto={member.openstatesUrl && (
+                <a href={member.openstatesUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                  OpenStates Profile <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            >
+              <div>
+                  <h1 className="text-3xl font-black mb-1 sm:mb-2 leading-tight sm:leading-normal">{member.name}</h1>
+                  <div className="flex flex-wrap gap-2 mb-2 sm:mb-3">
+                    {member.party && <Badge className={partyColor(member.party)}>{member.party}</Badge>}
+                    {member.chamber && <Badge variant="outline">{member.chamber}</Badge>}
+                    {member.district && <Badge variant="secondary">District {member.district}</Badge>}
                   </div>
+                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                    {member.email && <a href={`mailto:${member.email}`} className="hover:text-foreground transition-colors">{member.email}</a>}
+                    {member.phone && <span>{member.phone}</span>}
+                  </div>
+                  {member.openstatesUrl && (
+                    <a href={member.openstatesUrl} target="_blank" rel="noopener noreferrer" className="hidden sm:inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2">
+                      OpenStates Profile <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
+            </RepProfileCard>
 
             <Tabs defaultValue="bills" className="flex flex-col flex-1 min-h-0">
-              <TabsList className="w-full mb-6 shrink-0 max-sm:mb-4">
-                <TabsTrigger value="bills" className="flex-1 gap-1.5"><FileText className="h-4 w-4" /><span className="hidden sm:inline">Bills</span></TabsTrigger>
-                <TabsTrigger value="votes" className="flex-1 gap-1.5"><Vote className="h-4 w-4" /><span className="hidden sm:inline">Votes</span></TabsTrigger>
-                <TabsTrigger value="committees" className="flex-1 gap-1.5"><Users className="h-4 w-4" /><span className="hidden sm:inline">Committees</span></TabsTrigger>
-                <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" /><span className="hidden sm:inline">Finance</span></TabsTrigger>
-              </TabsList>
+              <div className="flex items-stretch gap-1 mb-6 shrink-0 max-sm:mb-4">
+                <TabsList className="flex-1">
+                  <TabsTrigger value="bills" className="flex-1 gap-1.5"><FileText className="h-4 w-4" /><span className="hidden sm:inline">Bills</span></TabsTrigger>
+                  <TabsTrigger value="votes" className="flex-1 gap-1.5"><Vote className="h-4 w-4" /><span className="hidden sm:inline">Votes</span></TabsTrigger>
+                  <TabsTrigger value="committees" className="flex-1 gap-1.5"><Users className="h-4 w-4" /><span className="hidden sm:inline">Committees</span></TabsTrigger>
+                  <TabsTrigger value="finance" className="flex-1 gap-1.5"><DollarSign className="h-4 w-4" /><span className="hidden sm:inline">Finance</span></TabsTrigger>
+                </TabsList>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="sm:hidden shrink-0 px-2"
+                  onClick={handleRefresh}
+                  disabled={refreshMutation.isPending || refreshBillsMutation.isPending}
+                  title="Refresh data"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshMutation.isPending || refreshBillsMutation.isPending ? "animate-spin" : ""}`} />
+                </Button>
+              </div>
 
-              <TabsContent value="bills" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><StateBillsList memberId={apiMemberId} jurisdiction={member.jurisdiction} memberName={member.name} /></TabsContent>
+              <TabsContent value="bills" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><StateBillsList memberId={apiMemberId} jurisdiction={member.jurisdiction} memberName={member.name} onRefresh={handleRefresh} refreshPending={refreshMutation.isPending || refreshBillsMutation.isPending} billType={billType} onBillTypeChange={setBillType} /></TabsContent>
               <TabsContent value="votes" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><StateVotesList memberId={apiMemberId} jurisdiction={member.jurisdiction} /></TabsContent>
               <TabsContent value="committees" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><CommitteesFromBills /></TabsContent>
               <TabsContent value="finance" className="flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"><StateFinanceTab name={member.name ?? ""} state={member.state} /></TabsContent>

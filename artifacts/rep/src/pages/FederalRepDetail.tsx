@@ -22,15 +22,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { RepProfileCard } from "@/components/RepProfileCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { toast } from "@/hooks/use-toast";
 import {
   ExternalLink,
@@ -41,7 +35,6 @@ import {
   FileText,
   Vote,
   DollarSign,
-  MoreHorizontal,
   RefreshCw,
   AlertTriangle,
   Search,
@@ -57,6 +50,7 @@ import {
   BILL_STAGE_QUERY_KEYS,
   type BillStage,
 } from "@/lib/rep-utils";
+import { getStateCode } from "@/lib/states";
 import { PageShell } from "@/components/layout/PageShell";
 import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
@@ -338,11 +332,12 @@ function BillsList({
 
   return (
     <div className="flex flex-col h-full pb-4">
-      <div className="flex justify-between items-center shrink-0 pb-4 gap-2 flex-wrap">
-        <div className="flex gap-2">
+      <div className="flex items-center shrink-0 pb-4 gap-1 sm:gap-2 sm:justify-between">
+        <div className="flex gap-1 sm:gap-2">
           <Button
             size="sm"
             variant={billRole === "sponsored" ? "default" : "outline"}
+            className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
             onClick={() => {
               onBillRoleChange("sponsored");
               setOffset(0);
@@ -353,6 +348,7 @@ function BillsList({
           <Button
             size="sm"
             variant={billRole === "cosponsored" ? "default" : "outline"}
+            className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
             onClick={() => {
               onBillRoleChange("cosponsored");
               setOffset(0);
@@ -361,10 +357,11 @@ function BillsList({
             Cosponsored
           </Button>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1 sm:gap-2">
           <Button
             size="sm"
             variant={billView === "list" ? "default" : "outline"}
+            className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
             onClick={() => setBillView("list")}
           >
             List
@@ -372,12 +369,14 @@ function BillsList({
           <Button
             size="sm"
             variant={billView === "breakdown" ? "default" : "outline"}
+            className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
             onClick={() => setBillView("breakdown")}
           >
             Breakdown
           </Button>
           <StatusFilterControls
             statusEnabled={statusEnabled}
+            className="max-sm:text-xs max-sm:px-2 max-sm:h-7 max-sm:mt-0"
             onToggleStatus={() => {
               setStatusEnabled((prev) => {
                 const next = !prev;
@@ -390,6 +389,7 @@ function BillsList({
           <Button
             size="sm"
             variant="outline"
+            className="hidden sm:inline-flex"
             onClick={() =>
               refreshBillsMutation.mutate({
                 bioguideId,
@@ -1046,8 +1046,6 @@ export function FederalRepDetail() {
     },
   );
 
-  const [menuOpen, setMenuOpen] = useState(false);
-
   const topPolicyAreas = (billSummaryData?.policyAreas ?? [])
     .filter((p) => p.name && p.name !== "Other")
     .slice(0, 8);
@@ -1136,170 +1134,165 @@ export function FederalRepDetail() {
               </div>
             )}
 
-            <Card className="mb-6 shrink-0">
-              <CardContent className="p-6">
-                <div className="flex flex-col sm:flex-row items-start gap-6">
-                  <Avatar className="h-24 w-24 border-2 border-muted shrink-0">
-                    <AvatarImage
-                      src={member.photoUrl}
-                      alt={member.name}
-                      className="object-cover object-top"
-                    />
-                    <AvatarFallback className="text-2xl">
-                      {member.name?.substring(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h1 className="text-3xl font-black mb-2">
-                          {member.name}
-                        </h1>
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          {member.party && (
-                            <Badge className={partyColor(member.party)}>
-                              {member.party}
-                            </Badge>
-                          )}
-                          {member.chamber && (
-                            <Badge variant="outline">{member.chamber}</Badge>
-                          )}
-                          {member.state && (
-                            <Badge variant="secondary">{member.state}</Badge>
-                          )}
-                          {member.district && (
-                            <Badge variant="secondary">
-                              District {member.district}
-                            </Badge>
-                          )}
-                        </div>
-                        {billSummaryData?.policyAreas &&
-                          billSummaryData.policyAreas.length > 0 && (
-                            <div
-                              className={`mb-3 flex items-center gap-2 ${topIssuesExpanded ? "flex-wrap" : "flex-nowrap min-w-0"}`}
-                            >
-                              <span className="text-xs text-muted-foreground font-medium shrink-0">
-                                {billRole === "cosponsored"
-                                  ? "Top Support Areas"
-                                  : "Top Sponsored Issues"}
-                                :
-                              </span>
-                              {topIssuesExpanded ? (
-                                topPolicyAreas.map((area) => (
-                                  <Badge
-                                    key={area.name}
-                                    variant="outline"
-                                    className="text-xs bg-primary/5 border-primary/20"
-                                  >
-                                    {area.name}
-                                  </Badge>
-                                ))
-                              ) : (
-                                topPolicyAreas[0] && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-xs bg-primary/5 border-primary/20 min-w-0 max-w-[36ch] truncate"
-                                  >
-                                    {topPolicyAreas[0].name}
-                                  </Badge>
-                                )
-                              )}
-                              {topPolicyAreas.length > 1 && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-2 text-xs shrink-0"
-                                  onClick={() =>
-                                    setTopIssuesExpanded((prev) => !prev)
-                                  }
-                                >
-                                  {topIssuesExpanded ? (
-                                    <>
-                                      Hide <ChevronUp className="h-3 w-3 ml-1" />
-                                    </>
-                                  ) : (
-                                    <>
-                                      show more...{" "}
-                                      <ChevronDown className="h-3 w-3 ml-1" />
-                                    </>
-                                  )}
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                          {member.phone && <span>{member.phone}</span>}
-                          {member.nextElection && (
-                            <span>Next election: {member.nextElection}</span>
-                          )}
-                        </div>
-                        {member.website && (
-                          <a
-                            href={member.website}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2"
-                          >
-                            Official Website{" "}
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
+            <RepProfileCard
+              photoUrl={member.photoUrl}
+              name={member.name}
+              belowPhoto={member.website && (
+                <a
+                  href={member.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline whitespace-nowrap"
+                >
+                  Official Website <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            >
+              <div>
+                  <h1 className="sm:text-3xl max-sm:text-[clamp(1rem,4.5vw,1.875rem)] font-black mb-1 sm:mb-2 leading-tight sm:leading-normal">
+                    {member.name}
+                  </h1>
+                  <div className="flex flex-wrap max-sm:flex-nowrap gap-2 max-sm:gap-1 mb-2 sm:mb-3">
+                    {member.party && (
+                      <Badge className={`${partyColor(member.party)} max-sm:px-1 max-sm:text-[10px]`}>
+                        {member.party}
+                      </Badge>
+                    )}
+                    {member.chamber && (
+                      <Badge variant="outline" className="max-sm:px-1 max-sm:text-[10px]">
+                        <span className="sm:hidden">{member.chamber === "House of Representatives" ? "House" : member.chamber}</span>
+                        <span className="hidden sm:inline">{member.chamber}</span>
+                      </Badge>
+                    )}
+                    {member.state && (
+                      <Badge variant="secondary" className="max-sm:px-1 max-sm:text-[10px]">
+                        <span className="sm:hidden">{getStateCode(member.state) ?? member.state}</span>
+                        <span className="hidden sm:inline">{member.state}</span>
+                      </Badge>
+                    )}
+                    {member.district && (
+                      <Badge variant="secondary" className="max-sm:px-1 max-sm:text-[10px]">
+                        <span className="sm:hidden">Dist. {member.district}</span>
+                        <span className="hidden sm:inline">District {member.district}</span>
+                      </Badge>
+                    )}
+                  </div>
+                  {billSummaryData?.policyAreas &&
+                    billSummaryData.policyAreas.length > 0 && (
+                      <div
+                        className={`mb-1 ${
+                          topIssuesExpanded
+                            ? "flex flex-wrap gap-2 items-center"
+                            : "max-sm:grid max-sm:grid-cols-[auto_minmax(0,1fr)] max-sm:gap-x-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2"
+                        }`}
+                      >
+                        <span className="text-xs text-muted-foreground font-medium shrink-0">
+                          <span className="hidden sm:inline">
+                            {billRole === "cosponsored" ? "Top Support Areas" : "Top Sponsored Issues"}:
+                          </span>
+                          <span className="sm:hidden">
+                            {topPolicyAreas.length > 1 ? "Top Issues" : (billRole === "cosponsored" ? "Top Support Areas" : "Top Sponsored Issues")}:
+                          </span>
+                        </span>
+                        {topIssuesExpanded ? (
+                          <>
+                            {topPolicyAreas.map((area) => (
+                              <Badge
+                                key={area.name}
+                                variant="outline"
+                                className="text-xs bg-primary/5 border-primary/20"
+                              >
+                                {area.name}
+                              </Badge>
+                            ))}
+                            {topPolicyAreas.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs shrink-0"
+                                onClick={() => setTopIssuesExpanded((prev) => !prev)}
+                              >
+                                Hide <ChevronUp className="h-3 w-3 ml-1" />
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          <div className="max-sm:flex max-sm:flex-wrap max-sm:gap-1 sm:contents">
+                            {topPolicyAreas[0] && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-primary/5 border-primary/20 min-w-0 max-sm:w-full sm:max-w-[36ch] truncate"
+                              >
+                                {topPolicyAreas[0].name}
+                              </Badge>
+                            )}
+                            {topPolicyAreas.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs shrink-0"
+                                onClick={() => setTopIssuesExpanded((prev) => !prev)}
+                              >
+                                show more... <ChevronDown className="h-3 w-3 ml-1" />
+                              </Button>
+                            )}
+                          </div>
                         )}
                       </div>
-                      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="shrink-0"
-                          >
-                            <MoreHorizontal className="h-5 w-5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setMenuOpen(false);
-                              handleRefresh();
-                            }}
-                            disabled={
-                              refreshMutation.isPending ||
-                              refreshBillsMutation.isPending
-                            }
-                          >
-                            <RefreshCw
-                              className={`h-4 w-4 mr-2 ${refreshMutation.isPending || refreshBillsMutation.isPending ? "animate-spin" : ""}`}
-                            />
-                            Refresh data
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    )}
+                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                    {member.phone && <span>{member.phone}</span>}
+                    {member.nextElection && (
+                      <span>Next election: {member.nextElection}</span>
+                    )}
                   </div>
+                  {member.website && (
+                    <a
+                      href={member.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hidden sm:inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2"
+                    >
+                      Official Website{" "}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
+            </RepProfileCard>
 
             <Tabs defaultValue="bills" className="flex flex-col flex-1 min-h-0">
-              <TabsList className="w-full mb-6 shrink-0 max-sm:mb-4">
-                <TabsTrigger value="bills" className="flex-1 gap-1.5">
-                  <FileText className="h-4 w-4" />
-                  <span className="hidden sm:inline">Bills</span>
-                </TabsTrigger>
-                <TabsTrigger value="votes" className="flex-1 gap-1.5">
-                  <Vote className="h-4 w-4" />
-                  <span className="hidden sm:inline">Votes</span>
-                </TabsTrigger>
-                <TabsTrigger value="committees" className="flex-1 gap-1.5">
-                  <Users className="h-4 w-4" />
-                  <span className="hidden sm:inline">Committees</span>
-                </TabsTrigger>
-                <TabsTrigger value="finance" className="flex-1 gap-1.5">
-                  <DollarSign className="h-4 w-4" />
-                  <span className="hidden sm:inline">Finance</span>
-                </TabsTrigger>
-              </TabsList>
+              <div className="flex items-stretch gap-1 mb-6 shrink-0 max-sm:mb-4">
+                <TabsList className="flex-1">
+                  <TabsTrigger value="bills" className="flex-1 gap-1.5">
+                    <FileText className="h-4 w-4" />
+                    <span className="hidden sm:inline">Bills</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="votes" className="flex-1 gap-1.5">
+                    <Vote className="h-4 w-4" />
+                    <span className="hidden sm:inline">Votes</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="committees" className="flex-1 gap-1.5">
+                    <Users className="h-4 w-4" />
+                    <span className="hidden sm:inline">Committees</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="finance" className="flex-1 gap-1.5">
+                    <DollarSign className="h-4 w-4" />
+                    <span className="hidden sm:inline">Finance</span>
+                  </TabsTrigger>
+                </TabsList>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="sm:hidden shrink-0 px-2"
+                  onClick={handleRefresh}
+                  disabled={refreshMutation.isPending || refreshBillsMutation.isPending}
+                  title="Refresh data"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshMutation.isPending || refreshBillsMutation.isPending ? "animate-spin" : ""}`} />
+                </Button>
+              </div>
 
               <TabsContent
                 value="bills"
