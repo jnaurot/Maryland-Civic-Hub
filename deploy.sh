@@ -1,4 +1,3 @@
-cat > ~/Projects/Maryland-Civic-Hub/deploy.sh << 'EOF'
 #!/bin/bash
 set -e
 
@@ -26,5 +25,3 @@ ssh "$SERVER" "pm2 restart politician-api && pm2 logs politician-api --lines 10 
 
 echo "=== Done! ==="
 echo "https://politician.bawlmorean.com"
-EOF
-chmod +x ~/Projects/Maryland-Civic-Hub/deploy.sh
