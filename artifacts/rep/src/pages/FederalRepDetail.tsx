@@ -147,14 +147,14 @@ function BillsList({
   billRole: "sponsored" | "cosponsored";
   onBillRoleChange: (role: "sponsored" | "cosponsored") => void;
   filtersCollapsed?: boolean;
-  onBillViewChange?: (view: "list" | "breakdown") => void;
+  onBillViewChange?: (view: "list" | "policyArea") => void;
 }) {
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const pageSearch = useSearch();
   const initialParams = new URLSearchParams(pageSearch);
-  const [billView, setBillView] = useState<"list" | "breakdown">(
-    initialParams.get("billView") === "breakdown" ? "breakdown" : "list",
+  const [billView, setBillView] = useState<"list" | "policyArea">(
+    initialParams.get("billView") === "policyArea" ? "policyArea" : "list",
   );
   const effectiveCollapsed = !!filtersCollapsed && billView === "list";
   useEffect(() => { onBillViewChange?.(billView); }, [billView, onBillViewChange]);
@@ -458,11 +458,11 @@ function BillsList({
             </Button>
             <Button
               size="sm"
-              variant={billView === "breakdown" ? "default" : "outline"}
+              variant={billView === "policyArea" ? "default" : "outline"}
               className="max-sm:text-xs max-sm:px-2 max-sm:h-7"
-              onClick={() => setBillView("breakdown")}
+              onClick={() => setBillView("policyArea")}
             >
-              Breakdown
+              Policy Area
             </Button>
             <StatusFilterControls
               statusEnabled={statusEnabled}
@@ -728,7 +728,7 @@ function BillsList({
               />
               {data?.fullyIngested === false && (
                 <p className="text-xs text-amber-600 mt-2">
-                  Breakdown is based on cached legislation so far.
+                  Policy Area is based on cached legislation so far.
                 </p>
               )}
             </>
@@ -1237,7 +1237,7 @@ export function FederalRepDetail() {
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState("bills");
   const [billsFiltersCollapsed, setBillsFiltersCollapsed] = useState(false);
-  const billViewRef = useRef<"list" | "breakdown">("list");
+  const billViewRef = useRef<"list" | "policyArea">("list");
   const { data: billSummaryData } = useGetFederalMemberBills(
     bioguideId,
     { type: billRole, offset: 0, limit: 1 },
