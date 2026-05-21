@@ -13,7 +13,7 @@ export function RepProfileCard({ photoUrl, name, belowPhoto, children }: RepProf
   return (
     <Card className="mb-6 shrink-0">
       <CardContent className="p-6">
-        <div className="sm:flex sm:flex-row sm:items-start sm:gap-6 max-sm:grid max-sm:grid-cols-[96px_1fr] max-sm:gap-x-4">
+        <div className="sm:flex sm:flex-row sm:items-start sm:gap-6 max-sm:grid max-sm:grid-cols-[96px_1fr] max-sm:grid-rows-[96px_auto] max-sm:gap-x-4">
           <Avatar className="h-24 w-24 border-2 border-muted shrink-0">
             <AvatarImage src={photoUrl} alt={name} className="object-cover object-top" />
             <AvatarFallback className="text-2xl">{name?.substring(0, 2)}</AvatarFallback>
