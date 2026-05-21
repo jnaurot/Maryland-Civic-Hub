@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, AlertTriangle, FileText } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { US_STATES, getStateName, getStateFlagUrl } from "@/lib/states";
 import { partyColor } from "@/lib/rep-utils";
 import type { Representative } from "@workspace/api-client-react";
@@ -36,6 +37,7 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export function Home() {
   const { selectedState, setSelectedState, lastSearchedAddress, setLastSearchedAddress } = useAppState();
+  const isMobile = useIsMobile();
   const [homeDropdownState, setHomeDropdownState] = useState(lastSearchedAddress ? "" : (selectedState ?? ""));
   const [searchAddress, setSearchAddress] = useState(lastSearchedAddress ?? "");
   const [activeTextQuery, setActiveTextQuery] = useState("");
@@ -402,7 +404,7 @@ export function Home() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     type="text"
-                    placeholder="Enter address, bill, or representative... then hit <return>"
+                    placeholder={isMobile ? "Enter address, bill, or representative" : "Enter address, bill, or representative... then hit <return>"}
                     className="pl-10 h-14 max-sm:h-10 text-lg max-sm:text-sm bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
