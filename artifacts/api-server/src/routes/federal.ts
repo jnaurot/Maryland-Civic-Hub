@@ -793,7 +793,7 @@ async function ingestFederalMemberBillsPage(
           policyArea: b.policyArea?.name ?? null,
           url: b.url ?? null,
           raw: b,
-          searchVector: sql`to_tsvector('english', coalesce(${title}, '') || ' ' || coalesce(${displayNumber ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+          searchVector: sql`setweight(to_tsvector('english', coalesce(${title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${displayNumber ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')`,
         })
         .onConflictDoUpdate({
           target: [
@@ -822,7 +822,7 @@ async function ingestFederalMemberBillsPage(
             url: b.url ?? null,
             raw: b,
             fetchedAt: new Date(),
-            searchVector: sql`to_tsvector('english', coalesce(${title}, '') || ' ' || coalesce(${displayNumber ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+            searchVector: sql`setweight(to_tsvector('english', coalesce(${title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${displayNumber ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')`,
           },
         });
 
@@ -847,7 +847,7 @@ async function ingestFederalMemberBillsPage(
           subjects: subjects ?? [],
           url: b.url ?? null,
           raw: null,
-          searchVector: sql`to_tsvector('english', coalesce(${title}, '') || ' ' || coalesce(${displayNumber ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+          searchVector: sql`setweight(to_tsvector('english', coalesce(${title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${displayNumber ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')`,
         })
         .onConflictDoUpdate({
           target: federalBillsTable.id,
@@ -862,7 +862,7 @@ async function ingestFederalMemberBillsPage(
             subjects: subjects ?? [],
             url: b.url ?? null,
             fetchedAt: new Date(),
-            searchVector: sql`to_tsvector('english', coalesce(${title}, '') || ' ' || coalesce(${displayNumber ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+            searchVector: sql`setweight(to_tsvector('english', coalesce(${title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${displayNumber ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')`,
           },
         });
 
@@ -1173,7 +1173,11 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
           })
           .from(federalMemberLegislationItemsTable)
           .where(and(...filterConditions))
-          .orderBy(desc(federalMemberLegislationItemsTable.introducedDate))
+          .orderBy(
+            q
+              ? sql`ts_rank(${federalMemberLegislationItemsTable.searchVector}, websearch_to_tsquery('english', ${q})) desc`
+              : desc(federalMemberLegislationItemsTable.introducedDate),
+          )
           .limit(limit)
           .offset(offset),
 
@@ -2530,7 +2534,7 @@ router.get(
           url: bill.url ?? null,
           textUrl: textUrl ?? null,
           raw: bill,
-          searchVector: sql`to_tsvector('english', coalesce(${bill.title ?? ""}, '') || ' ' || coalesce(${billType + " " + billNumber}, '') || ' ' || coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+          searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '')), 'C')`,
         })
         .onConflictDoUpdate({
           target: federalBillsTable.id,
@@ -2546,7 +2550,7 @@ router.get(
             textUrl: textUrl ?? null,
             raw: bill,
             fetchedAt: new Date(),
-            searchVector: sql`to_tsvector('english', coalesce(${bill.title ?? ""}, '') || ' ' || coalesce(${billType + " " + billNumber}, '') || ' ' || coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+            searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '')), 'C')`,
           },
         });
 

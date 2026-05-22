@@ -57,6 +57,7 @@ import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useDebounce } from "@/hooks/useDebounce";
 
 function PolicyAreaChart({
   policyAreas,
@@ -187,6 +188,7 @@ function BillsList({
     return Number.isFinite(raw) && raw >= 0 ? raw : 0;
   });
   const [searchQuery, setSearchQuery] = useState(initialParams.get("q") ?? "");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [policyArea, setPolicyArea] = useState(initialParams.get("policyArea") ?? "");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [allBills, setAllBills] = useState<any[]>([]);
@@ -213,13 +215,13 @@ function BillsList({
     ? selectedStages.map((stage) => BILL_STAGE_QUERY_KEYS[stage]).join(",")
     : undefined;
 
-  const filterKey = `${billRole}|${category}|${searchQuery}|${stageQuery ?? ""}|${policyArea}`;
+  const filterKey = `${billRole}|${category}|${debouncedSearchQuery}|${stageQuery ?? ""}|${policyArea}`;
 
   const queryParams = {
     type: billRole,
     offset,
     limit,
-    q: searchQuery || undefined,
+    q: debouncedSearchQuery || undefined,
     category,
     stages: stageQuery,
     policyArea: policyArea || undefined,
@@ -262,7 +264,7 @@ function BillsList({
   backPathParams.set("billView", billView);
   backPathParams.set("category", category);
   backPathParams.set("offset", String(offset));
-  if (searchQuery) backPathParams.set("q", searchQuery);
+  if (debouncedSearchQuery) backPathParams.set("q", debouncedSearchQuery);
   if (policyArea) backPathParams.set("policyArea", policyArea);
   if (statusEnabled) backPathParams.set("status", "on");
   if (selectedStages.length > 0)
@@ -529,10 +531,7 @@ function BillsList({
           <Input
             placeholder="Search bills..."
             value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setOffset(0);
-            }}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </FilterBar>
@@ -758,6 +757,7 @@ function VotesList({
     "all" | "yea" | "nay" | "present" | "not-voting"
   >("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const listViewportRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [allVotes, setAllVotes] = useState<any[]>([]);
@@ -773,8 +773,8 @@ function VotesList({
   const isHouse =
     normalizedChamber === "" || normalizedChamber.includes("house");
 
-  const houseParams = { offset, limit, filter, q: searchQuery || undefined };
-  const senateParams = { offset, limit, filter, q: searchQuery || undefined };
+  const houseParams = { offset, limit, filter, q: debouncedSearchQuery || undefined };
+  const senateParams = { offset, limit, filter, q: debouncedSearchQuery || undefined };
 
   const houseQuery = useGetFederalMemberHouseVotes(bioguideId, houseParams, {
     query: {
@@ -801,7 +801,7 @@ function VotesList({
   const totalCount = data?.totalCount ?? 0;
   const votes = data?.votes ?? [];
 
-  const filterKey = `${filter}|${searchQuery}`;
+  const filterKey = `${filter}|${debouncedSearchQuery}`;
 
   // Mobile: reset accumulation when filters change
   useEffect(() => {
@@ -887,10 +887,7 @@ function VotesList({
         <Input
           placeholder="Search votes..."
           value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            setOffset(0);
-          }}
+          onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
         />
       </FilterBar>

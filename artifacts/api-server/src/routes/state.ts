@@ -183,7 +183,7 @@ async function upsertStateBill({
       url: bill.url ?? null,
       jurisdiction,
       raw: sourceBill,
-      searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.identifier ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+      searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${bill.identifier ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')`,
     })
     .onConflictDoUpdate({
       target: stateBillsTable.id,
@@ -204,7 +204,7 @@ async function upsertStateBill({
         url: bill.url ?? null,
         raw: sourceBill,
         fetchedAt: new Date(),
-        searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.identifier ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+        searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${bill.identifier ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')`,
       },
     });
 }
@@ -435,7 +435,11 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
           .select()
           .from(stateBillsTable)
           .where(and(...conditions))
-          .orderBy(desc(stateBillsTable.introducedDate))
+          .orderBy(
+            q
+              ? sql`ts_rank(${stateBillsTable.searchVector}, websearch_to_tsquery('english', ${q})) desc`
+              : desc(stateBillsTable.introducedDate),
+          )
           .limit(limit)
           .offset(offset),
       ]);
@@ -861,6 +865,9 @@ router.get("/state/bills/search", async (req, res) => {
     return res.status(400).json({ error: "Invalid query parameters" });
   }
   const { q, jurisdiction, chamber, stages, limit: rawLimit, offset } = parsed.data;
+  if (!q.trim()) {
+    return res.status(400).json({ error: "q must not be empty" });
+  }
   const limit = Math.min(rawLimit, 100);
   const selectedStages = parseStageQuery(stages);
 
@@ -1021,7 +1028,7 @@ router.get("/state/bills/:billId", async (req, res) => {
         textUrl: data.openstates_url ?? null,
         jurisdiction: data.jurisdiction?.name ?? data.jurisdiction ?? "",
         raw: data,
-        searchVector: sql`to_tsvector('english', coalesce(${data.title ?? ""}, '') || ' ' || coalesce(${data.identifier ?? ""}, '') || ' ' || coalesce(${data.abstract ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+        searchVector: sql`setweight(to_tsvector('english', coalesce(${data.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${data.identifier ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${data.abstract ?? ""}, '')), 'C')`,
       })
       .onConflictDoUpdate({
         target: stateBillsTable.id,
@@ -1043,7 +1050,7 @@ router.get("/state/bills/:billId", async (req, res) => {
           jurisdiction: data.jurisdiction?.name ?? data.jurisdiction ?? "",
           raw: data,
           fetchedAt: new Date(),
-          searchVector: sql`to_tsvector('english', coalesce(${data.title ?? ""}, '') || ' ' || coalesce(${data.identifier ?? ""}, '') || ' ' || coalesce(${data.abstract ?? ""}, '') || ' ' || coalesce(${subjectsText}, ''))`,
+          searchVector: sql`setweight(to_tsvector('english', coalesce(${data.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${data.identifier ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${data.abstract ?? ""}, '')), 'C')`,
         },
       });
 

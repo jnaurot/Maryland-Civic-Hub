@@ -48,6 +48,7 @@ import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useDebounce } from "@/hooks/useDebounce";
 
 function getApiErrorStatus(error: unknown) {
   return typeof error === "object" && error !== null && "status" in error
@@ -90,6 +91,7 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
     return Number.isFinite(raw) && raw >= 0 ? raw : 0;
   });
   const [searchQuery, setSearchQuery] = useState(initialParams.get("q") ?? "");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [allBills, setAllBills] = useState<any[]>([]);
   const appendedOffsetRef = useRef(new Set<number>());
@@ -103,14 +105,14 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
     ? selectedStages.map((stage) => BILL_STAGE_QUERY_KEYS[stage]).join(",")
     : undefined;
 
-  const filterKey = `${type}|${searchQuery}|${stageQuery ?? ""}`;
+  const filterKey = `${type}|${debouncedSearchQuery}|${stageQuery ?? ""}`;
 
   const queryParams = {
     type,
     jurisdiction,
     offset,
     limit,
-    q: searchQuery || undefined,
+    q: debouncedSearchQuery || undefined,
     stages: stageQuery,
   };
   const { data, isLoading, isPlaceholderData, error } = useGetStateMemberBills(memberId, queryParams, {
@@ -128,7 +130,7 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
   const backPathParams = new URLSearchParams();
   backPathParams.set("type", type);
   backPathParams.set("offset", String(offset));
-  if (searchQuery) backPathParams.set("q", searchQuery);
+  if (debouncedSearchQuery) backPathParams.set("q", debouncedSearchQuery);
   if (statusEnabled) backPathParams.set("status", "on");
   if (selectedStages.length > 0)
     backPathParams.set("stages", selectedStages.join(","));
@@ -280,7 +282,7 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
         <Input
           placeholder="Search bills..."
           value={searchQuery}
-          onChange={(e) => { setSearchQuery(e.target.value); setOffset(0); }}
+          onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
         />
       </FilterBar>
@@ -371,6 +373,7 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState<"all" | "yea" | "nay" | "present" | "not-voting">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const listViewportRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [allVotes, setAllVotes] = useState<any[]>([]);
@@ -381,7 +384,7 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
   const prevFilterKeyRef = useRef<string | null>(null);
   const limit = 20;
 
-  const queryParams = { jurisdiction, offset, limit, filter, q: searchQuery || undefined };
+  const queryParams = { jurisdiction, offset, limit, filter, q: debouncedSearchQuery || undefined };
   const { data, isLoading, isPlaceholderData } = useGetStateMemberVotes(memberId, queryParams, {
     query: {
       enabled: !!memberId,
@@ -392,7 +395,7 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
 
   const votes = data?.votes ?? [];
   const totalCount = data?.totalCount ?? 0;
-  const filterKey = `${filter}|${searchQuery}`;
+  const filterKey = `${filter}|${debouncedSearchQuery}`;
 
   // Mobile: reset accumulation when filters change
   useEffect(() => {
@@ -478,7 +481,7 @@ function StateVotesList({ memberId, jurisdiction }: { memberId: string; jurisdic
         <Input
           placeholder="Search votes..."
           value={searchQuery}
-          onChange={(e) => { setSearchQuery(e.target.value); setOffset(0); }}
+          onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
         />
       </FilterBar>
