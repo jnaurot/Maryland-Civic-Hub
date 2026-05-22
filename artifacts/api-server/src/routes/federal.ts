@@ -758,6 +758,25 @@ function getCurrentCongress() {
 
 const activeBillIngestions = new Set<string>();
 
+async function withPageRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelayMs = 2000,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 async function ingestFederalMemberBillsPage(
   bioguideId: string,
   role: "sponsor" | "cosponsor",
@@ -938,11 +957,8 @@ async function ingestFederalMemberBills(
     const MAX_PAGES = 200;
 
     while (hasMore && page <= MAX_PAGES) {
-      const { inserted, totalExpected } = await ingestFederalMemberBillsPage(
-        bioguideId,
-        role,
-        page,
-        logger,
+      const { inserted, totalExpected } = await withPageRetry(() =>
+        ingestFederalMemberBillsPage(bioguideId, role, page, logger),
       );
       totalIngested += inserted;
       sourceTotalCount = totalExpected;

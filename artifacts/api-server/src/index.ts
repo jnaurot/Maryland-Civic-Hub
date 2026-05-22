@@ -6,6 +6,10 @@ import {
   ingestAllFederalMembers,
   logRefreshEvent,
 } from "./lib/ingestFederalMembers";
+import {
+  checkAndIngestCongressBillsIfStale,
+  ingestAllCurrentCongressBills,
+} from "./lib/ingestCurrentCongressBills";
 
 const rawPort = process.env["PORT"];
 
@@ -31,20 +35,29 @@ function getMsUntilNextSundayMidnight(): number {
 }
 
 async function runWeeklyRefresh(): Promise<void> {
-  logger.info("Running scheduled weekly federal member refresh");
+  logger.info("Running scheduled weekly federal data refresh");
   logRefreshEvent({ event: "weekly_refresh_start" });
   try {
-    const { count } = await ingestAllFederalMembers();
-    logRefreshEvent({ event: "weekly_refresh_complete", count });
+    const [membersResult, billsResult] = await Promise.allSettled([
+      ingestAllFederalMembers(),
+      ingestAllCurrentCongressBills(),
+    ]);
+    const memberCount = membersResult.status === "fulfilled" ? membersResult.value.count : null;
+    const billCount = billsResult.status === "fulfilled" ? billsResult.value.count : null;
+    if (membersResult.status === "rejected")
+      logger.warn({ err: membersResult.reason }, "Weekly member refresh failed");
+    if (billsResult.status === "rejected")
+      logger.warn({ err: billsResult.reason }, "Weekly congress bills refresh failed");
+    logRefreshEvent({ event: "weekly_refresh_complete", memberCount, billCount });
   } catch (err) {
-    logger.warn({ err }, "Weekly federal member refresh failed, retrying in 1 hour");
+    logger.warn({ err }, "Weekly federal refresh failed, retrying in 1 hour");
     logRefreshEvent({ event: "weekly_refresh_failed_retrying", error: String(err) });
     setTimeout(async () => {
       try {
-        const { count } = await ingestAllFederalMembers();
-        logRefreshEvent({ event: "weekly_refresh_retry_complete", count });
+        await Promise.all([ingestAllFederalMembers(), ingestAllCurrentCongressBills()]);
+        logRefreshEvent({ event: "weekly_refresh_retry_complete" });
       } catch (retryErr) {
-        logger.error({ err: retryErr }, "Weekly federal member refresh retry failed, giving up until next week");
+        logger.error({ err: retryErr }, "Weekly federal refresh retry failed, giving up until next week");
         logRefreshEvent({ event: "weekly_refresh_retry_failed", error: String(retryErr) });
       }
     }, 60 * 60 * 1000);
@@ -69,9 +82,12 @@ async function start() {
     logger.warn({ err }, "DB trigger initialization failed — continuing");
   }
 
-  // Fire in background — server starts immediately; DB queries fall back to Congress.gov if empty
+  // Both fire in background — server starts immediately
   checkAndIngestIfStale().catch((err) =>
     logger.error({ err }, "Federal member ingestion failed at startup"),
+  );
+  checkAndIngestCongressBillsIfStale().catch((err) =>
+    logger.error({ err }, "Congress bill ingestion failed at startup"),
   );
 
   scheduleWeeklyRefresh();

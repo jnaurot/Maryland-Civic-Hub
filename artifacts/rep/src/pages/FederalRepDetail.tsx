@@ -234,6 +234,8 @@ function BillsList({
         enabled: !!bioguideId,
         queryKey: getGetFederalMemberBillsQueryKey(bioguideId, queryParams),
         placeholderData: (previous) => previous,
+        refetchInterval: (query) =>
+          query.state.data?.fullyIngested === false ? 4000 : false,
       },
     },
   );
