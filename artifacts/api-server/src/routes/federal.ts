@@ -490,39 +490,69 @@ router.get("/federal/state-members", async (req, res) => {
   const stateUpper = state.toUpperCase();
 
   try {
-    const url = new URL(`${BASE}/member/${stateUpper}`);
-    url.searchParams.set("api_key", CONGRESS_API_KEY!);
-    url.searchParams.set("format", "json");
-    url.searchParams.set("currentMember", "true");
-    url.searchParams.set("limit", "250");
+    // DB-first: serve from federal_members populated by weekly ingestion
+    const rows = await db
+      .select()
+      .from(federalMembersTable)
+      .where(
+        and(
+          eq(federalMembersTable.state, stateUpper),
+          eq(federalMembersTable.inOffice, "true"),
+        ),
+      );
 
-    const response = await fetch(url.toString());
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Congress API error ${response.status}: ${text}`);
-    }
-    const data = (await response.json()) as any;
+    let mapped: any[];
 
-    const members: any[] = data.members ?? [];
-    const mapped = members
-      .filter((m: any) => normalizeTermsItem(m).some((t: any) => !t.endYear))
-      .map((m: any) => {
-        const latestTerm = normalizeTermsItem(m).slice(-1)[0];
-        const chamber = latestTerm?.chamber;
-        const isSenate = chamber === "Senate";
+    if (rows.length > 0) {
+      mapped = rows.map((row) => {
+        const isSenate = row.chamber === "Senate";
         return {
-          name: formatCongressName(m.name),
+          name: row.name,
           office: isSenate
             ? `U.S. Senator for ${stateUpper}`
-            : `U.S. Representative, ${stateUpper}-${m.district ?? ""}`,
-          party: m.partyName,
-          photoUrl: m.depiction?.imageUrl,
+            : `U.S. Representative, ${stateUpper}-${row.district ?? ""}`,
+          party: row.party ?? undefined,
+          photoUrl: row.photoUrl ?? undefined,
           level: "federal" as const,
-          chamber: isSenate ? "Senate" : "House",
-          bioguideId: m.bioguideId,
-          district: m.district ? String(m.district) : undefined,
+          chamber: row.chamber ?? undefined,
+          bioguideId: row.bioguideId,
+          district: row.district ?? undefined,
         };
       });
+    } else {
+      // Fallback to Congress.gov if ingestion hasn't populated the DB yet
+      const url = new URL(`${BASE}/member/${stateUpper}`);
+      url.searchParams.set("api_key", CONGRESS_API_KEY!);
+      url.searchParams.set("format", "json");
+      url.searchParams.set("currentMember", "true");
+      url.searchParams.set("limit", "250");
+
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Congress API error ${response.status}: ${text}`);
+      }
+      const data = (await response.json()) as any;
+
+      mapped = (data.members ?? [])
+        .filter((m: any) => normalizeTermsItem(m).some((t: any) => !t.endYear))
+        .map((m: any) => {
+          const latestTerm = normalizeTermsItem(m).slice(-1)[0];
+          const isSenate = latestTerm?.chamber === "Senate";
+          return {
+            name: formatCongressName(m.name),
+            office: isSenate
+              ? `U.S. Senator for ${stateUpper}`
+              : `U.S. Representative, ${stateUpper}-${m.district ?? ""}`,
+            party: m.partyName,
+            photoUrl: m.depiction?.imageUrl,
+            level: "federal" as const,
+            chamber: isSenate ? "Senate" : "House",
+            bioguideId: m.bioguideId,
+            district: m.district ? String(m.district) : undefined,
+          };
+        });
+    }
 
     // Sort: senators first, then representatives, then last name ascending
     mapped.sort((a: any, b: any) => {

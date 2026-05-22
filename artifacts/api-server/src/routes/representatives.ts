@@ -1,5 +1,7 @@
 import { Router } from "express";
+import { and, eq } from "drizzle-orm";
 import { GetRepresentativesByAddressQueryParams } from "@workspace/api-zod";
+import { db, federalMembersTable } from "@workspace/db";
 import { getDistrictLegislators } from "../lib/stateLegislatorCache";
 import { fetchWithTimeout as fetch } from "../lib/http";
 import { sendInternalError } from "../lib/respond";
@@ -86,38 +88,43 @@ async function geocodeAddress(address: string): Promise<{
   };
 }
 
-async function fetchCongressMembers(
-  stateCode: string,
-  district: string,
-): Promise<any[]> {
+function mapDbRowToFederalRep(row: typeof federalMembersTable.$inferSelect, stateCode: string, district: string) {
+  const isSenate = row.chamber === "Senate";
+  return {
+    name: row.name,
+    office: isSenate
+      ? `U.S. Senator for ${stateCode}`
+      : `U.S. Representative, ${stateCode}-${district}`,
+    party: row.party ?? undefined,
+    photoUrl: row.photoUrl ?? undefined,
+    level: "federal" as const,
+    chamber: row.chamber ?? undefined,
+    bioguideId: row.bioguideId,
+    district: row.district ?? undefined,
+  };
+}
+
+async function fetchCongressMembersLive(stateCode: string, district: string): Promise<any[]> {
   if (!CONGRESS_API_KEY) return [];
   try {
-    // Senators (statewide)
-    const senatorsUrl = new URL(
-      `https://api.congress.gov/v3/member/${stateCode}`,
-    );
+    const senatorsUrl = new URL(`https://api.congress.gov/v3/member/${stateCode}`);
     senatorsUrl.searchParams.set("currentMember", "true");
     senatorsUrl.searchParams.set("limit", "20");
     senatorsUrl.searchParams.set("api_key", CONGRESS_API_KEY);
     senatorsUrl.searchParams.set("format", "json");
 
     const senatorsRes = await fetch(senatorsUrl.toString());
-    const senatorsData = senatorsRes.ok
-      ? ((await senatorsRes.json()) as any)
-      : { members: [] };
+    const senatorsData = senatorsRes.ok ? ((await senatorsRes.json()) as any) : { members: [] };
     const senators = (senatorsData.members ?? []).filter(
       (m: any) =>
         !m.district &&
         m.terms?.item?.some((t: any) => t.chamber === "Senate" && !t.endYear),
     );
 
-    // House member for the specific district
     let houseMember: any[] = [];
     if (district) {
       const districtNum = parseInt(district, 10);
-      const houseUrl = new URL(
-        `https://api.congress.gov/v3/member/${stateCode}/${districtNum}`,
-      );
+      const houseUrl = new URL(`https://api.congress.gov/v3/member/${stateCode}/${districtNum}`);
       houseUrl.searchParams.set("currentMember", "true");
       houseUrl.searchParams.set("api_key", CONGRESS_API_KEY);
       houseUrl.searchParams.set("format", "json");
@@ -128,11 +135,9 @@ async function fetchCongressMembers(
       }
     }
 
-    const allFederal = [...senators, ...houseMember];
-    return allFederal.map((m: any) => {
+    return [...senators, ...houseMember].map((m: any) => {
       const latestTerm = m.terms?.item?.slice(-1)[0];
-      const chamber = latestTerm?.chamber;
-      const isSenate = chamber === "Senate";
+      const isSenate = latestTerm?.chamber === "Senate";
       return {
         name: formatCongressName(m.name),
         office: isSenate
@@ -146,9 +151,53 @@ async function fetchCongressMembers(
         district: m.district ? String(m.district) : undefined,
       };
     });
-  } catch (e) {
+  } catch {
     return [];
   }
+}
+
+async function fetchCongressMembers(
+  stateCode: string,
+  district: string,
+): Promise<any[]> {
+  try {
+    const senators = await db
+      .select()
+      .from(federalMembersTable)
+      .where(
+        and(
+          eq(federalMembersTable.state, stateCode),
+          eq(federalMembersTable.chamber, "Senate"),
+          eq(federalMembersTable.inOffice, "true"),
+        ),
+      );
+
+    let houseRows: typeof senators = [];
+    if (district) {
+      const districtNum = parseInt(district, 10);
+      houseRows = await db
+        .select()
+        .from(federalMembersTable)
+        .where(
+          and(
+            eq(federalMembersTable.state, stateCode),
+            eq(federalMembersTable.district, String(districtNum)),
+            eq(federalMembersTable.chamber, "House"),
+            eq(federalMembersTable.inOffice, "true"),
+          ),
+        );
+    }
+
+    const dbResults = [...senators, ...houseRows];
+    if (dbResults.length > 0) {
+      return dbResults.map((row) => mapDbRowToFederalRep(row, stateCode, district));
+    }
+  } catch {
+    // fall through to live fetch
+  }
+
+  // Fallback to Congress.gov if DB is empty (e.g. ingestion hasn't run yet)
+  return fetchCongressMembersLive(stateCode, district);
 }
 
 async function fetchStateLegislators(
