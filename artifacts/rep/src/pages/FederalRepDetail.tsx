@@ -1318,6 +1318,12 @@ export function FederalRepDetail() {
           </div>
         ) : member ? (
           <>
+            {member.inOffice === false && (
+              <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground bg-muted border border-border rounded-lg px-4 py-3">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>This member is no longer serving in Congress.</span>
+              </div>
+            )}
             {cache?.stale && (
               <div className="mb-4 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
                 <AlertTriangle className="h-4 w-4 shrink-0" />

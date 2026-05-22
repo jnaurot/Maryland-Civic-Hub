@@ -168,7 +168,7 @@ async function fetchCongressMembers(
         and(
           eq(federalMembersTable.state, stateCode),
           eq(federalMembersTable.chamber, "Senate"),
-          eq(federalMembersTable.inOffice, "true"),
+          eq(federalMembersTable.inOffice, true),
         ),
       );
 
@@ -183,7 +183,7 @@ async function fetchCongressMembers(
             eq(federalMembersTable.state, stateCode),
             eq(federalMembersTable.district, String(districtNum)),
             eq(federalMembersTable.chamber, "House"),
-            eq(federalMembersTable.inOffice, "true"),
+            eq(federalMembersTable.inOffice, true),
           ),
         );
     }

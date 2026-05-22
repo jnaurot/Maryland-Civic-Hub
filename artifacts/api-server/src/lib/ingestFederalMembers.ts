@@ -88,7 +88,7 @@ export async function ingestAllFederalMembers(): Promise<{ count: number }> {
       district: m.district != null ? String(m.district) : null,
       photoUrl: (m.depiction?.imageUrl as string | null) ?? null,
       nextElection: (m.nextElection as string | null) ?? null,
-      inOffice: "true",
+      inOffice: true,
       terms: String(normalizeTerms(m).length),
       phone: null as null,
       website: null as null,
@@ -98,7 +98,7 @@ export async function ingestAllFederalMembers(): Promise<{ count: number }> {
 
   await db.transaction(async (tx) => {
     // Mark all previously in-office members as out before upserting the fresh list
-    await tx.execute(sql`UPDATE federal_members SET in_office = 'false' WHERE in_office = 'true'`);
+    await tx.execute(sql`UPDATE federal_members SET in_office = false WHERE in_office = true`);
 
     const CHUNK = 100;
     for (let i = 0; i < values.length; i += CHUNK) {
@@ -138,7 +138,7 @@ export async function checkAndIngestIfStale(): Promise<void> {
   const [row] = await db
     .select({ latest: max(federalMembersTable.fetchedAt) })
     .from(federalMembersTable)
-    .where(eq(federalMembersTable.inOffice, "true"));
+    .where(eq(federalMembersTable.inOffice, true));
 
   const latest = row?.latest;
   if (latest && Date.now() - latest.getTime() < SEVEN_DAYS_MS) {

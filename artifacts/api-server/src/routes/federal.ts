@@ -17,7 +17,6 @@ import {
   houseVoteRecordsTable,
   senateRollCallVotesTable,
   senatorVotePositionsTable,
-  senatorIdentitiesTable,
 } from "@workspace/db";
 import {
   GetFederalMemberParams,
@@ -182,10 +181,7 @@ function mapDbRowToMember(row: typeof federalMembersTable.$inferSelect) {
     website: row.website ?? undefined,
     photoUrl: row.photoUrl ?? undefined,
     terms: raw.terms != null ? Number(raw.terms) : undefined,
-    inOffice:
-      raw.inOffice != null
-        ? raw.inOffice === true || raw.inOffice === "true"
-        : undefined,
+    inOffice: row.inOffice ?? undefined,
     nextElection: row.nextElection ?? undefined,
   };
 }
@@ -387,7 +383,7 @@ async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
       website: mapped.website ?? null,
       photoUrl: mapped.photoUrl ?? null,
       terms: mapped.terms != null ? String(mapped.terms) : null,
-      inOffice: mapped.inOffice != null ? String(mapped.inOffice) : null,
+      inOffice: mapped.inOffice ?? null,
       nextElection: mapped.nextElection ?? null,
       raw: m,
       fetchedAt: new Date(),
@@ -404,7 +400,7 @@ async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
         website: mapped.website ?? null,
         photoUrl: mapped.photoUrl ?? null,
         terms: mapped.terms != null ? String(mapped.terms) : null,
-        inOffice: mapped.inOffice != null ? String(mapped.inOffice) : null,
+        inOffice: mapped.inOffice ?? null,
         nextElection: mapped.nextElection ?? null,
         raw: m,
         fetchedAt: new Date(),
@@ -497,7 +493,7 @@ router.get("/federal/state-members", async (req, res) => {
       .where(
         and(
           eq(federalMembersTable.state, stateUpper),
-          eq(federalMembersTable.inOffice, "true"),
+          eq(federalMembersTable.inOffice, true),
         ),
       );
 
@@ -1051,6 +1047,15 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
   const selectedStages = parseStageQuery(stages);
 
   try {
+    // Skip ingestion for former members — serve cached data only
+    const memberRow = await db
+      .select({ inOffice: federalMembersTable.inOffice })
+      .from(federalMembersTable)
+      .where(eq(federalMembersTable.bioguideId, bioguideId))
+      .limit(1);
+    const memberInOffice = memberRow[0]?.inOffice;
+    const skipIngestion = memberInOffice === false;
+
     // Build search condition if q is provided
     const searchCondition = q
       ? sql`(${federalMemberLegislationItemsTable.searchVector} @@ websearch_to_tsquery('english', ${q}) OR ${q} % ${federalMemberLegislationItemsTable.title})`
@@ -1102,10 +1107,11 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
 
     let bills: any[] = [];
     let totalCount = 0;
-    let fullyIngested = cacheStatus?.fullyIngested ?? false;
+    // Former members can't introduce new legislation — treat whatever is cached as complete.
+    let fullyIngested = skipIngestion ? true : (cacheStatus?.fullyIngested ?? false);
     let sourceTotalCount = cacheStatus?.sourceTotalCount ?? cachedCount;
 
-    if (cachedCount === 0) {
+    if (cachedCount === 0 && !skipIngestion) {
       // Cold start: fetch page 1 synchronously so the user gets immediate results,
       // then continue the rest in the background.
       req.log.info(
@@ -1160,6 +1166,7 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       }
     } else {
       if (
+        !skipIngestion &&
         shouldResumeMemberLegislationIngestion({
           cachedCount,
           cacheStatus,
@@ -1716,14 +1723,14 @@ router.get("/federal/members/:bioguideId/house-votes", async (req, res) => {
 
 async function resolveLisMemberId(bioguideId: string): Promise<string | null> {
   logger.info({ bioguideId }, "Resolving LIS member ID");
-  const mapped = await db
-    .select({ lisMemberId: senatorIdentitiesTable.lisMemberId })
-    .from(senatorIdentitiesTable)
-    .where(eq(senatorIdentitiesTable.bioguideId, bioguideId))
+  const cached = await db
+    .select({ lisId: federalMembersTable.lisId })
+    .from(federalMembersTable)
+    .where(eq(federalMembersTable.bioguideId, bioguideId))
     .limit(1);
-  if (mapped.length > 0) {
-    logger.info({ bioguideId, lisMemberId: mapped[0].lisMemberId }, "Found LIS mapping in cache");
-    return mapped[0].lisMemberId;
+  if (cached.length > 0 && cached[0].lisId) {
+    logger.info({ bioguideId, lisId: cached[0].lisId }, "Found LIS mapping in cache");
+    return cached[0].lisId;
   }
 
   try {
@@ -1749,16 +1756,10 @@ async function resolveLisMemberId(bioguideId: string): Promise<string | null> {
         .limit(1);
       if (match.length > 0) {
         await db
-          .insert(senatorIdentitiesTable)
-          .values({
-            bioguideId,
-            lisMemberId: match[0].lisMemberId,
-            name,
-            state: latestTerm.stateCode ?? m.state,
-            party: m.partyHistory?.[0]?.partyAbbreviation,
-          })
-          .onConflictDoNothing();
-        logger.info({ bioguideId, lisMemberId: match[0].lisMemberId }, "Stored LIS mapping");
+          .update(federalMembersTable)
+          .set({ lisId: match[0].lisMemberId })
+          .where(eq(federalMembersTable.bioguideId, bioguideId));
+        logger.info({ bioguideId, lisId: match[0].lisMemberId }, "Stored LIS mapping");
         return match[0].lisMemberId;
       }
     }
