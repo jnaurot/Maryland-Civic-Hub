@@ -21,7 +21,7 @@ echo "=== Building backend on server ==="
 ssh "$SERVER" "cd $REMOTE_BASE && /root/.nvm/versions/node/v24.15.0/bin/pnpm install --ignore-scripts && /root/.nvm/versions/node/v24.15.0/bin/pnpm --filter @workspace/api-server run build"
 
 echo "=== Restarting backend ==="
-ssh "$SERVER" "pm2 restart politician-api && pm2 logs politician-api --lines 10 --nostream"
+ssh "$SERVER" "/root/.nvm/versions/node/v24.15.0/bin/pm2 restart politician-api && /root/.nvm/versions/node/v24.15.0/bin/pm2 logs politician-api --lines 10 --nostream"
 
 echo "=== Done! ==="
 echo "https://politician.bawlmorean.com"

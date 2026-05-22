@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+
+# SSH non-interactive sessions don't source ~/.bashrc or ~/.bash_profile, so
+# nvm (and anything installed under it like pm2) won't be in PATH. Load it explicitly.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+# shellcheck source=/dev/null
+[[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh"
+
 set -euo pipefail
 
 # Zero-downtime deploy script for Maryland Civic Hub
