@@ -16,3 +16,4 @@ export const db = drizzle(pool, { schema });
 export * from "./schema";
 export { normalizeVoteCast } from "./utils/normalizeVoteCast";
 export { normalizeStateVotePosition } from "./utils/normalizeStateVotePosition";
+export { initTriggers } from "./initTriggers";

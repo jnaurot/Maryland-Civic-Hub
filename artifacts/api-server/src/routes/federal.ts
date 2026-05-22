@@ -1007,7 +1007,7 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
   try {
     // Build search condition if q is provided
     const searchCondition = q
-      ? sql`${federalMemberLegislationItemsTable.searchVector} @@ websearch_to_tsquery('english', ${q})`
+      ? sql`(${federalMemberLegislationItemsTable.searchVector} @@ websearch_to_tsquery('english', ${q}) OR ${q} % ${federalMemberLegislationItemsTable.title})`
       : undefined;
     const categoryCondition =
       category && category !== "all"
@@ -1175,7 +1175,7 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
           .where(and(...filterConditions))
           .orderBy(
             q
-              ? sql`ts_rank(${federalMemberLegislationItemsTable.searchVector}, websearch_to_tsquery('english', ${q})) desc`
+              ? sql`GREATEST(ts_rank(${federalMemberLegislationItemsTable.searchVector}, websearch_to_tsquery('english', ${q})), similarity(${q}, ${federalMemberLegislationItemsTable.title})) desc`
               : desc(federalMemberLegislationItemsTable.introducedDate),
           )
           .limit(limit)
@@ -2339,7 +2339,7 @@ router.get("/federal/bills/search", async (req, res) => {
     const conditions = [];
     if (q) {
       const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
-      conditions.push(sql`${federalBillsTable.searchVector} @@ ${searchQuery}`);
+      conditions.push(sql`(${federalBillsTable.searchVector} @@ ${searchQuery} OR ${q} % ${federalBillsTable.title})`);
     }
     if (policyArea) {
       conditions.push(eq(federalBillsTable.policyArea, policyArea));
@@ -2351,7 +2351,7 @@ router.get("/federal/bills/search", async (req, res) => {
       .where(and(...conditions))
       .orderBy(
         q
-          ? sql`ts_rank(${federalBillsTable.searchVector}, websearch_to_tsquery('english', ${q})) desc`
+          ? sql`GREATEST(ts_rank(${federalBillsTable.searchVector}, websearch_to_tsquery('english', ${q})), similarity(${q}, ${federalBillsTable.title})) desc`
           : desc(federalBillsTable.introducedDate),
       )
       .limit(limit)

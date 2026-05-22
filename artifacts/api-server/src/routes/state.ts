@@ -417,7 +417,7 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
         ...selectedStages.map((stage) => eq(stateStageColumn(stage), true)),
       );
       const searchCondition = q
-        ? sql`${stateBillsTable.searchVector} @@ websearch_to_tsquery('english', ${q})`
+        ? sql`(${stateBillsTable.searchVector} @@ websearch_to_tsquery('english', ${q}) OR ${q} % ${stateBillsTable.title})`
         : undefined;
       const conditions = [
         eq(stateBillsTable.jurisdiction, jurisdiction),
@@ -437,7 +437,7 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
           .where(and(...conditions))
           .orderBy(
             q
-              ? sql`ts_rank(${stateBillsTable.searchVector}, websearch_to_tsquery('english', ${q})) desc`
+              ? sql`GREATEST(ts_rank(${stateBillsTable.searchVector}, websearch_to_tsquery('english', ${q})), similarity(${q}, ${stateBillsTable.title})) desc`
               : desc(stateBillsTable.introducedDate),
           )
           .limit(limit)
@@ -464,6 +464,78 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
         totalCount,
         offset,
       });
+    }
+
+    if (q) {
+      // Text search without stage filter — use DB so search covers all fetched bills
+      // rather than just the current in-memory page.
+      const primaryContainment = [
+        sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, classification: "primary" }])}::jsonb`,
+        sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, primary: true }])}::jsonb`,
+      ];
+      const cosponsorContainment = [
+        sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, classification: "cosponsor" }])}::jsonb`,
+        sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, classification: "cosponsor-primary" }])}::jsonb`,
+      ];
+      const sponsorCondition =
+        sponsorClassification === "primary"
+          ? or(...primaryContainment)
+          : or(...cosponsorContainment);
+
+      const searchCondition = sql`(${stateBillsTable.searchVector} @@ websearch_to_tsquery('english', ${q}) OR ${q} % ${stateBillsTable.title})`;
+      const dbConditions = [
+        eq(stateBillsTable.jurisdiction, jurisdiction),
+        sponsorCondition,
+        searchCondition,
+      ];
+
+      // Seed DB from OpenStates if this member has no cached bills yet.
+      const [memberCountRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(stateBillsTable)
+        .where(and(eq(stateBillsTable.jurisdiction, jurisdiction), sponsorCondition));
+
+      if (Number(memberCountRow?.count ?? 0) === 0) {
+        const seedCacheKey = [jurisdiction, memberId, sponsorClassification, 1, 20].join("|");
+        const seedCached = stateMemberBillsCache.get(seedCacheKey);
+        if (!seedCached || Date.now() - seedCached.fetchedAt >= STATE_MEMBER_BILLS_CACHE_TTL_MS) {
+          const data = await openStatesFetch("/bills", {
+            jurisdiction,
+            per_page: 20,
+            page: 1,
+            sponsor: memberId,
+            include: "sponsorships",
+            sponsor_classification: sponsorClassification,
+            sort: "first_action_desc",
+          });
+          const sourceBills = data.results ?? [];
+          for (const sourceBill of sourceBills) {
+            await upsertStateBill({ bill: mapStateBill(sourceBill), sourceBill, jurisdiction });
+          }
+          stateMemberBillsCache.set(seedCacheKey, {
+            fetchedAt: Date.now(),
+            bills: sourceBills.map(mapStateBill),
+            totalCount: Number(data.pagination?.total_items ?? 0),
+          });
+        }
+      }
+
+      const [countResult, rows] = await Promise.all([
+        db.select({ count: sql<number>`count(*)` }).from(stateBillsTable).where(and(...dbConditions)),
+        db.select().from(stateBillsTable).where(and(...dbConditions))
+          .orderBy(sql`GREATEST(ts_rank(${stateBillsTable.searchVector}, websearch_to_tsquery('english', ${q})), similarity(${q}, ${stateBillsTable.title})) desc`)
+          .limit(limit)
+          .offset(offset),
+      ]);
+
+      const totalCount = Number(countResult[0]?.count ?? 0);
+
+      req.log.info(
+        { memberId, jurisdiction, type, q, offset, limit, totalCount, source: "db" },
+        "Serving state member bill text search from DB",
+      );
+
+      return res.json({ bills: rows.map(mapDbStateBillRow), totalCount, offset });
     }
 
     const perPage = Math.min(limit, 20);
@@ -873,7 +945,7 @@ router.get("/state/bills/search", async (req, res) => {
 
   try {
     const searchQuery = sql`websearch_to_tsquery('english', ${q})`;
-    const conditions = [sql`${stateBillsTable.searchVector} @@ ${searchQuery}`];
+    const conditions = [sql`(${stateBillsTable.searchVector} @@ ${searchQuery} OR ${q} % ${stateBillsTable.title})`];
     if (jurisdiction)
       conditions.push(eq(stateBillsTable.jurisdiction, jurisdiction));
     if (chamber)
@@ -888,7 +960,7 @@ router.get("/state/bills/search", async (req, res) => {
     const [countResult, rows] = await Promise.all([
       db.select({ count: sql<number>`count(*)` }).from(stateBillsTable).where(and(...conditions)),
       db.select().from(stateBillsTable).where(and(...conditions))
-        .orderBy(sql`ts_rank(${stateBillsTable.searchVector}, ${searchQuery}) desc`)
+        .orderBy(sql`GREATEST(ts_rank(${stateBillsTable.searchVector}, ${searchQuery}), similarity(${q}, ${stateBillsTable.title})) desc`)
         .limit(limit)
         .offset(offset),
     ]);
