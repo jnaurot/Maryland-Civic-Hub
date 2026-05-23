@@ -39,16 +39,27 @@ export function classifyFederalLegislationItem(
 export function getFederalLegislationItemId(
   item: CongressMemberLegislationItem,
 ): string {
-  const url = item.url?.replace(/\?format=json$/i, "");
-  if (url) return url;
-
   const congress = item.congress != null ? String(item.congress) : "unknown";
+
   if (item.type && item.number) {
     return `${congress}-${String(item.type).toLowerCase()}-${item.number}`;
   }
+
   if (item.amendmentNumber) {
-    return `${congress}-amendment-${item.amendmentNumber}`;
+    const amendType = item.type ?? parseAmendmentType(item.url);
+    return amendType
+      ? `${congress}-${amendType.toLowerCase()}-${item.amendmentNumber}`
+      : `${congress}-amendment-${item.amendmentNumber}`;
   }
+
+  // Last resort: parse the URL for congress/type/number components
+  const url = item.url?.replace(/\?format=json$/i, "");
+  if (url) {
+    const match = url.match(/\/(?:bill|amendment)\/(\d+)\/([^/?]+)\/([^/?]+)/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+    return url;
+  }
+
   return `${congress}-unknown-${JSON.stringify(item)}`;
 }
 
@@ -77,7 +88,7 @@ export function getFederalLegislationTitle(
 }
 
 export function mapFederalLegislationForResponse(row: {
-  itemId: string;
+  id: string;
   title: string;
   number: string | null;
   congress: string | null;
@@ -92,11 +103,11 @@ export function mapFederalLegislationForResponse(row: {
   stageDead?: boolean | null;
   policyArea: string | null;
   url: string | null;
-  category: string;
+  category: string | null;
   type: string | null;
 }) {
   return {
-    id: row.itemId,
+    id: row.id,
     title: row.title,
     number: row.number ?? undefined,
     congress: row.congress ?? undefined,
@@ -111,7 +122,7 @@ export function mapFederalLegislationForResponse(row: {
     stageDead: row.stageDead ?? undefined,
     policyArea: row.policyArea ?? undefined,
     url: row.url ?? undefined,
-    itemCategory: row.category,
+    itemCategory: row.category ?? "other",
     legislationType: row.type ?? undefined,
     chamber: row.type?.startsWith("H")
       ? "House"

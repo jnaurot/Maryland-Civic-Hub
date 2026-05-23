@@ -26,7 +26,7 @@ async function main() {
   try {
     const federal = await pool.query(
       `
-      update federal_member_legislation_items
+      update federal_bills
       set
         stage_introduced = true,
         stage_committee = coalesce(latest_action, '') ~* $1,
@@ -84,7 +84,7 @@ async function main() {
     console.log(
       JSON.stringify(
         {
-          federalMemberLegislationItemsUpdated: federal.rowCount,
+          federalBillsUpdated: federal.rowCount,
           stateBillsUpdated: state.rowCount,
         },
         null,

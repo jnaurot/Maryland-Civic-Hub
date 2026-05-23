@@ -57,8 +57,6 @@ const statements = [
   `CREATE INDEX IF NOT EXISTS idx_state_bills_title_trgm
    ON state_bills USING gin (title gin_trgm_ops)`,
 
-  `CREATE INDEX IF NOT EXISTS idx_federal_member_legislation_title_trgm
-   ON federal_member_legislation_items USING gin (title gin_trgm_ops)`,
 ];
 
 export async function initTriggers(pool: Pool): Promise<void> {

@@ -2,13 +2,11 @@ import { max, sql, eq } from "drizzle-orm";
 import {
   db,
   federalBillsTable,
-  federalMemberLegislationItemsTable,
   federalMemberBillRolesTable,
 } from "@workspace/db";
 import {
   classifyFederalLegislationItem,
   getFederalLegislationDisplayNumber,
-  getFederalLegislationItemId,
   getFederalLegislationTitle,
 } from "./federalMemberLegislation";
 import { computeLegislationStageFlags } from "./legislationStages";
@@ -79,21 +77,32 @@ async function ingestCongressBillsPage(
         introducedDate: b.introducedDate ?? null,
       });
 
-      // Upsert the bill itself
+      const category = classifyFederalLegislationItem(b);
+
+      // Upsert the bill with full metadata including stage flags and category
       await db
         .insert(federalBillsTable)
         .values({
           id: billId,
           title,
           number: displayNumber,
+          type: b.type ?? null,
           congress: String(b.congress),
           introducedDate: b.introducedDate ?? null,
+          latestActionDate,
           summary: null,
           latestAction: latestActionText,
           chamber: b.originChamber ?? null,
+          category,
           policyArea: b.policyArea?.name ?? null,
           subjects,
           url: b.url ?? null,
+          stageIntroduced: stageFlags.introduced,
+          stageCommittee: stageFlags.committee,
+          stageFloorVote: stageFlags.floor_vote,
+          stagePassed: stageFlags.passed,
+          stageSignedEnacted: stageFlags.signed_enacted,
+          stageDead: stageFlags.dead,
           raw: null,
           searchVector: sql`
             setweight(to_tsvector('english', coalesce(${title}, '')), 'A') ||
@@ -107,13 +116,22 @@ async function ingestCongressBillsPage(
           set: {
             title,
             number: displayNumber,
+            type: b.type ?? null,
             congress: String(b.congress),
             introducedDate: b.introducedDate ?? null,
+            latestActionDate,
             latestAction: latestActionText,
             chamber: b.originChamber ?? null,
+            category,
             policyArea: b.policyArea?.name ?? null,
             subjects,
             url: b.url ?? null,
+            stageIntroduced: stageFlags.introduced,
+            stageCommittee: stageFlags.committee,
+            stageFloorVote: stageFlags.floor_vote,
+            stagePassed: stageFlags.passed,
+            stageSignedEnacted: stageFlags.signed_enacted,
+            stageDead: stageFlags.dead,
             fetchedAt: new Date(),
             searchVector: sql`
               setweight(to_tsvector('english', coalesce(${title}, '')), 'A') ||
@@ -123,42 +141,9 @@ async function ingestCongressBillsPage(
           },
         });
 
-      // Insert sponsor relationship — skip if already populated by per-member ingestion
+      // Insert sponsor into the member-bill roles join table
       const sponsorId: string | undefined = b.sponsors?.[0]?.bioguideId;
       if (sponsorId) {
-        const itemId = getFederalLegislationItemId(b);
-        const category = classifyFederalLegislationItem(b);
-
-        await db
-          .insert(federalMemberLegislationItemsTable)
-          .values({
-            bioguideId: sponsorId,
-            itemId,
-            role: "sponsor",
-            congress: String(b.congress),
-            category,
-            type: b.type ?? null,
-            number: displayNumber,
-            title,
-            introducedDate: b.introducedDate ?? null,
-            latestAction: latestActionText,
-            latestActionDate,
-            stageIntroduced: stageFlags.introduced,
-            stageCommittee: stageFlags.committee,
-            stageFloorVote: stageFlags.floor_vote,
-            stagePassed: stageFlags.passed,
-            stageSignedEnacted: stageFlags.signed_enacted,
-            stageDead: stageFlags.dead,
-            policyArea: b.policyArea?.name ?? null,
-            url: b.url ?? null,
-            raw: null,
-            searchVector: sql`
-              setweight(to_tsvector('english', coalesce(${title}, '')), 'A') ||
-              setweight(to_tsvector('english', coalesce(${displayNumber}, '')), 'B')
-            `,
-          })
-          .onConflictDoNothing(); // preserve richer per-member data if it exists
-
         await db
           .insert(federalMemberBillRolesTable)
           .values({

@@ -18,7 +18,7 @@ describe("GET /federal/members/:bioguideId/bills policyArea filter integration",
 
   it("route builds a policyAreaCondition when policyArea is provided", () => {
     expect(source.includes("const policyAreaCondition = policyArea")).toBe(true);
-    expect(source.includes("eq(federalMemberLegislationItemsTable.policyArea, policyArea)")).toBe(true);
+    expect(source.includes("eq(federalBillsTable.policyArea, policyArea)")).toBe(true);
   });
 
   it("route includes policyAreaCondition in filterConditions", () => {

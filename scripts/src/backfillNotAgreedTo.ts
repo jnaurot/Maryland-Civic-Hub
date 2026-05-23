@@ -13,7 +13,7 @@ const pool = new Pool({ connectionString: DATABASE_URL });
 async function main() {
   try {
     const federal = await pool.query(`
-      update federal_member_legislation_items
+      update federal_bills
       set
         stage_passed = false,
         stage_dead = true
@@ -33,7 +33,7 @@ async function main() {
     console.log(
       JSON.stringify(
         {
-          federalRowsFixed: federal.rowCount,
+          federalBillsFixed: federal.rowCount,
           stateRowsFixed: state.rowCount,
         },
         null,
