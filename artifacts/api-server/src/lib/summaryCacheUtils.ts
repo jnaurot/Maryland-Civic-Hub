@@ -1,11 +1,11 @@
-export function shouldFetchSummary({
-  summaryFetchedAt,
+export function shouldRefetchField({
+  fetchedAt,
   billUpdateDate,
 }: {
-  summaryFetchedAt: Date | null | undefined;
+  fetchedAt: Date | null | undefined;
   billUpdateDate: string | null | undefined;
 }): boolean {
-  if (!summaryFetchedAt) return true;
+  if (!fetchedAt) return true;
   if (!billUpdateDate) return false;
-  return new Date(billUpdateDate) > summaryFetchedAt;
+  return new Date(billUpdateDate) > fetchedAt;
 }

@@ -51,7 +51,7 @@ import {
   type LegislationStageKey,
 } from "../lib/legislationStages";
 import { computeFederalBillProgress, getCurrentCongressNumber } from "../lib/federalBillProgress";
-import { shouldFetchSummary } from "../lib/summaryCacheUtils";
+import { shouldRefetchField } from "../lib/summaryCacheUtils";
 
 const router = Router();
 
@@ -2395,6 +2395,8 @@ router.get(
           .select({
             summary: federalBillsTable.summary,
             summaryFetchedAt: federalBillsTable.summaryFetchedAt,
+            textUrl: federalBillsTable.textUrl,
+            textUrlFetchedAt: federalBillsTable.textUrlFetchedAt,
           })
           .from(federalBillsTable)
           .where(eq(federalBillsTable.id, billId))
@@ -2405,8 +2407,12 @@ router.get(
       const bill = billData.bill ?? {};
       const billUpdateDate: string | null = bill.updateDate ?? null;
       const cached = existingRows[0];
-      const needsSummaryFetch = shouldFetchSummary({
-        summaryFetchedAt: cached?.summaryFetchedAt,
+      const needsSummaryFetch = shouldRefetchField({
+        fetchedAt: cached?.summaryFetchedAt,
+        billUpdateDate,
+      });
+      const needsTextFetch = shouldRefetchField({
+        fetchedAt: cached?.textUrlFetchedAt,
         billUpdateDate,
       });
 
@@ -2434,11 +2440,13 @@ router.get(
                 req.log,
               )
             : Promise.resolve(null),
-          congressFetch(
-            `/bill/${congress}/${billType}/${billNumber}/text`,
-            {},
-            req.log,
-          ),
+          needsTextFetch
+            ? congressFetch(
+                `/bill/${congress}/${billType}/${billNumber}/text`,
+                {},
+                req.log,
+              )
+            : Promise.resolve(null),
         ]);
 
       const rawCosponsors = cosponsorsData.status === "fulfilled" ? cosponsorsData.value.cosponsors : undefined;
@@ -2504,15 +2512,20 @@ router.get(
         ? fetchedSummary
         : (cached?.summary ?? null);
 
-      const textVersions =
-        textData.status === "fulfilled"
-          ? (textData.value.textVersions ?? [])
-          : [];
-      const latestText = textVersions[0];
-      const textUrl =
-        latestText?.formats?.find((f: any) => f.type === "PDF")?.url ??
-        latestText?.formats?.[0]?.url ??
-        undefined;
+      let textUrl: string | null | undefined;
+      if (needsTextFetch) {
+        const textVersions =
+          textData.status === "fulfilled" && textData.value !== null
+            ? (textData.value.textVersions ?? [])
+            : [];
+        const latestText = textVersions[0];
+        textUrl =
+          latestText?.formats?.find((f: any) => f.type === "PDF")?.url ??
+          latestText?.formats?.[0]?.url ??
+          null;
+      } else {
+        textUrl = cached?.textUrl ?? null;
+      }
 
       req.log.info(
         {
@@ -2534,6 +2547,7 @@ router.get(
       const subjectsText = billSubjects.join(" ");
       const now = new Date();
       const newSummaryFetchedAt = needsSummaryFetch ? now : (cached?.summaryFetchedAt ?? null);
+      const newTextUrlFetchedAt = needsTextFetch ? now : (cached?.textUrlFetchedAt ?? null);
       await db
         .insert(federalBillsTable)
         .values({
@@ -2545,6 +2559,7 @@ router.get(
           summary,
           updateDate: billUpdateDate,
           summaryFetchedAt: newSummaryFetchedAt,
+          textUrlFetchedAt: newTextUrlFetchedAt,
           policyArea: bill.policyArea?.name ?? null,
           subjects: billSubjects,
           url: bill.url ?? null,
@@ -2562,6 +2577,7 @@ router.get(
             summary,
             updateDate: billUpdateDate,
             summaryFetchedAt: newSummaryFetchedAt,
+            textUrlFetchedAt: newTextUrlFetchedAt,
             policyArea: bill.policyArea?.name ?? null,
             subjects: billSubjects,
             url: bill.url ?? null,
