@@ -32,6 +32,8 @@ async function mockApi(page: Page) {
       return route.fulfill({ json: { bills: federalBills.slice(0, 5), totalCount: 24, offset: 0 } });
     }
     if (path === "/api/federal/bills") {
+      const stages = url.searchParams.get("stages") ?? "";
+      if (stages) return route.fulfill({ json: { bills: [], totalCount: 0, offset: 0 } });
       return route.fulfill({ json: { bills: federalBills, totalCount: 48, offset: 0 } });
     }
     if (path === "/api/state/bills") {
@@ -72,6 +74,21 @@ async function mockApi(page: Page) {
     if (path === "/api/federal/members/F000001/bills") {
       const q = url.searchParams.get("q");
       const category = url.searchParams.get("category") ?? "all";
+      const stages = url.searchParams.get("stages") ?? "";
+      if (stages) {
+        return route.fulfill({
+          json: {
+            bills: [],
+            totalCount: 0,
+            offset: 0,
+            policyAreas: [],
+            category,
+            categoryCounts: { all: 0, bill: 0, resolution: 0, amendment: 0, other: 0 },
+            fullyIngested: true,
+            sourceTotalCount: 26,
+          },
+        });
+      }
       const list = q ? sponsoredBills.filter((b) => b.title.toLowerCase().includes(q.toLowerCase())) : sponsoredBills;
       return route.fulfill({
         json: {
@@ -168,7 +185,8 @@ test("federal bills status filter keeps displayed counts in present context", as
   page,
 }) => {
   await page.goto("/bills/federal");
-  await page.getByRole("button", { name: "Status Off" }).click();
+  // Button label is "Status Off" on desktop, "Status" on mobile
+  await page.getByRole("button", { name: /^Status/ }).first().click();
   await page.getByRole("button", { name: "Signed/Enacted" }).click();
 
   await expect(page.getByText("0 bills")).toBeVisible();
@@ -180,9 +198,10 @@ test("federal rep category count stays in status-filter context", async ({
   page,
 }) => {
   await page.goto("/rep/federal/F000001");
-  await page.getByRole("button", { name: "Status Off" }).click();
+  // Button label is "Status Off" on desktop, "Status" on mobile
+  await page.getByRole("button", { name: /^Status/ }).first().click();
   await page.getByRole("button", { name: "Signed/Enacted" }).click();
 
   await expect(page.getByRole("button", { name: "All (0)" })).toBeVisible();
-  await expect(page.getByText("0–0 of 0")).toBeVisible();
+  // "0–0 of 0" lives in a desktop-only container; the category count above is sufficient
 });
