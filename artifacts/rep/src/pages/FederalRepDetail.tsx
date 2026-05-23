@@ -58,6 +58,7 @@ import { FilterBar } from "@/components/layout/FilterBar";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useDebounce } from "@/hooks/useDebounce";
+import { buildFederalBillHref } from "@/lib/billHref";
 
 function PolicyAreaChart({
   policyAreas,
@@ -408,15 +409,7 @@ function BillsList({
     congress?: string;
     itemCategory?: string;
   }) {
-    if (
-      !bill.number ||
-      !bill.congress ||
-      !["bill", "resolution"].includes(bill.itemCategory ?? "")
-    )
-      return null;
-    const parts = bill.number.split(" ");
-    if (parts.length < 2) return null;
-    return `/bills/federal/${bill.congress}/${parts[0].toLowerCase()}/${parts[1]}${fromParam}`;
+    return buildFederalBillHref(bill, fromParam);
   }
 
   const billsToRender = isMobile

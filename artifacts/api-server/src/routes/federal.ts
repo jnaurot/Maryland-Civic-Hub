@@ -51,6 +51,7 @@ import {
   type LegislationStageKey,
 } from "../lib/legislationStages";
 import { computeFederalBillProgress, getCurrentCongressNumber } from "../lib/federalBillProgress";
+import { shouldFetchSummary } from "../lib/summaryCacheUtils";
 
 const router = Router();
 
@@ -830,6 +831,7 @@ async function ingestFederalMemberBillsPage(
           policyArea: b.policyArea?.name ?? null,
           subjects: subjects ?? [],
           url: b.url ?? null,
+          updateDate: b.updateDate ?? null,
           stageIntroduced: stageFlags.introduced,
           stageCommittee: stageFlags.committee,
           stageFloorVote: stageFlags.floor_vote,
@@ -855,6 +857,7 @@ async function ingestFederalMemberBillsPage(
             policyArea: b.policyArea?.name ?? null,
             subjects: subjects ?? [],
             url: b.url ?? null,
+            updateDate: b.updateDate ?? null,
             stageIntroduced: stageFlags.introduced,
             stageCommittee: stageFlags.committee,
             stageFloorVote: stageFlags.floor_vote,
@@ -2384,48 +2387,60 @@ router.get(
     const { congress, billType, billNumber } = parsed.data;
 
     try {
-      const [
-        billData,
-        cosponsorsData,
-        committeesData,
-        actionsData,
-        summaryData,
-        textData,
-      ] = await Promise.allSettled([
-        congressFetch(
-          `/bill/${congress}/${billType}/${billNumber}`,
-          {},
-          req.log,
-        ),
-        congressFetch(
-          `/bill/${congress}/${billType}/${billNumber}/cosponsors`,
-          { limit: 50 },
-          req.log,
-        ),
-        congressFetch(
-          `/bill/${congress}/${billType}/${billNumber}/committees`,
-          {},
-          req.log,
-        ),
-        congressFetch(
-          `/bill/${congress}/${billType}/${billNumber}/actions`,
-          { limit: 250 },
-          req.log,
-        ),
-        congressFetch(
-          `/bill/${congress}/${billType}/${billNumber}/summaries`,
-          {},
-          req.log,
-        ),
-        congressFetch(
-          `/bill/${congress}/${billType}/${billNumber}/text`,
-          {},
-          req.log,
-        ),
+      const billId = `${congress}-${billType}-${billNumber}`;
+
+      // Check DB cache and fetch bill metadata in parallel
+      const [existingRows, billData] = await Promise.all([
+        db
+          .select({
+            summary: federalBillsTable.summary,
+            summaryFetchedAt: federalBillsTable.summaryFetchedAt,
+          })
+          .from(federalBillsTable)
+          .where(eq(federalBillsTable.id, billId))
+          .limit(1),
+        congressFetch(`/bill/${congress}/${billType}/${billNumber}`, {}, req.log),
       ]);
 
-      const bill =
-        billData.status === "fulfilled" ? (billData.value.bill ?? {}) : {};
+      const bill = billData.bill ?? {};
+      const billUpdateDate: string | null = bill.updateDate ?? null;
+      const cached = existingRows[0];
+      const needsSummaryFetch = shouldFetchSummary({
+        summaryFetchedAt: cached?.summaryFetchedAt,
+        billUpdateDate,
+      });
+
+      const [cosponsorsData, committeesData, actionsData, summaryData, textData] =
+        await Promise.allSettled([
+          congressFetch(
+            `/bill/${congress}/${billType}/${billNumber}/cosponsors`,
+            { limit: 50 },
+            req.log,
+          ),
+          congressFetch(
+            `/bill/${congress}/${billType}/${billNumber}/committees`,
+            {},
+            req.log,
+          ),
+          congressFetch(
+            `/bill/${congress}/${billType}/${billNumber}/actions`,
+            { limit: 250 },
+            req.log,
+          ),
+          needsSummaryFetch
+            ? congressFetch(
+                `/bill/${congress}/${billType}/${billNumber}/summaries`,
+                {},
+                req.log,
+              )
+            : Promise.resolve(null),
+          congressFetch(
+            `/bill/${congress}/${billType}/${billNumber}/text`,
+            {},
+            req.log,
+          ),
+        ]);
+
       const rawCosponsors = cosponsorsData.status === "fulfilled" ? cosponsorsData.value.cosponsors : undefined;
       const cosponsors = (rawCosponsors?.item ?? (Array.isArray(rawCosponsors) ? rawCosponsors : [])).map((c: any) => ({
         name: c.fullName ?? c.name ?? "",
@@ -2478,10 +2493,16 @@ router.get(
         actions,
       });
 
-      const summary =
-        summaryData.status === "fulfilled"
-          ? (summaryData.value.summaries?.item?.[0]?.text ?? undefined)
-          : undefined;
+      const fetchedSummaryRaw =
+        needsSummaryFetch && summaryData.status === "fulfilled" && summaryData.value !== null
+          ? (summaryData.value.summaries?.item?.[0]?.text ?? null)
+          : null;
+      const fetchedSummary = fetchedSummaryRaw
+        ? fetchedSummaryRaw.replace(/<[^>]*>/g, "")
+        : null;
+      const summary = needsSummaryFetch
+        ? fetchedSummary
+        : (cached?.summary ?? null);
 
       const textVersions =
         textData.status === "fulfilled"
@@ -2511,21 +2532,25 @@ router.get(
         bill.subjects?.item ??
         (Array.isArray(bill.subjects) ? bill.subjects : []);
       const subjectsText = billSubjects.join(" ");
+      const now = new Date();
+      const newSummaryFetchedAt = needsSummaryFetch ? now : (cached?.summaryFetchedAt ?? null);
       await db
         .insert(federalBillsTable)
         .values({
-          id: `${congress}-${billType}-${billNumber}`,
+          id: billId,
           title: bill.title ?? "Untitled",
           number: `${billType} ${billNumber}`,
           congress: String(congress),
           introducedDate: bill.introducedDate ?? null,
-          summary: summary ? summary.replace(/<[^>]*>/g, "") : null,
+          summary,
+          updateDate: billUpdateDate,
+          summaryFetchedAt: newSummaryFetchedAt,
           policyArea: bill.policyArea?.name ?? null,
           subjects: billSubjects,
           url: bill.url ?? null,
           textUrl: textUrl ?? null,
           raw: bill,
-          searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '')), 'C')`,
+          searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
         })
         .onConflictDoUpdate({
           target: federalBillsTable.id,
@@ -2534,14 +2559,16 @@ router.get(
             number: `${billType} ${billNumber}`,
             congress: String(congress),
             introducedDate: bill.introducedDate ?? null,
-            summary: summary ? summary.replace(/<[^>]*>/g, "") : null,
+            summary,
+            updateDate: billUpdateDate,
+            summaryFetchedAt: newSummaryFetchedAt,
             policyArea: bill.policyArea?.name ?? null,
             subjects: billSubjects,
             url: bill.url ?? null,
             textUrl: textUrl ?? null,
             raw: bill,
-            fetchedAt: new Date(),
-            searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ? summary.replace(/<[^>]*>/g, "") : ""}, '')), 'C')`,
+            fetchedAt: now,
+            searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
           },
         });
 
@@ -2551,7 +2578,7 @@ router.get(
         number: `${billType} ${billNumber}`,
         congress: String(congress),
         introducedDate: bill.introducedDate,
-        summary: summary ? summary.replace(/<[^>]*>/g, "") : undefined,
+        summary: summary ?? undefined,
         status: bill.latestAction?.text,
         latestAction: bill.latestAction?.text,
         latestActionDate: bill.latestAction?.actionDate,

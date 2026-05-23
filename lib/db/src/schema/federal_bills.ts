@@ -30,6 +30,8 @@ export const federalBillsTable = pgTable("federal_bills", {
   stagePassed: boolean("stage_passed").default(false).notNull(),
   stageSignedEnacted: boolean("stage_signed_enacted").default(false).notNull(),
   stageDead: boolean("stage_dead").default(false).notNull(),
+  updateDate: text("update_date"),
+  summaryFetchedAt: timestamp("summary_fetched_at", { withTimezone: true }),
   raw: jsonb("raw"),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
   searchVector: tsvector("search_vector"),
