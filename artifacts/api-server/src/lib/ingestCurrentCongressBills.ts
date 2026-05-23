@@ -42,6 +42,7 @@ async function fetchWithRetry(url: string, maxAttempts = 3): Promise<any> {
 async function ingestCongressBillsPage(
   congress: number,
   offset: number,
+  currentCongress: number,
 ): Promise<{ inserted: number; totalExpected: number }> {
   if (!CONGRESS_API_KEY) throw new Error("CONGRESS_API_KEY not configured");
 
@@ -76,6 +77,9 @@ async function ingestCongressBillsPage(
         latestAction: latestActionText,
         introducedDate: b.introducedDate ?? null,
       });
+      if (congress < currentCongress && !stageFlags.signed_enacted) {
+        stageFlags.dead = true;
+      }
 
       const category = classifyFederalLegislationItem(b);
 
@@ -163,10 +167,12 @@ async function ingestCongressBillsPage(
   return { inserted: bills.length, totalExpected };
 }
 
-export async function ingestAllCurrentCongressBills(): Promise<{ count: number }> {
-  const congress = getCurrentCongressNumber();
+async function ingestAllBillsForCongress(
+  congress: number,
+  currentCongress: number,
+): Promise<{ count: number }> {
   const start = Date.now();
-  logger.info({ congress }, "Starting bulk current Congress bill ingestion");
+  logger.info({ congress }, "Starting bulk Congress bill ingestion");
   logRefreshEvent({ event: "congress_bills_ingest_start", congress });
 
   let offset = 0;
@@ -175,7 +181,7 @@ export async function ingestAllCurrentCongressBills(): Promise<{ count: number }
   const MAX_PAGES = 200;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const result = await ingestCongressBillsPage(congress, offset);
+    const result = await ingestCongressBillsPage(congress, offset, currentCongress);
     totalIngested += result.inserted;
     totalExpected = result.totalExpected;
 
@@ -191,21 +197,40 @@ export async function ingestAllCurrentCongressBills(): Promise<{ count: number }
   return { count: totalIngested };
 }
 
-export async function checkAndIngestCongressBillsIfStale(): Promise<void> {
-  const congress = getCurrentCongressNumber();
-  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+export async function ingestAllCurrentCongressBills(): Promise<{ count: number }> {
+  const currentCongress = getCurrentCongressNumber();
+  return ingestAllBillsForCongress(currentCongress, currentCongress);
+}
 
-  const [row] = await db
+export async function checkAndIngestCongressBillsIfStale(): Promise<void> {
+  const currentCongress = getCurrentCongressNumber();
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+  const [currentRow] = await db
     .select({ latest: max(federalBillsTable.fetchedAt) })
     .from(federalBillsTable)
-    .where(eq(federalBillsTable.congress, String(congress)));
+    .where(eq(federalBillsTable.congress, String(currentCongress)));
 
-  const latest = row?.latest;
-  if (latest && Date.now() - latest.getTime() < SEVEN_DAYS_MS) {
-    logger.info({ latest, congress }, "Current Congress bills are fresh, skipping ingestion");
-    return;
+  const currentLatest = currentRow?.latest;
+  if (!currentLatest || Date.now() - currentLatest.getTime() >= SEVEN_DAYS_MS) {
+    logger.info({ currentLatest, currentCongress }, "Current Congress bills are stale or absent, ingesting");
+    await ingestAllBillsForCongress(currentCongress, currentCongress);
+  } else {
+    logger.info({ currentLatest, currentCongress }, "Current Congress bills are fresh, skipping ingestion");
   }
 
-  logger.info({ latest, congress }, "Current Congress bills are stale or absent, ingesting");
-  await ingestAllCurrentCongressBills();
+  const prevCongress = currentCongress - 1;
+  const [prevRow] = await db
+    .select({ latest: max(federalBillsTable.fetchedAt) })
+    .from(federalBillsTable)
+    .where(eq(federalBillsTable.congress, String(prevCongress)));
+
+  const prevLatest = prevRow?.latest;
+  if (!prevLatest || Date.now() - prevLatest.getTime() >= THIRTY_DAYS_MS) {
+    logger.info({ prevLatest, prevCongress }, "Previous Congress bills are stale or absent, ingesting");
+    await ingestAllBillsForCongress(prevCongress, currentCongress);
+  } else {
+    logger.info({ prevLatest, prevCongress }, "Previous Congress bills are fresh, skipping ingestion");
+  }
 }

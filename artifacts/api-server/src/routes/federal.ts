@@ -2501,6 +2501,15 @@ router.get(
         actions,
       });
 
+      const stageFlags = computeLegislationStageFlags({
+        latestAction: bill.latestAction?.text,
+        introducedDate: bill.introducedDate,
+      });
+      const currentCongress = getCurrentCongressNumber();
+      if (parseInt(congress) < currentCongress && !stageFlags.signed_enacted) {
+        stageFlags.dead = true;
+      }
+
       const fetchedSummaryRaw =
         needsSummaryFetch && summaryData.status === "fulfilled" && summaryData.value !== null
           ? (summaryData.value.summaries?.item?.[0]?.text ?? null)
@@ -2556,6 +2565,8 @@ router.get(
           number: `${billType} ${billNumber}`,
           congress: String(congress),
           introducedDate: bill.introducedDate ?? null,
+          latestAction: bill.latestAction?.text ?? null,
+          latestActionDate: bill.latestAction?.actionDate ?? null,
           summary,
           updateDate: billUpdateDate,
           summaryFetchedAt: newSummaryFetchedAt,
@@ -2564,6 +2575,12 @@ router.get(
           subjects: billSubjects,
           url: bill.url ?? null,
           textUrl: textUrl ?? null,
+          stageIntroduced: stageFlags.introduced,
+          stageCommittee: stageFlags.committee,
+          stageFloorVote: stageFlags.floor_vote,
+          stagePassed: stageFlags.passed,
+          stageSignedEnacted: stageFlags.signed_enacted,
+          stageDead: stageFlags.dead,
           raw: bill,
           searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
         })
@@ -2574,6 +2591,8 @@ router.get(
             number: `${billType} ${billNumber}`,
             congress: String(congress),
             introducedDate: bill.introducedDate ?? null,
+            latestAction: bill.latestAction?.text ?? null,
+            latestActionDate: bill.latestAction?.actionDate ?? null,
             summary,
             updateDate: billUpdateDate,
             summaryFetchedAt: newSummaryFetchedAt,
@@ -2582,6 +2601,12 @@ router.get(
             subjects: billSubjects,
             url: bill.url ?? null,
             textUrl: textUrl ?? null,
+            stageIntroduced: stageFlags.introduced,
+            stageCommittee: stageFlags.committee,
+            stageFloorVote: stageFlags.floor_vote,
+            stagePassed: stageFlags.passed,
+            stageSignedEnacted: stageFlags.signed_enacted,
+            stageDead: stageFlags.dead,
             raw: bill,
             fetchedAt: now,
             searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
