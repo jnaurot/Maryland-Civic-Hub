@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray, lt } from "drizzle-orm";
 import { XMLParser } from "fast-xml-parser";
 import {
   db,
@@ -797,6 +797,23 @@ async function ingestFederalMemberBillsPage(
 
   // Keep the legacy bill tables populated for existing bill detail/search flows,
   // but cache every Congress.gov member-legislation record for profile pages.
+  const currentCongress = getCurrentCongress();
+  const allBillIds = allItems.map((b) => getFederalLegislationItemId(b));
+  const deadPreviousCongressIds = new Set(
+    (
+      await db
+        .select({ id: federalBillsTable.id })
+        .from(federalBillsTable)
+        .where(
+          and(
+            inArray(federalBillsTable.id, allBillIds),
+            eq(federalBillsTable.stageDead, true),
+            lt(federalBillsTable.congress, currentCongress),
+          ),
+        )
+    ).map((r) => r.id),
+  );
+
   await Promise.all(
     allItems.map(async (b) => {
       const billId = getFederalLegislationItemId(b);
@@ -809,9 +826,29 @@ async function ingestFederalMemberBillsPage(
         latestAction: latestActionText,
         introducedDate: b.introducedDate ?? null,
       });
+      const billCongress = b.congress != null ? Number(b.congress) : null;
+      if (billCongress != null && billCongress < currentCongress && !stageFlags.signed_enacted) {
+        stageFlags.dead = true;
+      }
       const subjects =
         b.subjects?.item ?? (Array.isArray(b.subjects) ? b.subjects : []);
       const subjectsText = Array.isArray(subjects) ? subjects.join(" ") : "";
+
+      if (deadPreviousCongressIds.has(billId)) {
+        // Bill is already correctly marked dead from a finished congress — immutable, skip upsert.
+        // Still record the member's role so the legislation list stays complete.
+        await db
+          .insert(federalMemberBillRolesTable)
+          .values({
+            bioguideId,
+            billId,
+            congress: billCongress,
+            role,
+            fetchedAt: new Date(),
+          })
+          .onConflictDoNothing();
+        return;
+      }
 
       await db
         .insert(federalBillsTable)
@@ -821,7 +858,7 @@ async function ingestFederalMemberBillsPage(
           number: displayNumber ?? null,
           type: b.type ?? null,
           amendmentNumber: b.amendmentNumber != null ? String(b.amendmentNumber) : null,
-          congress: b.congress != null ? Number(b.congress) : null,
+          congress: billCongress,
           introducedDate: b.introducedDate ?? null,
           latestAction: latestActionText,
           latestActionDate,
@@ -848,7 +885,7 @@ async function ingestFederalMemberBillsPage(
             number: displayNumber ?? null,
             type: b.type ?? null,
             amendmentNumber: b.amendmentNumber != null ? String(b.amendmentNumber) : null,
-            congress: b.congress != null ? Number(b.congress) : null,
+            congress: billCongress,
             introducedDate: b.introducedDate ?? null,
             latestAction: latestActionText,
             latestActionDate,
@@ -874,7 +911,7 @@ async function ingestFederalMemberBillsPage(
         .values({
           bioguideId,
           billId,
-          congress: b.congress != null ? Number(b.congress) : null,
+          congress: billCongress,
           role,
           fetchedAt: new Date(),
         })

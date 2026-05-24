@@ -136,7 +136,7 @@ function PolicyAreaChart({
   );
 }
 
-function BillsList({
+export function BillsList({
   bioguideId,
   memberName,
   billRole,
@@ -337,27 +337,29 @@ function BillsList({
     return () => window.cancelAnimationFrame(id);
   }, [billView, isMobile, isLoading, scrollStorageKey]);
 
-  // Mobile: reset accumulation when filters change
-  useEffect(() => {
-    if (!isMobile) return;
-    if (prevFilterKeyRef.current === filterKey) return;
-    if (prevFilterKeyRef.current !== null) {
-      setAllBills([]);
-      appendedOffsetRef.current = new Set();
-    }
-    prevFilterKeyRef.current = filterKey;
-  }, [filterKey, isMobile]);
-
-  // Mobile: append new page to accumulated list
+  // Mobile: accumulate bills across pages; atomically reset + replace when filter changes
   useEffect(() => {
     if (!isMobile) return;
     if (isLoading || isPlaceholderData) return;
+
+    if (prevFilterKeyRef.current !== filterKey) {
+      appendedOffsetRef.current = new Set();
+      prevFilterKeyRef.current = filterKey;
+    }
+
     if (appendedOffsetRef.current.has(offset)) return;
     appendedOffsetRef.current.add(offset);
-    if (displayedBills.length > 0) {
-      setAllBills((prev) => [...prev, ...displayedBills]);
+
+    if (offset === 0) {
+      setAllBills(displayedBills);
+    } else if (displayedBills.length > 0) {
+      setAllBills((prev) => {
+        const seen = new Set(prev.map((b) => b.id));
+        const fresh = displayedBills.filter((b) => !seen.has(b.id));
+        return fresh.length > 0 ? [...prev, ...fresh] : prev;
+      });
     }
-  }, [isMobile, isLoading, isPlaceholderData, offset, displayedBills]);
+  }, [isMobile, isLoading, isPlaceholderData, filterKey, offset, displayedBills]);
 
   // Mobile: update visible counter after allBills changes
   useEffect(() => {
@@ -656,6 +658,7 @@ function BillsList({
                 return href ? (
                   <Link
                     key={bill.id}
+                    data-testid="bill-item"
                     href={href}
                     className={isSnapPoint ? "[scroll-snap-align:start]" : undefined}
                     onClick={() => {
@@ -670,7 +673,7 @@ function BillsList({
                     {card}
                   </Link>
                 ) : (
-                  <div key={bill.id} className={isSnapPoint ? "[scroll-snap-align:start]" : undefined}>{card}</div>
+                  <div key={bill.id} data-testid="bill-item" className={isSnapPoint ? "[scroll-snap-align:start]" : undefined}>{card}</div>
                 );
               })}
               {isMobile && <div ref={sentinelRef} className="h-1" />}
