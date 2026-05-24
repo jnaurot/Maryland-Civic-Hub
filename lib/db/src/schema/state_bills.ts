@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, uniqueIndex, index, customType, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, date, timestamp, jsonb, uniqueIndex, index, customType, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 
@@ -15,7 +15,7 @@ export const stateBillsTable = pgTable("state_bills", {
   session: text("session"),
   chamber: text("chamber"),
   status: text("status"),
-  introducedDate: text("introduced_date"),
+  introducedDate: date("introduced_date"),
   stageIntroduced: boolean("stage_introduced").default(false).notNull(),
   stageCommittee: boolean("stage_committee").default(false).notNull(),
   stageFloorVote: boolean("stage_floor_vote").default(false).notNull(),

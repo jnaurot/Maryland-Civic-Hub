@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const federalMembersTable = pgTable("federal_members", {
@@ -11,7 +11,7 @@ export const federalMembersTable = pgTable("federal_members", {
   phone: text("phone"),
   website: text("website"),
   photoUrl: text("photo_url"),
-  terms: text("terms"),
+  terms: integer("terms"),
   inOffice: boolean("in_office"),
   lisId: text("lis_id"),
   nextElection: text("next_election"),

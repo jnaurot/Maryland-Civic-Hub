@@ -91,7 +91,7 @@ async function ingestCongressBillsPage(
           title,
           number: displayNumber,
           type: b.type ?? null,
-          congress: String(b.congress),
+          congress: b.congress != null ? Number(b.congress) : null,
           introducedDate: b.introducedDate ?? null,
           latestActionDate,
           summary: null,
@@ -122,7 +122,7 @@ async function ingestCongressBillsPage(
             title,
             number: displayNumber,
             type: b.type ?? null,
-            congress: String(b.congress),
+            congress: b.congress != null ? Number(b.congress) : null,
             introducedDate: b.introducedDate ?? null,
             latestActionDate,
             latestAction: latestActionText,
@@ -155,7 +155,7 @@ async function ingestCongressBillsPage(
           .values({
             bioguideId: sponsorId,
             billId,
-            congress: String(b.congress),
+            congress: b.congress != null ? Number(b.congress) : null,
             role: "sponsor",
             fetchedAt: new Date(),
           })
@@ -205,12 +205,11 @@ export async function ingestAllCurrentCongressBills(): Promise<{ count: number }
 export async function checkAndIngestCongressBillsIfStale(): Promise<void> {
   const currentCongress = getCurrentCongressNumber();
   const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
   const [currentRow] = await db
     .select({ latest: max(federalBillsTable.fetchedAt) })
     .from(federalBillsTable)
-    .where(eq(federalBillsTable.congress, String(currentCongress)));
+    .where(eq(federalBillsTable.congress, currentCongress));
 
   const currentLatest = currentRow?.latest;
   if (!currentLatest || Date.now() - currentLatest.getTime() >= SEVEN_DAYS_MS) {
@@ -224,13 +223,13 @@ export async function checkAndIngestCongressBillsIfStale(): Promise<void> {
   const [prevRow] = await db
     .select({ latest: max(federalBillsTable.fetchedAt) })
     .from(federalBillsTable)
-    .where(eq(federalBillsTable.congress, String(prevCongress)));
+    .where(eq(federalBillsTable.congress, prevCongress));
 
   const prevLatest = prevRow?.latest;
-  if (!prevLatest || Date.now() - prevLatest.getTime() >= THIRTY_DAYS_MS) {
-    logger.info({ prevLatest, prevCongress }, "Previous Congress bills are stale or absent, ingesting");
+  if (!prevLatest) {
+    logger.info({ prevCongress }, "Previous Congress bills absent, ingesting once");
     await ingestAllBillsForCongress(prevCongress, currentCongress);
   } else {
-    logger.info({ prevLatest, prevCongress }, "Previous Congress bills are fresh, skipping ingestion");
+    logger.info({ prevLatest, prevCongress }, "Previous Congress bills already loaded, skipping");
   }
 }

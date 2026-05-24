@@ -1,10 +1,10 @@
-import { pgTable, text, timestamp, index, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, index, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const federalMemberBillRolesTable = pgTable("federal_member_bill_roles", {
   bioguideId: text("bioguide_id").notNull(),
   billId: text("bill_id").notNull(),
-  congress: text("congress"),
+  congress: integer("congress"),
   role: text("role").notNull(),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

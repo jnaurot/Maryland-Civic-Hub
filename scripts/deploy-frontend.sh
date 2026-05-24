@@ -26,10 +26,10 @@ echo "--> Typechecking..."
 pnpm run typecheck
 
 echo "--> Building frontend..."
-PORT=5173 BASE_PATH=/ pnpm --filter @workspace/rep run build
+PORT=5101 BASE_PATH=/ pnpm --filter @workspace/rep run build
 
 echo "--> Uploading dist to $SERVER:$SERVER_FRONTEND_DIR ..."
-rsync -avz --delete \
+rsync -avzc --delete \
   -e "ssh -o StrictHostKeyChecking=no" \
   artifacts/rep/dist/public/ \
   "$SERVER:$SERVER_FRONTEND_DIR/"

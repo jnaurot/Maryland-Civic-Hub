@@ -91,7 +91,7 @@ export function mapFederalLegislationForResponse(row: {
   id: string;
   title: string;
   number: string | null;
-  congress: string | null;
+  congress: number | null;
   introducedDate: string | null;
   latestAction: string | null;
   latestActionDate: string | null;
@@ -110,7 +110,7 @@ export function mapFederalLegislationForResponse(row: {
     id: row.id,
     title: row.title,
     number: row.number ?? undefined,
-    congress: row.congress ?? undefined,
+    congress: row.congress != null ? String(row.congress) : undefined,
     introducedDate: row.introducedDate ?? undefined,
     latestAction: row.latestAction ?? undefined,
     latestActionDate: row.latestActionDate ?? undefined,

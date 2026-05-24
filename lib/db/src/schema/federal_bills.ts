@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, jsonb, uniqueIndex, index, customType } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, date, boolean, timestamp, jsonb, uniqueIndex, index, customType } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 
 const tsvector = customType<{ data: string }>({
@@ -13,9 +13,9 @@ export const federalBillsTable = pgTable("federal_bills", {
   number: text("number"),
   type: text("type"),
   amendmentNumber: text("amendment_number"),
-  congress: text("congress"),
-  introducedDate: text("introduced_date"),
-  latestActionDate: text("latest_action_date"),
+  congress: integer("congress"),
+  introducedDate: date("introduced_date"),
+  latestActionDate: date("latest_action_date"),
   summary: text("summary"),
   latestAction: text("latest_action"),
   chamber: text("chamber"),
@@ -30,7 +30,7 @@ export const federalBillsTable = pgTable("federal_bills", {
   stagePassed: boolean("stage_passed").default(false).notNull(),
   stageSignedEnacted: boolean("stage_signed_enacted").default(false).notNull(),
   stageDead: boolean("stage_dead").default(false).notNull(),
-  updateDate: text("update_date"),
+  updateDate: date("update_date"),
   summaryFetchedAt: timestamp("summary_fetched_at", { withTimezone: true }),
   textUrlFetchedAt: timestamp("text_url_fetched_at", { withTimezone: true }),
   raw: jsonb("raw"),
@@ -55,7 +55,7 @@ export const insertFederalBillSchema = z.object({
   id: z.string(),
   title: z.string(),
   number: z.string().optional(),
-  congress: z.string().optional(),
+  congress: z.number().int().optional(),
   introducedDate: z.string().optional(),
   summary: z.string().optional(),
   policyArea: z.string().optional(),

@@ -89,7 +89,7 @@ export async function ingestAllFederalMembers(): Promise<{ count: number }> {
       photoUrl: (m.depiction?.imageUrl as string | null) ?? null,
       nextElection: (m.nextElection as string | null) ?? null,
       inOffice: true,
-      terms: String(normalizeTerms(m).length),
+      terms: normalizeTerms(m).length,
       phone: null as null,
       website: null as null,
       raw: m as object,

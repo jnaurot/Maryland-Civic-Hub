@@ -14,7 +14,7 @@ export const federalMemberBillCacheStatusTable = pgTable(
   {
     bioguideId: text("bioguide_id").notNull(),
     role: text("role").notNull(),
-    congress: text("congress"),
+    congress: integer("congress"),
     fullyIngested: boolean("fully_ingested").default(false).notNull(),
     localCount: integer("local_count").default(0).notNull(),
     sourceTotalCount: integer("source_total_count"),

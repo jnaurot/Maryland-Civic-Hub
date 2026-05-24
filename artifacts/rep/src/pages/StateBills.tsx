@@ -75,8 +75,8 @@ export function StateBills() {
     : undefined;
 
   const params = chamber === "all"
-    ? { offset, limit, jurisdiction: stateCode?.toLowerCase() ?? "md", stages: stageQuery }
-    : { chamber: chamber as "upper" | "lower", offset, limit, jurisdiction: stateCode?.toLowerCase() ?? "md", stages: stageQuery };
+    ? { offset, limit, jurisdiction: stateCode?.toLowerCase(), stages: stageQuery }
+    : { chamber: chamber as "upper" | "lower", offset, limit, jurisdiction: stateCode?.toLowerCase(), stages: stageQuery };
 
   const { data, isLoading, error } = useGetStateBills(params, {
     query: {
@@ -86,8 +86,8 @@ export function StateBills() {
     }
   });
   const searchParams = chamber === "all"
-    ? { q: searchQuery, jurisdiction: stateCode?.toLowerCase() ?? "md", offset, limit, stages: stageQuery }
-    : { q: searchQuery, jurisdiction: stateCode?.toLowerCase() ?? "md", chamber: chamber as "upper" | "lower", offset, limit, stages: stageQuery };
+    ? { q: searchQuery, jurisdiction: stateCode?.toLowerCase(), offset, limit, stages: stageQuery }
+    : { q: searchQuery, jurisdiction: stateCode?.toLowerCase(), chamber: chamber as "upper" | "lower", offset, limit, stages: stageQuery };
   const { data: searchData, isLoading: isSearchLoading, error: searchError } = useSearchStateBills(searchParams, {
     query: {
       enabled: !!stateCode && searchQuery.length > 0,

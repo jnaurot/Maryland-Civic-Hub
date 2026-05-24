@@ -100,7 +100,7 @@ describe("mapFederalLegislationForResponse", () => {
     id: "119-hr-1234",
     title: "A Test Bill",
     number: "HR 1234",
-    congress: "119",
+    congress: 119,
     introducedDate: "2025-01-15",
     latestAction: "Referred to committee",
     latestActionDate: "2025-01-20",

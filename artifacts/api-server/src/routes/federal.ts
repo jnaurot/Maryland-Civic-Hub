@@ -382,7 +382,7 @@ async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
       phone: mapped.phone ?? null,
       website: mapped.website ?? null,
       photoUrl: mapped.photoUrl ?? null,
-      terms: mapped.terms != null ? String(mapped.terms) : null,
+      terms: mapped.terms != null ? Number(mapped.terms) : null,
       inOffice: mapped.inOffice ?? null,
       nextElection: mapped.nextElection ?? null,
       raw: m,
@@ -399,7 +399,7 @@ async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
         phone: mapped.phone ?? null,
         website: mapped.website ?? null,
         photoUrl: mapped.photoUrl ?? null,
-        terms: mapped.terms != null ? String(mapped.terms) : null,
+        terms: mapped.terms != null ? Number(mapped.terms) : null,
         inOffice: mapped.inOffice ?? null,
         nextElection: mapped.nextElection ?? null,
         raw: m,
@@ -749,7 +749,7 @@ router.post("/federal/members/:bioguideId/refresh", async (req, res) => {
 });
 
 function getCurrentCongress() {
-  return String(getCurrentCongressNumber());
+  return getCurrentCongressNumber();
 }
 
 const activeBillIngestions = new Set<string>();
@@ -821,7 +821,7 @@ async function ingestFederalMemberBillsPage(
           number: displayNumber ?? null,
           type: b.type ?? null,
           amendmentNumber: b.amendmentNumber != null ? String(b.amendmentNumber) : null,
-          congress: b.congress != null ? String(b.congress) : null,
+          congress: b.congress != null ? Number(b.congress) : null,
           introducedDate: b.introducedDate ?? null,
           latestAction: latestActionText,
           latestActionDate,
@@ -848,7 +848,7 @@ async function ingestFederalMemberBillsPage(
             number: displayNumber ?? null,
             type: b.type ?? null,
             amendmentNumber: b.amendmentNumber != null ? String(b.amendmentNumber) : null,
-            congress: b.congress != null ? String(b.congress) : null,
+            congress: b.congress != null ? Number(b.congress) : null,
             introducedDate: b.introducedDate ?? null,
             latestAction: latestActionText,
             latestActionDate,
@@ -874,7 +874,7 @@ async function ingestFederalMemberBillsPage(
         .values({
           bioguideId,
           billId,
-          congress: b.congress != null ? String(b.congress) : null,
+          congress: b.congress != null ? Number(b.congress) : null,
           role,
           fetchedAt: new Date(),
         })
@@ -2165,7 +2165,7 @@ router.get("/federal/bills", async (req, res) => {
 
     // DB-first: serve cached page if present for this congress/chamber.
     const dbConditions = [
-      eq(federalBillsTable.congress, String(currentCongress)),
+      eq(federalBillsTable.congress, currentCongress),
       ...(chamberFilter ? [eq(federalBillsTable.chamber, chamberFilter)] : []),
       ...(policyArea ? [eq(federalBillsTable.policyArea, policyArea)] : []),
       ...(stageCondition ? [stageCondition] : []),
@@ -2506,7 +2506,7 @@ router.get(
         introducedDate: bill.introducedDate,
       });
       const currentCongress = getCurrentCongressNumber();
-      if (parseInt(congress) < currentCongress && !stageFlags.signed_enacted) {
+      if (Number(congress) < currentCongress && !stageFlags.signed_enacted) {
         stageFlags.dead = true;
       }
 
@@ -2563,7 +2563,7 @@ router.get(
           id: billId,
           title: bill.title ?? "Untitled",
           number: `${billType} ${billNumber}`,
-          congress: String(congress),
+          congress: Number(congress),
           introducedDate: bill.introducedDate ?? null,
           latestAction: bill.latestAction?.text ?? null,
           latestActionDate: bill.latestAction?.actionDate ?? null,
@@ -2589,7 +2589,7 @@ router.get(
           set: {
             title: bill.title ?? "Untitled",
             number: `${billType} ${billNumber}`,
-            congress: String(congress),
+            congress: Number(congress),
             introducedDate: bill.introducedDate ?? null,
             latestAction: bill.latestAction?.text ?? null,
             latestActionDate: bill.latestAction?.actionDate ?? null,
