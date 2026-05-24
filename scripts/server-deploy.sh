@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs ON the server. Receives source via rsync, then builds and restarts.
-# Place at: /var/www/politician/deploy.sh
-# Run via: ssh root@<server> /var/www/politician/deploy.sh
+# Uploaded to: /var/www/politician/scripts/server-deploy.sh
+# Run via: ssh root@<server> /var/www/politician/scripts/server-deploy.sh
 
 set -euo pipefail
 

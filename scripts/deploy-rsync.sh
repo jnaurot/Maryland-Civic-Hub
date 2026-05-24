@@ -41,7 +41,7 @@ rsync -avz --delete \
 
 # --- 3. Build and restart on the server ---
 echo "--> Running server-side build and restart..."
-ssh "$SERVER" "$SERVER_APP_DIR/deploy.sh"
+ssh "$SERVER" "chmod +x $SERVER_APP_DIR/scripts/server-deploy.sh && $SERVER_APP_DIR/scripts/server-deploy.sh"
 
 echo "=== Deploy complete ==="
 echo "Tail logs with:  ssh $SERVER '$PM2 logs $PM2_NAME --lines 50 --nostream'"

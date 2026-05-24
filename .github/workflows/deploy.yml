@@ -64,4 +64,4 @@ jobs:
           SERVER: ${{ secrets.DEPLOY_HOST }}
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER \
-            /var/www/politician/deploy.sh
+            "chmod +x /var/www/politician/scripts/server-deploy.sh && /var/www/politician/scripts/server-deploy.sh"

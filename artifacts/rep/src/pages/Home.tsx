@@ -47,25 +47,30 @@ export function Home() {
   const [inputFocused, setInputFocused] = useState(false);
   const debouncedQuery = useDebounce(query.trim(), 250);
 
-  const acLimit = 5;
-  const acEnabled = !!debouncedQuery && inputFocused;
-  const acQuery = { q: debouncedQuery, limit: acLimit };
-  const { data: acFederalBills } = useSearchFederalBills(acQuery, {
-    query: { enabled: acEnabled, queryKey: ["autocomplete", "federalBills", acQuery] as const },
+  const searchLimit = 5;
+
+  // Dropdown queries — fire while typing (debounced). Use standard query key functions so
+  // the results queries below share the cache when activeTextQuery === debouncedQuery.
+  const acFbParams = { q: debouncedQuery, limit: searchLimit };
+  const acSbParams = { q: debouncedQuery, jurisdiction: selectedState?.toLowerCase(), limit: searchLimit };
+  const acMemParams = { q: debouncedQuery, limit: searchLimit };
+
+  const { data: acFederalBills } = useSearchFederalBills(acFbParams, {
+    query: { enabled: !!debouncedQuery, queryKey: getSearchFederalBillsQueryKey(acFbParams) },
   });
-  const { data: acStateBills } = useSearchStateBills(acQuery, {
-    query: { enabled: acEnabled, queryKey: ["autocomplete", "stateBills", acQuery] as const },
+  const { data: acStateBills } = useSearchStateBills(acSbParams, {
+    query: { enabled: !!debouncedQuery && !!selectedState, queryKey: getSearchStateBillsQueryKey(acSbParams) },
   });
-  const { data: acFederalMembers } = useSearchFederalMembers(acQuery, {
-    query: { enabled: acEnabled, queryKey: ["autocomplete", "federalMembers", acQuery] as const },
+  const { data: acFederalMembers } = useSearchFederalMembers(acMemParams, {
+    query: { enabled: !!debouncedQuery, queryKey: getSearchFederalMembersQueryKey(acMemParams) },
   });
-  const { data: acStateMembers } = useSearchStateMembers(acQuery, {
-    query: { enabled: acEnabled, queryKey: ["autocomplete", "stateMembers", acQuery] as const },
+  const { data: acStateMembers } = useSearchStateMembers(acMemParams, {
+    query: { enabled: !!debouncedQuery, queryKey: getSearchStateMembersQueryKey(acMemParams) },
   });
 
   const hasAcResults =
     (acFederalBills?.bills?.length ?? 0) > 0 ||
-    (acStateBills?.bills?.length ?? 0) > 0 ||
+    (!!selectedState && (acStateBills?.bills?.length ?? 0) > 0) ||
     (acFederalMembers?.members?.length ?? 0) > 0 ||
     (acStateMembers?.members?.length ?? 0) > 0;
 
@@ -114,19 +119,23 @@ export function Home() {
     setAddressAttemptPending(true);
   };
 
-  const textSearchLimit = 5;
-  const textSearchParams = { q: activeTextQuery, limit: textSearchLimit };
-  const { data: federalBillsSearch, isLoading: fbLoading } = useSearchFederalBills(textSearchParams, {
-    query: { enabled: !!activeTextQuery, queryKey: getSearchFederalBillsQueryKey(textSearchParams) },
+  // Results queries — fire after Enter. Share cache with dropdown queries above when
+  // activeTextQuery === debouncedQuery (the normal case after a brief typing pause).
+  const resFbParams = { q: activeTextQuery, limit: searchLimit };
+  const resSbParams = { q: activeTextQuery, jurisdiction: selectedState?.toLowerCase(), limit: searchLimit };
+  const resMemParams = { q: activeTextQuery, limit: searchLimit };
+
+  const { data: federalBillsSearch, isLoading: fbLoading } = useSearchFederalBills(resFbParams, {
+    query: { enabled: !!activeTextQuery, queryKey: getSearchFederalBillsQueryKey(resFbParams) },
   });
-  const { data: stateBillsSearch, isLoading: sbLoading } = useSearchStateBills(textSearchParams, {
-    query: { enabled: !!activeTextQuery, queryKey: getSearchStateBillsQueryKey(textSearchParams) },
+  const { data: stateBillsSearch, isLoading: sbLoading } = useSearchStateBills(resSbParams, {
+    query: { enabled: !!activeTextQuery && !!selectedState, queryKey: getSearchStateBillsQueryKey(resSbParams) },
   });
-  const { data: federalMembersSearch, isLoading: fmLoading } = useSearchFederalMembers(textSearchParams, {
-    query: { enabled: !!activeTextQuery, queryKey: getSearchFederalMembersQueryKey(textSearchParams) },
+  const { data: federalMembersSearch, isLoading: fmLoading } = useSearchFederalMembers(resMemParams, {
+    query: { enabled: !!activeTextQuery, queryKey: getSearchFederalMembersQueryKey(resMemParams) },
   });
-  const { data: stateMembersSearch, isLoading: smLoading } = useSearchStateMembers(textSearchParams, {
-    query: { enabled: !!activeTextQuery, queryKey: getSearchStateMembersQueryKey(textSearchParams) },
+  const { data: stateMembersSearch, isLoading: smLoading } = useSearchStateMembers(resMemParams, {
+    query: { enabled: !!activeTextQuery, queryKey: getSearchStateMembersQueryKey(resMemParams) },
   });
 
   const textSearchLoading = fbLoading || sbLoading || fmLoading || smLoading;
@@ -295,7 +304,7 @@ export function Home() {
         {(stateBillsSearch?.bills?.length ?? 0) > 0 && (
           <section>
             <div className="flex items-center justify-between border-b pb-2 mb-4 sticky top-0 bg-muted z-10">
-              <h2 className="text-2xl font-black">State Bills</h2>
+              <h2 className="text-2xl font-black">State Bills {selectedState && <span className="text-lg font-normal text-muted-foreground">({selectedState})</span>}</h2>
               <Badge variant="secondary">{stateBillsSearch?.totalCount}</Badge>
             </div>
             <div className="space-y-3">
@@ -307,6 +316,7 @@ export function Home() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             {bill.identifier && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.identifier}</Badge>}
+                            {selectedState && <Badge variant="secondary" className="text-xs">{selectedState}</Badge>}
                             {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
                           </div>
                           <p className="font-medium text-sm line-clamp-2">{bill.title}</p>
@@ -320,6 +330,12 @@ export function Home() {
               ))}
             </div>
           </section>
+        )}
+
+        {!selectedState && (
+          <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+            Select a state using the dropdown above to also search state legislation.
+          </div>
         )}
       </div>
     );
@@ -477,9 +493,9 @@ export function Home() {
                           ))}
                         </div>
                       )}
-                      {(acStateBills?.bills?.length ?? 0) > 0 && (
+                      {!!selectedState && (acStateBills?.bills?.length ?? 0) > 0 && (
                         <div className="py-2 border-t">
-                          <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Bills</p>
+                          <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Bills ({selectedState})</p>
                           {acStateBills?.bills?.map((b) => (
                             <Link key={b.id} href={`/bills/state/${encodeURIComponent(b.id)}`} className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
                               onMouseDown={(e) => e.preventDefault()}
@@ -493,15 +509,7 @@ export function Home() {
                           ))}
                         </div>
                       )}
-                      <div className="border-t px-4 py-2">
-                        <button
-                          type="submit"
-                          className="text-sm text-accent font-medium hover:underline"
-                          onMouseDown={(e) => e.preventDefault()}
-                        >
-                          Search for "{debouncedQuery}"
-                        </button>
-                      </div>
+
                     </div>
                   )}
                 </div>
