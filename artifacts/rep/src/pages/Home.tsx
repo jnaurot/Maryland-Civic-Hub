@@ -495,8 +495,8 @@ export function Home() {
                             >
                               <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                               <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{b.title}</p>
-                                <p className="text-xs text-muted-foreground">{b.number ?? b.id}</p>
+                                <p className="text-xs font-mono font-semibold text-foreground uppercase">{b.number ?? b.id.split("-").slice(1).join(" ").toUpperCase()}</p>
+                                <p className="text-sm text-muted-foreground truncate">{b.title}</p>
                               </div>
                             </Link>
                           ))}
@@ -511,8 +511,8 @@ export function Home() {
                             >
                               <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                               <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{b.title}</p>
-                                <p className="text-xs text-muted-foreground">{b.identifier ?? b.id}</p>
+                                <p className="text-xs font-mono font-semibold text-foreground uppercase">{b.identifier ?? b.id}</p>
+                                <p className="text-sm text-muted-foreground truncate">{b.title}</p>
                               </div>
                             </Link>
                           ))}
