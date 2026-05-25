@@ -125,7 +125,7 @@ export function Home() {
     setAddressAttemptPending(true);
   };
 
-  const dismissAddressChip = () => {
+  const _dismissAddressChip = () => {
     setSearchAddress("");
     setLastSearchedAddress(null);
     setSelectedState(null);
