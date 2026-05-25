@@ -309,7 +309,7 @@ export function FederalBills() {
                     <div className="flex items-start gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-2">
-                          {bill.number && <Badge variant="outline" className={`font-mono text-xs shrink-0 ${billNumberClass(bill.stageDead)}`}>{bill.number}</Badge>}
+                          {bill.number && <Badge variant="outline" className={`font-mono text-xs shrink-0 ${billNumberClass(bill.stageDead, bill.stageSignedEnacted)}`}>{bill.number}</Badge>}
                           {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
                           {bill.introducedDate && <span className="text-xs text-muted-foreground">Introduced {bill.introducedDate}</span>}
                         </div>

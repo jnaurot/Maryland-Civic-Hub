@@ -5,7 +5,8 @@ import { getStateName } from "@/lib/states";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react";
+import { Menu, Bookmark } from "lucide-react";
+import { useBookmarks } from "@/hooks/useBookmarks";
 
 export function Navbar() {
   const [location] = useLocation();
@@ -13,6 +14,20 @@ export function Navbar() {
   const stateName = getStateName(selectedState);
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  const { bookmarks } = useBookmarks();
+
+  function getPageName(loc: string): string {
+    if (loc === "/") return "Home";
+    if (loc.startsWith("/bills/federal/")) return "Federal Bill";
+    if (loc === "/bills/federal") return "Federal Bills";
+    if (loc.startsWith("/bills/state/")) return "State Bill";
+    if (loc === "/bills/state") return "State Bills";
+    if (loc.startsWith("/rep/federal/")) return "Representative";
+    if (loc.startsWith("/rep/state/")) return "Representative";
+    return "Previous page";
+  }
+
+  const bookmarksHref = `/bookmarks?from=${encodeURIComponent(location)}&name=${encodeURIComponent(getPageName(location))}`;
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -36,31 +51,45 @@ export function Navbar() {
         </Link>
 
         {isMobile ? (
-          <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Open menu">
-                <Menu className="h-5 w-5" />
+          <div className="flex items-center gap-1">
+            <Link href={bookmarksHref} aria-label="Saved Bills">
+              <Button variant="ghost" size="icon">
+                <Bookmark className={`h-5 w-5 ${location === "/bookmarks" ? "fill-primary text-primary" : "text-muted-foreground"}`} />
               </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-3/4 sm:max-w-sm">
-              <nav className="flex flex-col gap-4 mt-8">
-                {navLinks.map((link) => (
+            </Link>
+            <Sheet open={open} onOpenChange={setOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Open menu">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-3/4 sm:max-w-sm">
+                <nav className="flex flex-col gap-4 mt-8">
+                  {navLinks.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setOpen(false)}
+                      className={`text-lg font-medium transition-colors ${
+                        location === link.href || (link.href !== "/" && location.startsWith(link.href))
+                          ? "text-foreground font-bold"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
                   <Link
-                    key={link.href}
-                    href={link.href}
+                    href={bookmarksHref}
                     onClick={() => setOpen(false)}
-                    className={`text-lg font-medium transition-colors ${
-                      location === link.href || (link.href !== "/" && location.startsWith(link.href))
-                        ? "text-foreground font-bold"
-                        : "text-muted-foreground"
-                    }`}
+                    className={`text-lg font-medium transition-colors ${location === "/bookmarks" ? "text-foreground font-bold" : "text-muted-foreground"}`}
                   >
-                    {link.label}
+                    Saved Bills {bookmarks.length > 0 && `(${bookmarks.length})`}
                   </Link>
-                ))}
-              </nav>
-            </SheetContent>
-          </Sheet>
+                </nav>
+              </SheetContent>
+            </Sheet>
+          </div>
         ) : (
           <nav className="flex items-center gap-6">
             {navLinks.map((link) => (
@@ -76,6 +105,11 @@ export function Navbar() {
                 {link.label}
               </Link>
             ))}
+            <Link href={bookmarksHref} aria-label="Saved Bills">
+              <Button variant="ghost" size="icon">
+                <Bookmark className={`h-5 w-5 ${location === "/bookmarks" ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+              </Button>
+            </Link>
           </nav>
         )}
       </div>

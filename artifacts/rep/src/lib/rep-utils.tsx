@@ -76,10 +76,10 @@ export function voteColor(voteCast?: string) {
   return "text-muted-foreground";
 }
 
-export function billNumberClass(stageDead?: boolean | null): string {
-  return stageDead === true
-    ? "text-red-600 border-red-600 dark:text-red-400 dark:border-red-400"
-    : "text-green-600 border-green-600 dark:text-green-400 dark:border-green-400";
+export function billNumberClass(stageDead?: boolean | null, stageSignedEnacted?: boolean | null): string {
+  if (stageDead === true) return "text-red-600 border-red-600 dark:text-red-400 dark:border-red-400";
+  if (stageSignedEnacted === true) return "text-amber-600 border-amber-600 border-2 dark:text-amber-400 dark:border-amber-400";
+  return "text-green-600 border-green-600 dark:text-green-400 dark:border-green-400";
 }
 
 export function voteBadgeClass(voteCast?: string) {

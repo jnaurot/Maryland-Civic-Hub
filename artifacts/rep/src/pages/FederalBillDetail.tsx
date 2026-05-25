@@ -7,9 +7,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ExternalLink, CheckCircle2, Circle } from "lucide-react";
+import { ChevronLeft, ExternalLink, CheckCircle2, Circle, Bookmark } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { RepNameLink } from "@/components/RepNameLink";
 import { partyColor, SummarySearch } from "@/lib/rep-utils";
+import { useBookmarks } from "@/hooks/useBookmarks";
 
 function ResizableDetailCard({
   title,
@@ -110,6 +112,9 @@ export function FederalBillDetail() {
     }
   });
   const progress = bill?.progress;
+  const billId = `${congress}-${billType}-${billNumber}`;
+  const { toggle, check } = useBookmarks();
+  const bookmarked = check(billId);
 
   return (
     <div className="h-full overflow-y-auto bg-muted/20">
@@ -127,10 +132,21 @@ export function FederalBillDetail() {
           <div className="space-y-6">
             <Card>
               <CardContent className="p-6">
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {bill.number && <Badge variant="outline" className="font-mono">{bill.number}</Badge>}
-                  {bill.congress && <Badge variant="secondary">{bill.congress}th Congress</Badge>}
-                  {bill.introducedDate && <span className="text-sm text-muted-foreground">Introduced {bill.introducedDate}</span>}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex flex-wrap gap-2">
+                    {bill.number && <Badge variant="outline" className="font-mono">{bill.number}</Badge>}
+                    {bill.congress && <Badge variant="secondary">{bill.congress}th Congress</Badge>}
+                    {bill.introducedDate && <span className="text-sm text-muted-foreground">Introduced {bill.introducedDate}</span>}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 -mt-1 -mr-2"
+                    aria-label={bookmarked ? "Remove bookmark" : "Save bill"}
+                    onClick={() => toggle({ id: billId, type: "federal", number: bill.number ?? billId, title: bill.title ?? "" })}
+                  >
+                    <Bookmark className={`h-5 w-5 ${bookmarked ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+                  </Button>
                 </div>
                 <h1 className="text-2xl font-black leading-tight mb-4">{bill.title}</h1>
 

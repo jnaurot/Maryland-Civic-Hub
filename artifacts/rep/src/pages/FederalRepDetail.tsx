@@ -602,7 +602,7 @@ export function BillsList({
                             {bill.number && (
                               <Badge
                                 variant="outline"
-                                className={`text-xs font-mono shrink-0 ${billNumberClass(bill.stageDead)}`}
+                                className={`text-xs font-mono shrink-0 ${billNumberClass(bill.stageDead, bill.stageSignedEnacted)}`}
                               >
                                 {bill.number}
                               </Badge>

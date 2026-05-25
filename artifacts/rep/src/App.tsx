@@ -12,6 +12,7 @@ import { FederalBills } from "@/pages/FederalBills";
 import { StateBills } from "@/pages/StateBills";
 import { FederalBillDetail } from "@/pages/FederalBillDetail";
 import { StateBillDetail } from "@/pages/StateBillDetail";
+import { Bookmarks } from "@/pages/Bookmarks";
 import NotFound from "@/pages/not-found";
 
 function ScrollToTop() {
@@ -51,6 +52,7 @@ function Router() {
           <Route path="/bills/federal/:congress/:billType/:billNumber" component={FederalBillDetail} />
           <Route path="/bills/state" component={StateBills} />
           <Route path="/bills/state/:billId" component={StateBillDetail} />
+          <Route path="/bookmarks" component={Bookmarks} />
           <Route component={NotFound} />
         </Switch>
       </main>

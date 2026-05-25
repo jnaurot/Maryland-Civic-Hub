@@ -365,7 +365,7 @@ export function StateBills() {
                     <div className="flex items-start gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-2">
-                          {bill.identifier && <Badge variant="outline" className={`font-mono text-xs shrink-0 ${billNumberClass(bill.stageDead)}`}>{bill.identifier}</Badge>}
+                          {bill.identifier && <Badge variant="outline" className={`font-mono text-xs shrink-0 ${billNumberClass(bill.stageDead, bill.stageSignedEnacted)}`}>{bill.identifier}</Badge>}
                           {bill.chamber && (
                             <Badge variant="secondary" className="text-xs">
                               {bill.chamber === "upper" ? "Senate" : bill.chamber === "lower" ? "House of Delegates" : bill.chamber}
