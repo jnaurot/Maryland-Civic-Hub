@@ -47,6 +47,7 @@ export function Home() {
     return q ?? lastSearchedAddress ?? "";
   });
   const [fallbackQuery, setFallbackQuery] = useState<string | null>(null);
+  const [fallbackState, setFallbackState] = useState<string | null>(null);
   const [addressAttemptPending, setAddressAttemptPending] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const debouncedQuery = useDebounce(query.trim(), 250);
@@ -111,7 +112,8 @@ export function Home() {
     const trimmed = query.trim();
     if (!trimmed) return;
 
-    // Address-first path
+    // Address-first path — save current state so it can be restored if lookup fails
+    setFallbackState(selectedState);
     setSearchAddress(trimmed);
     setLastSearchedAddress(trimmed);
     setHomeDropdownState("");
@@ -121,6 +123,17 @@ export function Home() {
     // Keep pending fallback until address query resolves
     setFallbackQuery(trimmed);
     setAddressAttemptPending(true);
+  };
+
+  const dismissAddressChip = () => {
+    setSearchAddress("");
+    setLastSearchedAddress(null);
+    setSelectedState(null);
+    setHomeDropdownState("");
+    setQuery("");
+    setFallbackQuery(null);
+    setFallbackState(null);
+    setAddressAttemptPending(false);
   };
 
   // Results queries — fire after Enter. Share cache with dropdown queries above when
@@ -163,14 +176,23 @@ export function Home() {
     const addressFailed = !!error || !hasAddressSignal;
 
     if (addressFailed && fallbackQuery) {
-      // Fallback to bills/representatives text search if address lookup failed
+      // Fallback to bills/representatives text search if address lookup failed.
+      // Restore the state context so state bill search is scoped correctly.
       setSearchAddress("");
       setLastSearchedAddress(null);
       setActiveTextQuery(fallbackQuery);
+      if (fallbackState) {
+        setSelectedState(fallbackState);
+        setHomeDropdownState(fallbackState);
+      }
+    } else if (!addressFailed) {
+      // Address resolved — clear input so user can immediately search bills
+      setQuery("");
     }
 
     setAddressAttemptPending(false);
     setFallbackQuery(null);
+    setFallbackState(null);
   }, [
     addressAttemptPending,
     searchAddress,
@@ -178,6 +200,7 @@ export function Home() {
     error,
     data,
     fallbackQuery,
+    fallbackState,
     setLastSearchedAddress,
   ]);
 
@@ -429,7 +452,11 @@ export function Home() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     type="text"
-                    placeholder={isMobile ? "Enter address, bill, or representative" : "Enter address, bill, or representative... then hit <return>"}
+                    placeholder={
+                      lastSearchedAddress
+                        ? (isMobile ? "Search bills or representatives" : "Search bills or representatives... then hit <return>")
+                        : (isMobile ? "Enter address, bill, or representative" : "Enter address, bill, or representative... then hit <return>")
+                    }
                     className="pl-10 h-14 max-sm:h-10 text-lg max-sm:text-sm bg-background text-foreground border-0 shadow-lg rounded-xl focus-visible:ring-accent"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
@@ -523,7 +550,7 @@ export function Home() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-center gap-2">
+<div className="flex items-center justify-center gap-2">
                 <span className="text-sm text-primary-foreground/70">Or select a state:</span>
                 <Select
                   value={homeDropdownState}
