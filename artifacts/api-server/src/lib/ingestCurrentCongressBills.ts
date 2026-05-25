@@ -58,7 +58,7 @@ async function ingestCongressBillsPage(
 
   await Promise.all(
     bills.map(async (b) => {
-      const billType = (b.type ?? "").toLowerCase();
+      const billType = (b.type ?? "").toUpperCase();
       const billNumber = b.number ?? b.billNumber;
       if (!billType || !billNumber) return;
 

@@ -2279,9 +2279,9 @@ router.get("/federal/bills", async (req, res) => {
       req.log,
     );
     const bills = (data.bills ?? []).map((b: any) => ({
-      id: `${b.congress}-${b.type}-${b.number}`,
+      id: `${b.congress}-${String(b.type).toUpperCase()}-${b.number}`,
       title: b.title ?? "Untitled",
-      number: `${b.type} ${b.number}`,
+      number: `${String(b.type).toUpperCase()} ${b.number}`,
       congress: String(b.congress),
       introducedDate: b.introducedDate,
       latestAction: b.latestAction?.text,
@@ -2422,9 +2422,10 @@ router.get(
       return res.status(400).json({ error: "Invalid params" });
 
     const { congress, billType, billNumber } = parsed.data;
+    const billTypeUpper = billType.toUpperCase();
 
     try {
-      const billId = `${congress}-${billType}-${billNumber}`;
+      const billId = `${congress}-${billTypeUpper}-${billNumber}`;
 
       // Check DB cache and fetch bill metadata in parallel
       const [existingRows, billData] = await Promise.all([
@@ -2549,7 +2550,7 @@ router.get(
 
       const fetchedSummaryRaw =
         needsSummaryFetch && summaryData.status === "fulfilled" && summaryData.value !== null
-          ? (summaryData.value.summaries?.item?.[0]?.text ?? null)
+          ? (summaryData.value.summaries?.item?.[0]?.text ?? summaryData.value.summaries?.[0]?.text ?? null)
           : null;
       const fetchedSummary = fetchedSummaryRaw
         ? fetchedSummaryRaw.replace(/<[^>]*>/g, "")
@@ -2575,7 +2576,7 @@ router.get(
 
       req.log.info(
         {
-          billId: `${congress}-${billType}-${billNumber}`,
+          billId: `${congress}-${billTypeUpper}-${billNumber}`,
           source: "congress.gov",
           actionsStatus: actionsData.status,
           actionsCount: actions.length,
@@ -2599,7 +2600,7 @@ router.get(
         .values({
           id: billId,
           title: bill.title ?? "Untitled",
-          number: `${billType} ${billNumber}`,
+          number: `${billTypeUpper} ${billNumber}`,
           congress: Number(congress),
           introducedDate: bill.introducedDate ?? null,
           latestAction: bill.latestAction?.text ?? null,
@@ -2619,13 +2620,13 @@ router.get(
           stageSignedEnacted: stageFlags.signed_enacted,
           stageDead: stageFlags.dead,
           raw: bill,
-          searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
+          searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billTypeUpper + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
         })
         .onConflictDoUpdate({
           target: federalBillsTable.id,
           set: {
             title: bill.title ?? "Untitled",
-            number: `${billType} ${billNumber}`,
+            number: `${billTypeUpper} ${billNumber}`,
             congress: Number(congress),
             introducedDate: bill.introducedDate ?? null,
             latestAction: bill.latestAction?.text ?? null,
@@ -2646,14 +2647,14 @@ router.get(
             stageDead: stageFlags.dead,
             raw: bill,
             fetchedAt: now,
-            searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billType + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
+            searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billTypeUpper + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
           },
         });
 
       return res.json({
-        id: `${congress}-${billType}-${billNumber}`,
+        id: `${congress}-${billTypeUpper}-${billNumber}`,
         title: bill.title ?? "Untitled",
-        number: `${billType} ${billNumber}`,
+        number: `${billTypeUpper} ${billNumber}`,
         congress: String(congress),
         introducedDate: bill.introducedDate,
         summary: summary ?? undefined,

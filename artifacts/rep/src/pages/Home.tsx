@@ -64,7 +64,7 @@ export function Home() {
     query: { enabled: !!debouncedQuery, queryKey: getSearchFederalBillsQueryKey(acFbParams) },
   });
   const { data: acStateBills } = useSearchStateBills(acSbParams, {
-    query: { enabled: !!debouncedQuery && !!selectedState, queryKey: getSearchStateBillsQueryKey(acSbParams) },
+    query: { enabled: !!debouncedQuery, queryKey: getSearchStateBillsQueryKey(acSbParams) },
   });
   const { data: acFederalMembers } = useSearchFederalMembers(acMemParams, {
     query: { enabled: !!debouncedQuery, queryKey: getSearchFederalMembersQueryKey(acMemParams) },
@@ -75,7 +75,7 @@ export function Home() {
 
   const hasAcResults =
     (acFederalBills?.bills?.length ?? 0) > 0 ||
-    (!!selectedState && (acStateBills?.bills?.length ?? 0) > 0) ||
+    (acStateBills?.bills?.length ?? 0) > 0 ||
     (acFederalMembers?.members?.length ?? 0) > 0 ||
     (acStateMembers?.members?.length ?? 0) > 0;
 
@@ -135,7 +135,7 @@ export function Home() {
     query: { enabled: !!activeTextQuery, queryKey: getSearchFederalBillsQueryKey(resFbParams) },
   });
   const { data: stateBillsSearch, isLoading: sbLoading } = useSearchStateBills(resSbParams, {
-    query: { enabled: !!activeTextQuery && !!selectedState, queryKey: getSearchStateBillsQueryKey(resSbParams) },
+    query: { enabled: !!activeTextQuery, queryKey: getSearchStateBillsQueryKey(resSbParams) },
   });
   const { data: federalMembersSearch, isLoading: fmLoading } = useSearchFederalMembers(resMemParams, {
     query: { enabled: !!activeTextQuery, queryKey: getSearchFederalMembersQueryKey(resMemParams) },
@@ -348,11 +348,6 @@ export function Home() {
           </section>
         )}
 
-        {!selectedState && (
-          <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-            Select a state using the dropdown above to also search state legislation.
-          </div>
-        )}
       </div>
     );
   }
@@ -518,9 +513,9 @@ export function Home() {
                           ))}
                         </div>
                       )}
-                      {!!selectedState && (acStateBills?.bills?.length ?? 0) > 0 && (
+                      {(acStateBills?.bills?.length ?? 0) > 0 && (
                         <div className="py-2 border-t">
-                          <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Bills ({selectedState})</p>
+                          <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Bills{selectedState ? ` (${selectedState})` : ""}</p>
                           {acStateBills?.bills?.map((b) => (
                             <Link key={b.id} href={`/bills/state/${encodeURIComponent(b.id)}?${billFromParam(query.trim())}`} className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
                               onMouseDown={(e) => e.preventDefault()}

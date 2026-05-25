@@ -42,21 +42,21 @@ export function getFederalLegislationItemId(
   const congress = item.congress != null ? String(item.congress) : "unknown";
 
   if (item.type && item.number) {
-    return `${congress}-${String(item.type).toLowerCase()}-${item.number}`;
+    return `${congress}-${String(item.type).toUpperCase()}-${item.number}`;
   }
 
   if (item.amendmentNumber) {
     const amendType = item.type ?? parseAmendmentType(item.url);
     return amendType
-      ? `${congress}-${amendType.toLowerCase()}-${item.amendmentNumber}`
-      : `${congress}-amendment-${item.amendmentNumber}`;
+      ? `${congress}-${amendType.toUpperCase()}-${item.amendmentNumber}`
+      : `${congress}-AMENDMENT-${item.amendmentNumber}`;
   }
 
   // Last resort: parse the URL for congress/type/number components
   const url = item.url?.replace(/\?format=json$/i, "");
   if (url) {
     const match = url.match(/\/(?:bill|amendment)\/(\d+)\/([^/?]+)\/([^/?]+)/);
-    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+    if (match) return `${match[1]}-${match[2].toUpperCase()}-${match[3]}`;
     return url;
   }
 
@@ -66,7 +66,7 @@ export function getFederalLegislationItemId(
 export function getFederalLegislationDisplayNumber(
   item: CongressMemberLegislationItem,
 ): string | undefined {
-  if (item.type && item.number) return `${item.type} ${item.number}`;
+  if (item.type && item.number) return `${String(item.type).toUpperCase()} ${item.number}`;
 
   if (item.amendmentNumber) {
     const amendmentType = parseAmendmentType(item.url);
