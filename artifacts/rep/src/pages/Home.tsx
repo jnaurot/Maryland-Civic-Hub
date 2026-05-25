@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import {
   useGetRepresentativesByAddress,
   getGetRepresentativesByAddressQueryKey,
@@ -38,10 +38,14 @@ function useDebounce<T>(value: T, delay: number): T {
 export function Home() {
   const { selectedState, setSelectedState, lastSearchedAddress, setLastSearchedAddress } = useAppState();
   const isMobile = useIsMobile();
+  const pageSearch = useSearch();
   const [homeDropdownState, setHomeDropdownState] = useState(lastSearchedAddress ? "" : (selectedState ?? ""));
   const [searchAddress, setSearchAddress] = useState(lastSearchedAddress ?? "");
   const [activeTextQuery, setActiveTextQuery] = useState("");
-  const [query, setQuery] = useState(lastSearchedAddress ?? "");
+  const [query, setQuery] = useState(() => {
+    const q = new URLSearchParams(pageSearch).get("q");
+    return q ?? lastSearchedAddress ?? "";
+  });
   const [fallbackQuery, setFallbackQuery] = useState<string | null>(null);
   const [addressAttemptPending, setAddressAttemptPending] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -276,7 +280,7 @@ export function Home() {
             <div className="space-y-3">
               {federalBillsSearch?.bills?.map((bill) => (
                 <Link key={bill.id} href={(bill.number && bill.congress)
-                  ? `/bills/federal/${bill.congress}/${bill.number.split(" ")[0]?.toLowerCase()}/${bill.number.split(" ")[1]}`
+                  ? `/bills/federal/${bill.congress}/${bill.number.split(" ")[0]?.toLowerCase()}/${bill.number.split(" ")[1]}?${billFromParam(activeTextQuery || query.trim())}`
                   : "#"}
                   className="block group"
                 >
@@ -309,7 +313,7 @@ export function Home() {
             </div>
             <div className="space-y-3">
               {stateBillsSearch?.bills?.map((bill) => (
-                <Link key={bill.id} href={`/bills/state/${encodeURIComponent(bill.id)}`} className="block group">
+                <Link key={bill.id} href={`/bills/state/${encodeURIComponent(bill.id)}?${billFromParam(activeTextQuery || query.trim())}`} className="block group">
                   <Card className="hover:border-primary transition-colors cursor-pointer">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
@@ -389,6 +393,11 @@ export function Home() {
       </Link>
     );
   };
+
+  function billFromParam(q: string) {
+    const back = q ? `/?q=${encodeURIComponent(q)}` : "/";
+    return `from=${encodeURIComponent(back)}&name=Search`;
+  }
 
   return (
     <div className="h-[calc(100dvh-4rem)] flex flex-col overflow-hidden">
@@ -479,7 +488,7 @@ export function Home() {
                           <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Federal Bills</p>
                           {acFederalBills?.bills?.map((b) => (
                             <Link key={b.id} href={(b.number && b.congress)
-                              ? `/bills/federal/${b.congress}/${b.number.split(" ")[0]?.toLowerCase()}/${b.number.split(" ")[1]}`
+                              ? `/bills/federal/${b.congress}/${b.number.split(" ")[0]?.toLowerCase()}/${b.number.split(" ")[1]}?${billFromParam(query.trim())}`
                               : "#"}
                               className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
                               onMouseDown={(e) => e.preventDefault()}
@@ -497,7 +506,7 @@ export function Home() {
                         <div className="py-2 border-t">
                           <p className="px-4 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">State Bills ({selectedState})</p>
                           {acStateBills?.bills?.map((b) => (
-                            <Link key={b.id} href={`/bills/state/${encodeURIComponent(b.id)}`} className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
+                            <Link key={b.id} href={`/bills/state/${encodeURIComponent(b.id)}?${billFromParam(query.trim())}`} className="flex items-start gap-3 px-4 py-2 hover:bg-accent/10 transition-colors"
                               onMouseDown={(e) => e.preventDefault()}
                             >
                               <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
