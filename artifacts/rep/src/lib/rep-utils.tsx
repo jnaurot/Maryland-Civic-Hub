@@ -76,6 +76,12 @@ export function voteColor(voteCast?: string) {
   return "text-muted-foreground";
 }
 
+export function billNumberClass(stageDead?: boolean | null): string {
+  return stageDead === true
+    ? "text-red-600 border-red-600 dark:text-red-400 dark:border-red-400"
+    : "text-green-600 border-green-600 dark:text-green-400 dark:border-green-400";
+}
+
 export function voteBadgeClass(voteCast?: string) {
   if (!voteCast) return "bg-gray-100 text-gray-700";
   const v = voteCast.toLowerCase();

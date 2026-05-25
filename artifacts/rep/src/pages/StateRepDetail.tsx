@@ -40,6 +40,7 @@ import {
   formatMoney,
   BILL_STAGE_OPTIONS,
   BILL_STAGE_QUERY_KEYS,
+  billNumberClass,
   type BillStage,
 } from "@/lib/rep-utils";
 import { PageShell } from "@/components/layout/PageShell";
@@ -333,7 +334,7 @@ function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refresh
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        {bill.identifier && <Badge variant="outline" className="text-xs font-mono shrink-0">{bill.identifier}</Badge>}
+                        {bill.identifier && <Badge variant="outline" className={`text-xs font-mono shrink-0 ${billNumberClass(bill.stageDead)}`}>{bill.identifier}</Badge>}
                         {bill.session && <Badge variant="outline" className="text-xs shrink-0">Session {bill.session}</Badge>}
                         {bill.chamber && <Badge variant="secondary" className="text-xs">{bill.chamber}</Badge>}
                       </div>

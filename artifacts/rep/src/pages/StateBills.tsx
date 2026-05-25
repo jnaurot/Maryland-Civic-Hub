@@ -34,7 +34,7 @@ import { ListViewport } from "@/components/layout/ListViewport";
 import { PaginationFooter } from "@/components/layout/PaginationFooter";
 import { FilterBar } from "@/components/layout/FilterBar";
 import { GlobalSearchBar } from "@/components/layout/GlobalSearchBar";
-import { BILL_STAGE_OPTIONS, BILL_STAGE_QUERY_KEYS, type BillStage } from "@/lib/rep-utils";
+import { BILL_STAGE_OPTIONS, BILL_STAGE_QUERY_KEYS, billNumberClass, type BillStage } from "@/lib/rep-utils";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
 
 type Chamber = "upper" | "lower" | "all";
@@ -277,7 +277,7 @@ export function StateBills() {
                   <div className="flex items-start gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        {bill.identifier && <Badge variant="outline" className="font-mono text-xs shrink-0">{bill.identifier}</Badge>}
+                        {bill.identifier && <Badge variant="outline" className={`font-mono text-xs shrink-0 ${billNumberClass(bill.stageDead)}`}>{bill.identifier}</Badge>}
                         {bill.chamber && (
                           <Badge variant="secondary" className="text-xs">
                             {bill.chamber === "upper" ? "Senate" : bill.chamber === "lower" ? "House of Delegates" : bill.chamber}

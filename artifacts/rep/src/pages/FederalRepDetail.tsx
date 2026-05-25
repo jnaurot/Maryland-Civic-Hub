@@ -48,6 +48,7 @@ import {
   formatMoney,
   BILL_STAGE_OPTIONS,
   BILL_STAGE_QUERY_KEYS,
+  billNumberClass,
   type BillStage,
 } from "@/lib/rep-utils";
 import { getStateCode } from "@/lib/states";
@@ -601,7 +602,7 @@ export function BillsList({
                             {bill.number && (
                               <Badge
                                 variant="outline"
-                                className="text-xs font-mono shrink-0"
+                                className={`text-xs font-mono shrink-0 ${billNumberClass(bill.stageDead)}`}
                               >
                                 {bill.number}
                               </Badge>
