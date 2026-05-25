@@ -125,17 +125,6 @@ export function Home() {
     setAddressAttemptPending(true);
   };
 
-  const _dismissAddressChip = () => {
-    setSearchAddress("");
-    setLastSearchedAddress(null);
-    setSelectedState(null);
-    setHomeDropdownState("");
-    setQuery("");
-    setFallbackQuery(null);
-    setFallbackState(null);
-    setAddressAttemptPending(false);
-  };
-
   // Results queries — fire after Enter. Share cache with dropdown queries above when
   // activeTextQuery === debouncedQuery (the normal case after a brief typing pause).
   const resFbParams = { q: activeTextQuery, limit: searchLimit };
