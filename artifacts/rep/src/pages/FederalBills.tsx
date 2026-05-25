@@ -18,12 +18,14 @@ import { FilterBar } from "@/components/layout/FilterBar";
 import { GlobalSearchBar } from "@/components/layout/GlobalSearchBar";
 import { BILL_STAGE_OPTIONS, BILL_STAGE_QUERY_KEYS, billNumberClass, type BillStage } from "@/lib/rep-utils";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 type Chamber = "both" | "house" | "senate";
 
 export function FederalBills() {
   const pageSearch = useSearch();
   const initialParams = new URLSearchParams(pageSearch);
+  const isMobile = useIsMobile();
   const [chamber, setChamber] = useState<Chamber>(() => {
     const v = initialParams.get("chamber");
     return v === "house" || v === "senate" ? v : "both";
@@ -40,21 +42,27 @@ export function FederalBills() {
   const [selectedStages, setSelectedStages] = useState<BillStage[]>(() => {
     const raw = initialParams.get("stages");
     if (!raw) return [];
-    const parsed = raw.split(",").filter((s): s is BillStage =>
-      BILL_STAGE_OPTIONS.includes(s as BillStage),
-    );
-    return parsed;
+    return raw.split(",").filter((s): s is BillStage => BILL_STAGE_OPTIONS.includes(s as BillStage));
   });
   const limit = 20;
   const listViewportRef = useRef<HTMLDivElement | null>(null);
   const restoredScrollRef = useRef(false);
+
+  // Mobile infinite-scroll state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [allBills, setAllBills] = useState<any[]>([]);
+  const [lastVisible, setLastVisible] = useState(1);
+  const appendedOffsetRef = useRef(new Set<number>());
+  const prevFilterKeyRef = useRef<string | null>(null);
+  const scrollRatioRef = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const stageQuery =
     statusEnabled && selectedStages.length > 0
       ? selectedStages.map((s) => BILL_STAGE_QUERY_KEYS[s]).join(",")
       : undefined;
 
-  const { data, isLoading } = useGetFederalBills(
+  const { data, isLoading, isPlaceholderData } = useGetFederalBills(
     { chamber, policyArea, offset, limit, ...(stageQuery ? { stages: stageQuery } : {}) },
     {
       query: {
@@ -64,7 +72,11 @@ export function FederalBills() {
     },
   );
   const searchParams = { q: searchQuery, policyArea, offset, limit };
-  const { data: searchData, isLoading: isSearchLoading } = useSearchFederalBills(searchParams, {
+  const {
+    data: searchData,
+    isLoading: isSearchLoading,
+    isPlaceholderData: isSearchPlaceholderData,
+  } = useSearchFederalBills(searchParams, {
     query: {
       enabled: searchQuery.length > 0 || !!policyArea,
       queryKey: getSearchFederalBillsQueryKey(searchParams),
@@ -78,18 +90,18 @@ export function FederalBills() {
   };
   const useSearchResults = searchQuery.length > 0 || !!policyArea;
   const visibleBills = useSearchResults ? (searchData?.bills ?? []) : (data?.bills ?? []);
-  const pagedVisibleBills = visibleBills;
   const effectiveTotalCount = useSearchResults ? (searchData?.totalCount ?? 0) : (data?.totalCount ?? 0);
   const loadingBase = useSearchResults ? isSearchLoading : isLoading;
-  const statusFilteringLoading = false;
+  const isPlaceholderDataBase = useSearchResults ? isSearchPlaceholderData : isPlaceholderData;
+  const filterKey = `${chamber}|${searchQuery}|${stageQuery ?? ""}|${policyArea}`;
+
   const backPathParams = new URLSearchParams();
   backPathParams.set("chamber", chamber);
   backPathParams.set("offset", String(offset));
   if (searchQuery) backPathParams.set("q", searchQuery);
   if (policyArea) backPathParams.set("policyArea", policyArea);
   if (statusEnabled) backPathParams.set("status", "on");
-  if (selectedStages.length > 0)
-    backPathParams.set("stages", selectedStages.join(","));
+  if (selectedStages.length > 0) backPathParams.set("stages", selectedStages.join(","));
   const backPath = `/bills/federal?${backPathParams.toString()}`;
   const scrollStorageKey = `scroll:${backPath}:bills`;
 
@@ -97,119 +109,182 @@ export function FederalBills() {
     restoredScrollRef.current = false;
   }, [scrollStorageKey]);
 
+  // Desktop: restore scroll position on navigation back
   useEffect(() => {
+    if (isMobile) return;
     if (loadingBase) return;
     if (restoredScrollRef.current) return;
     if (typeof window === "undefined") return;
     const raw = window.sessionStorage.getItem(scrollStorageKey);
-    if (!raw) {
-      restoredScrollRef.current = true;
-      return;
-    }
+    if (!raw) { restoredScrollRef.current = true; return; }
     const scrollTop = Number(raw);
-    if (!Number.isFinite(scrollTop)) {
-      restoredScrollRef.current = true;
-      return;
-    }
+    if (!Number.isFinite(scrollTop)) { restoredScrollRef.current = true; return; }
     const id = window.requestAnimationFrame(() => {
-      if (listViewportRef.current) {
-        listViewportRef.current.scrollTop = scrollTop;
-      }
+      if (listViewportRef.current) listViewportRef.current.scrollTop = scrollTop;
       restoredScrollRef.current = true;
     });
     return () => window.cancelAnimationFrame(id);
-  }, [loadingBase, scrollStorageKey]);
+  }, [isMobile, loadingBase, scrollStorageKey]);
+
+  // Mobile: accumulate bills across pages; atomically reset + replace when filter changes
+  useEffect(() => {
+    if (!isMobile) return;
+    if (loadingBase || isPlaceholderDataBase) return;
+
+    if (prevFilterKeyRef.current !== filterKey) {
+      appendedOffsetRef.current = new Set();
+      prevFilterKeyRef.current = filterKey;
+    }
+
+    if (appendedOffsetRef.current.has(offset)) return;
+    appendedOffsetRef.current.add(offset);
+
+    if (offset === 0) {
+      setAllBills(visibleBills);
+    } else if (visibleBills.length > 0) {
+      setAllBills((prev) => {
+        const seen = new Set(prev.map((b) => b.id));
+        const fresh = visibleBills.filter((b) => !seen.has(b.id));
+        return fresh.length > 0 ? [...prev, ...fresh] : prev;
+      });
+    }
+  }, [isMobile, loadingBase, isPlaceholderDataBase, filterKey, offset, visibleBills]);
+
+  // Mobile: update visible counter after allBills changes
+  useEffect(() => {
+    if (!isMobile || allBills.length === 0) return;
+    const el = listViewportRef.current;
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const ratio = scrollHeight > 0 ? (scrollTop + clientHeight) / scrollHeight : 1;
+      scrollRatioRef.current = ratio;
+      const visible = Math.max(1, Math.round(ratio * allBills.length));
+      setLastVisible(Math.min(visible, allBills.length));
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [allBills.length, isMobile]);
+
+  // Mobile: IntersectionObserver to trigger next page load
+  useEffect(() => {
+    if (!isMobile) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loadingBase && !isPlaceholderDataBase) {
+          const nextOffset = allBills.length;
+          if (nextOffset < effectiveTotalCount) setOffset(nextOffset);
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isMobile, loadingBase, isPlaceholderDataBase, allBills.length, effectiveTotalCount]);
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
+    if (!isMobile) return;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight <= clientHeight) return;
+    const ratio = (scrollTop + clientHeight) / scrollHeight;
+    scrollRatioRef.current = ratio;
+    const visible = Math.max(1, Math.round(ratio * allBills.length));
+    setLastVisible(Math.min(visible, allBills.length));
+  };
+
+  const billsToRender = isMobile ? allBills : visibleBills;
 
   return (
     <PageShell contentClassName="pb-4">
-        <div className="mb-8 shrink-0 max-sm:mb-5">
-          <h1 className="text-4xl font-black mb-2 max-sm:text-3xl">Federal Bills</h1>
-          <p className="text-muted-foreground max-sm:hidden">Bills currently being considered in the U.S. Congress</p>
-        </div>
+      <div className="mb-8 shrink-0 max-sm:mb-5">
+        <h1 className="text-4xl font-black mb-2 max-sm:text-3xl">Federal Bills</h1>
+        <p className="text-muted-foreground max-sm:hidden">Bills currently being considered in the U.S. Congress</p>
+      </div>
 
-        <div className="flex items-start gap-2">
-          <div className="flex-1">
-            <GlobalSearchBar
-              value={searchQuery}
-              onValueChange={(q) => {
-                setSearchQuery(q);
-                setOffset(0);
-              }}
-              showResults={false}
-            />
-          </div>
-          <StatusFilterControls
-            statusEnabled={statusEnabled}
-            onToggleStatus={() => {
-              setStatusEnabled((prev) => {
-                const next = !prev;
-                if (!next) setSelectedStages([]);
-                return next;
-              });
-              setOffset(0);
-            }}
+      <div className="flex items-start gap-2">
+        <div className="flex-1">
+          <GlobalSearchBar
+            value={searchQuery}
+            onValueChange={(q) => { setSearchQuery(q); setOffset(0); }}
+            showResults={false}
           />
         </div>
-        {statusEnabled && (
-          <StatusStagePills
-            selectedStages={selectedStages}
-            onToggleStage={(stage) => {
-              setSelectedStages((prev) => (prev.includes(stage) ? [] : [stage]));
-              setOffset(0);
-            }}
-          />
+        <StatusFilterControls
+          statusEnabled={statusEnabled}
+          onToggleStatus={() => {
+            setStatusEnabled((prev) => {
+              const next = !prev;
+              if (!next) setSelectedStages([]);
+              return next;
+            });
+            setOffset(0);
+          }}
+        />
+      </div>
+      {statusEnabled && (
+        <StatusStagePills
+          selectedStages={selectedStages}
+          onToggleStage={(stage) => {
+            setSelectedStages((prev) => (prev.includes(stage) ? [] : [stage]));
+            setOffset(0);
+          }}
+        />
+      )}
+
+      {policyArea && (
+        <div className="flex items-center gap-2 mb-2">
+          <Badge variant="secondary" className="flex items-center gap-1.5">
+            Policy: {policyArea}
+            <button
+              type="button"
+              onClick={() => { setPolicyArea(""); setOffset(0); }}
+              className="ml-1 rounded-full hover:bg-muted p-0.5"
+              aria-label="Clear policy area filter"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        </div>
+      )}
+
+      <FilterBar className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-2">
+        <Select value={chamber} onValueChange={handleChamberChange}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue placeholder="Filter by chamber" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="both">Both Chambers</SelectItem>
+            <SelectItem value="house">House</SelectItem>
+            <SelectItem value="senate">Senate</SelectItem>
+          </SelectContent>
+        </Select>
+        {effectiveTotalCount !== undefined && (
+          <span className="text-sm text-muted-foreground">{effectiveTotalCount.toLocaleString()} bills</span>
         )}
+      </FilterBar>
 
-        {policyArea && (
-          <div className="flex items-center gap-2 mb-2">
-            <Badge variant="secondary" className="flex items-center gap-1.5">
-              Policy: {policyArea}
-              <button
-                type="button"
-                onClick={() => {
-                  setPolicyArea("");
-                  setOffset(0);
-                }}
-                className="ml-1 rounded-full hover:bg-muted p-0.5"
-                aria-label="Clear policy area filter"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          </div>
-        )}
-
-        <FilterBar className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-2">
-          <Select value={chamber} onValueChange={handleChamberChange}>
-            <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="Filter by chamber" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="both">Both Chambers</SelectItem>
-              <SelectItem value="house">House</SelectItem>
-              <SelectItem value="senate">Senate</SelectItem>
-            </SelectContent>
-          </Select>
-          {effectiveTotalCount !== undefined && (
-            <span className="text-sm text-muted-foreground">{effectiveTotalCount.toLocaleString()} bills</span>
-          )}
-        </FilterBar>
-
-        <ListViewport ref={listViewportRef} className="space-y-3">
-          {(loadingBase || statusFilteringLoading) && (
+      <ListViewport
+        ref={listViewportRef}
+        onScroll={handleScroll}
+        className={isMobile ? "[scroll-snap-type:y_proximity]" : undefined}
+      >
+        <div className="space-y-3">
+          {loadingBase && (!isMobile || allBills.length === 0) && (
             <div className="space-y-3">
               {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
             </div>
           )}
 
-          {!loadingBase && !statusFilteringLoading && visibleBills.length === 0 && (
+          {!loadingBase && billsToRender.length === 0 && (
             <div className="text-center py-20 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
               <p>No bills found{statusEnabled && selectedStages.length > 0 ? " for selected status filters" : policyArea ? ` in policy area "${policyArea}"` : ""}.</p>
             </div>
           )}
 
-          {!loadingBase && !statusFilteringLoading && pagedVisibleBills.map((bill) => {
+          {billsToRender.map((bill, index) => {
+            const isSnapPoint = isMobile && index > 0 && index % 20 === 0;
             const parts = bill.number?.split(" ") ?? [];
             const billType = parts[0]?.toLowerCase() ?? "";
             const billNum = parts[1] ?? "";
@@ -220,7 +295,9 @@ export function FederalBills() {
             return (
               <Link
                 key={bill.id}
+                data-testid="bill-item"
                 href={detailHref}
+                className={isSnapPoint ? "[scroll-snap-align:start]" : undefined}
                 onClick={() => {
                   if (typeof window === "undefined") return;
                   const top = listViewportRef.current?.scrollTop ?? 0;
@@ -254,8 +331,17 @@ export function FederalBills() {
               </Link>
             );
           })}
-        </ListViewport>
 
+          {isMobile && <div ref={sentinelRef} className="h-1" />}
+        </div>
+      </ListViewport>
+
+      <div className="sm:hidden text-xs text-center text-muted-foreground py-2 shrink-0">
+        {allBills.length > 0 && effectiveTotalCount > 0
+          ? `${lastVisible}/${effectiveTotalCount}${loadingBase ? " ···" : ""}`
+          : loadingBase ? "···" : ""}
+      </div>
+      <div className="hidden sm:block">
         <PaginationFooter
           offset={offset}
           limit={limit}
@@ -263,6 +349,7 @@ export function FederalBills() {
           onPrevious={() => setOffset(Math.max(0, offset - limit))}
           onNext={() => setOffset(offset + limit)}
         />
+      </div>
     </PageShell>
   );
 }
