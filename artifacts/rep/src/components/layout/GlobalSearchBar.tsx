@@ -9,15 +9,7 @@ import {
 import { Search, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
-}
+import { useDebounce } from "@/hooks/useDebounce";
 
 function federalBillHref(bill: { number?: string | null; congress?: string | null }) {
   if (!bill.number || !bill.congress) return "#";

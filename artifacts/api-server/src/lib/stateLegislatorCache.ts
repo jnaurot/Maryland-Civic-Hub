@@ -545,15 +545,3 @@ export async function getDistrictLegislators(
   };
 }
 
-/** Expose rate-limit status for health/debug endpoints if needed. */
-export async function getRateLimitStatus() {
-  const status = await loadProviderStatus();
-  return {
-    blocked: status?.blockedUntil
-      ? new Date().getTime() < new Date(status.blockedUntil).getTime()
-      : false,
-    blockedUntil: status?.blockedUntil?.toISOString() ?? null,
-    reason: status?.reason ?? null,
-    lastStatusCode: status?.lastStatusCode ?? null,
-  };
-}

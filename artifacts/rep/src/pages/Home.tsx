@@ -22,18 +22,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, AlertTriangle, FileText } from "lucide-react";
 import { useAppState } from "@/lib/app-state";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useDebounce } from "@/hooks/useDebounce";
 import { US_STATES, getStateName, getStateFlagUrl } from "@/lib/states";
 import { partyColor } from "@/lib/rep-utils";
 import type { Representative } from "@workspace/api-client-react";
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
-}
 
 // Exported for testing. Reps are loaded via searchAddress (from lastSearchedAddress),
 // so the query box intentionally starts empty — the "Showing results for" header
