@@ -619,7 +619,7 @@ export function Home() {
                     {state.length > 0 && (
                       <section>
                         <div className="flex items-center justify-between border-b pb-2 mb-6 sticky top-0 bg-muted z-10">
-                          <h2 className="text-3xl font-black">State Representatives</h2>
+                          <h2 className="text-3xl max-sm:text-xl font-black">State Representatives</h2>
                           {data?.stateRepCache?.stale && (
                             <div className="flex items-center gap-1.5 text-sm text-amber-700">
                               <AlertTriangle className="h-4 w-4" />
