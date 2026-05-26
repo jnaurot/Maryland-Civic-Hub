@@ -67,3 +67,11 @@ export function formatCongressName(name: string): string {
 export function getStateName(code: string): string | undefined {
   return STATE_NAMES[code.toUpperCase()];
 }
+
+const STATE_CODES: Record<string, string> = Object.fromEntries(
+  Object.entries(STATE_NAMES).map(([code, name]) => [name.toLowerCase(), code]),
+);
+
+export function stateNameToCode(name: string): string | null {
+  return STATE_CODES[name.toLowerCase()] ?? null;
+}

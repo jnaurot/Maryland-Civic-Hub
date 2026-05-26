@@ -115,11 +115,11 @@ async function fetchCongressMembersLive(stateCode: string, district: string): Pr
 
     const senatorsRes = await fetch(senatorsUrl.toString());
     const senatorsData = senatorsRes.ok ? ((await senatorsRes.json()) as any) : { members: [] };
-    const senators = (senatorsData.members ?? []).filter(
-      (m: any) =>
-        !m.district &&
-        m.terms?.item?.some((t: any) => t.chamber === "Senate" && !t.endYear),
-    );
+    const senators = (senatorsData.members ?? []).filter((m: any) => {
+      if (m.district) return false;
+      const terms: any[] = Array.isArray(m.terms) ? m.terms : (m.terms?.item ?? []);
+      return terms.some((t: any) => t.chamber === "Senate" && !t.endYear);
+    });
 
     let houseMember: any[] = [];
     if (district) {
@@ -131,12 +131,15 @@ async function fetchCongressMembersLive(stateCode: string, district: string): Pr
       const houseRes = await fetch(houseUrl.toString());
       if (houseRes.ok) {
         const houseData = (await houseRes.json()) as any;
-        houseMember = houseData.members ?? [];
+        houseMember = (houseData.members ?? []).filter(
+          (m: any) => m.district == null || String(m.district) === String(districtNum),
+        );
       }
     }
 
     return [...senators, ...houseMember].map((m: any) => {
-      const latestTerm = m.terms?.item?.slice(-1)[0];
+      const terms: any[] = Array.isArray(m.terms) ? m.terms : (m.terms?.item ?? []);
+      const latestTerm = terms.slice(-1)[0];
       const isSenate = latestTerm?.chamber === "Senate";
       return {
         name: formatCongressName(m.name),

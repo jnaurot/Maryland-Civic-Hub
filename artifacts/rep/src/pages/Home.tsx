@@ -35,6 +35,14 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
+// Exported for testing. Reps are loaded via searchAddress (from lastSearchedAddress),
+// so the query box intentionally starts empty — the "Showing results for" header
+// already shows the active address, and the box should be ready for bill/rep search.
+export function resolveInitialQuery(pageSearch: string): string {
+  const q = new URLSearchParams(pageSearch).get("q");
+  return q ?? "";
+}
+
 export function Home() {
   const { selectedState, setSelectedState, lastSearchedAddress, setLastSearchedAddress } = useAppState();
   const isMobile = useIsMobile();
@@ -42,10 +50,7 @@ export function Home() {
   const [homeDropdownState, setHomeDropdownState] = useState(lastSearchedAddress ? "" : (selectedState ?? ""));
   const [searchAddress, setSearchAddress] = useState(lastSearchedAddress ?? "");
   const [activeTextQuery, setActiveTextQuery] = useState("");
-  const [query, setQuery] = useState(() => {
-    const q = new URLSearchParams(pageSearch).get("q");
-    return q ?? lastSearchedAddress ?? "";
-  });
+  const [query, setQuery] = useState(() => resolveInitialQuery(pageSearch));
   const [fallbackQuery, setFallbackQuery] = useState<string | null>(null);
   const [fallbackState, setFallbackState] = useState<string | null>(null);
   const [addressAttemptPending, setAddressAttemptPending] = useState(false);

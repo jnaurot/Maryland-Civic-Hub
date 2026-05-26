@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { max, sql, eq } from "drizzle-orm";
 import { db, federalMembersTable } from "@workspace/db";
+import { stateNameToCode } from "../routes/representativesUtils";
 import { logger } from "./logger";
 
 const BASE = "https://api.congress.gov/v3";
@@ -83,7 +84,7 @@ export async function ingestAllFederalMembers(): Promise<{ count: number }> {
       bioguideId: m.bioguideId as string,
       name: formatName(m.name ?? ""),
       party: (m.partyName as string | null) ?? null,
-      state: (m.state as string | null) ?? null,
+      state: stateNameToCode(m.state ?? "") ?? (m.state as string | null) ?? null,
       chamber: normalizeChamber(m),
       district: m.district != null ? String(m.district) : null,
       photoUrl: (m.depiction?.imageUrl as string | null) ?? null,
