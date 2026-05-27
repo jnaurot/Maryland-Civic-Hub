@@ -42,7 +42,31 @@ describe("federal.ts photo caching source guards", () => {
 
     // The member-photo route reads row.photoUrl from DB and passes it to fetch()
     expect(src).toMatch(
-      /\/federal\/member-photo\/:bioguideId[\s\S]{0,400}fetch\(row\.photoUrl\)/,
+      /\/federal\/member-photo\/:bioguideId[\s\S]{0,800}fetch\(row\.photoUrl\)/,
+    );
+  });
+
+  it("has a server-side file cache for member photos", () => {
+    const src = getFederalSource();
+
+    expect(src).toContain("getCachedPhoto");
+    expect(src).toContain("setCachedPhoto");
+    expect(src).toContain("PHOTO_CACHE_DIR");
+  });
+
+  it("member-photo endpoint checks getCachedPhoto before hitting upstream", () => {
+    const src = getFederalSource();
+
+    expect(src).toMatch(
+      /\/federal\/member-photo\/:bioguideId[\s\S]{0,600}getCachedPhoto\(row\.photoUrl,\s*bioguideId\)/,
+    );
+  });
+
+  it("member-photo endpoint writes to setCachedPhoto after upstream fetch", () => {
+    const src = getFederalSource();
+
+    expect(src).toMatch(
+      /\/federal\/member-photo\/:bioguideId[\s\S]{0,1200}setCachedPhoto\(row\.photoUrl,\s*bioguideId,\s*buffer,\s*contentType\)/,
     );
   });
 });

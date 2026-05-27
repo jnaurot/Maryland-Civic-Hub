@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { eq, and, or, desc, sql, inArray, lt } from "drizzle-orm";
 import { XMLParser } from "fast-xml-parser";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import {
   db,
   normalizeVoteCast,
@@ -487,6 +489,43 @@ async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
   return mapped;
 }
 
+const PHOTO_CACHE_DIR = resolve(
+  process.env.PHOTO_CACHE_DIR || ".",
+  ".member-photo-cache",
+);
+
+async function getCachedPhoto(
+  upstreamUrl: string,
+  bioguideId: string,
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  try {
+    const metaPath = resolve(PHOTO_CACHE_DIR, `${bioguideId}.meta.json`);
+    const meta = JSON.parse(await readFile(metaPath, "utf8")) as {
+      url: string;
+      contentType: string;
+    };
+    if (meta.url !== upstreamUrl) return null;
+    const buffer = await readFile(resolve(PHOTO_CACHE_DIR, `${bioguideId}.bin`));
+    return { buffer, contentType: meta.contentType };
+  } catch {
+    return null;
+  }
+}
+
+async function setCachedPhoto(
+  upstreamUrl: string,
+  bioguideId: string,
+  buffer: Buffer,
+  contentType: string,
+): Promise<void> {
+  await mkdir(PHOTO_CACHE_DIR, { recursive: true });
+  await writeFile(resolve(PHOTO_CACHE_DIR, `${bioguideId}.bin`), buffer);
+  await writeFile(
+    resolve(PHOTO_CACHE_DIR, `${bioguideId}.meta.json`),
+    JSON.stringify({ url: upstreamUrl, contentType }),
+  );
+}
+
 // Proxy congress.gov member photos with a 1-year immutable cache so the
 // browser caches them indefinitely instead of re-fetching every 2 days.
 router.get("/federal/member-photo/:bioguideId", async (req, res) => {
@@ -499,11 +538,23 @@ router.get("/federal/member-photo/:bioguideId", async (req, res) => {
 
     if (!row?.photoUrl) { res.status(404).end(); return; }
 
+    const cached = await getCachedPhoto(row.photoUrl, bioguideId);
+    if (cached) {
+      res
+        .set("Content-Type", cached.contentType)
+        .set("Cache-Control", "public, max-age=31536000, immutable")
+        .set("Content-Length", String(cached.buffer.length))
+        .send(cached.buffer);
+      return;
+    }
+
     const upstream = await fetch(row.photoUrl);
     if (!upstream.ok) { res.status(502).end(); return; }
 
     const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
     const buffer = Buffer.from(await upstream.arrayBuffer());
+
+    await setCachedPhoto(row.photoUrl, bioguideId, buffer, contentType);
 
     res
       .set("Content-Type", contentType)
