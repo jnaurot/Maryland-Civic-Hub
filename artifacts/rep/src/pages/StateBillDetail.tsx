@@ -149,36 +149,44 @@ function getVoteDisplay(vote: StateBillVoteSummary, actions?: BillActionSummary[
   };
 }
 
-function StateBillProgressBar({ actions }: { actions?: { date: string; text: string; type?: string }[] }) {
-  const stages = ["Introduced", "Committee", "Floor Vote", "Passed"];
-  const actionTexts = (actions ?? []).map((a) => (a.text + " " + (a.type ?? "")).toLowerCase());
+function StateBillProgressBar({ stages }: {
+  stages?: {
+    introduced?: boolean;
+    committee?: boolean;
+    floorVote?: boolean;
+    passed?: boolean;
+    signed?: boolean;
+    dead?: boolean;
+  };
+}) {
+  const stageNames = ["Introduced", "Committee", "Floor Vote", "Passed"];
 
   const isReached = (stage: string) => {
     switch (stage) {
-      case "Introduced": return true;
-      case "Committee": return actionTexts.some((t) => t.includes("committee") || t.includes("referral") || t.includes("hearing"));
-      case "Floor Vote": return actionTexts.some((t) => t.includes("vote") || t.includes("passed") || t.includes("reading"));
-      case "Passed": return actionTexts.some((t) => t.includes("passed") || t.includes("approved") || t.includes("enacted"));
+      case "Introduced": return !!stages?.introduced;
+      case "Committee": return !!stages?.committee;
+      case "Floor Vote": return !!stages?.floorVote;
+      case "Passed": return !!stages?.passed;
       default: return false;
     }
   };
 
   return (
     <div className="flex items-center gap-0 mt-4 mb-6">
-      {stages.map((stage, i) => {
-        const reached = isReached(stage);
+      {stageNames.map((name, i) => {
+        const reached = isReached(name);
         return (
-          <div key={stage} className="flex items-center flex-1">
+          <div key={name} className="flex items-center flex-1">
             <div className="flex flex-col items-center">
               {reached
                 ? <CheckCircle2 className="h-5 w-5 text-green-600" />
                 : <Circle className="h-5 w-5 text-muted-foreground/30" />}
               <span className={`text-[10px] mt-1 text-center leading-tight ${reached ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                {stage}
+                {name}
               </span>
             </div>
-            {i < stages.length - 1 && (
-              <div className={`h-0.5 flex-1 mx-1 -mt-4 ${isReached(stages[i + 1]) ? "bg-green-600" : "bg-muted"}`} />
+            {i < stageNames.length - 1 && (
+              <div className={`h-0.5 flex-1 mx-1 -mt-4 ${isReached(stageNames[i + 1]) ? "bg-green-600" : "bg-muted"}`} />
             )}
           </div>
         );
@@ -267,7 +275,7 @@ export function StateBillDetail() {
                 </div>
                 <h1 className="text-2xl font-black leading-tight mb-4">{bill.title}</h1>
 
-                <StateBillProgressBar actions={bill.actions} />
+                <StateBillProgressBar stages={bill.stages} />
 
                 {bill.status && (
                   <div className="bg-muted/50 rounded-lg p-3 text-sm">

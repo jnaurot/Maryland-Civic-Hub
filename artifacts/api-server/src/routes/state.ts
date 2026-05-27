@@ -20,7 +20,7 @@ import {
   isRateLimited,
   recordRateLimit,
 } from "../lib/stateLegislatorCache";
-import { fetchWithTimeout as fetch } from "../lib/http";
+import { fetchWithTimeout as fetch, withRetry } from "../lib/http";
 import {
   ProviderRateLimitError,
   isProviderRateLimitError,
@@ -89,24 +89,31 @@ async function openStatesFetch(
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
   }
-  const res = await fetch(url.toString(), {
-    headers: { "X-API-KEY": OPENSTATES_API_KEY },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    if (
-      res.status === 429 ||
-      (res.status === 403 && text.toLowerCase().includes("rate"))
-    ) {
-      await recordRateLimit(res.status, text);
-      throw new ProviderRateLimitError({
-        provider: "OpenStates",
-        detail: getOpenStatesRateLimitDetail(text),
+  return withRetry(
+    async () => {
+      const res = await fetch(url.toString(), {
+        headers: { "X-API-KEY": OPENSTATES_API_KEY },
       });
-    }
-    throw new Error(`OpenStates API error ${res.status}: ${text}`);
-  }
-  return res.json() as Promise<any>;
+      if (!res.ok) {
+        const text = await res.text();
+        if (
+          res.status === 429 ||
+          (res.status === 403 && text.toLowerCase().includes("rate"))
+        ) {
+          await recordRateLimit(res.status, text);
+          throw new ProviderRateLimitError({
+            provider: "OpenStates",
+            detail: getOpenStatesRateLimitDetail(text),
+          });
+        }
+        throw new Error(`OpenStates API error ${res.status}: ${text}`);
+      }
+      return res.json() as Promise<any>;
+    },
+    3,
+    2000,
+    (err) => !isProviderRateLimitError(err),
+  );
 }
 
 function mapStateBill(b: any) {
@@ -1190,6 +1197,15 @@ router.get("/state/bills/:billId", async (req, res) => {
       url: data.openstates_url,
       textUrl: data.openstates_url,
       subjects,
+      stages: {
+        introduced: stageFlags.introduced,
+        committee: stageFlags.committee,
+        floorVote: stageFlags.floor_vote,
+        passed: stageFlags.passed,
+        signed: stageFlags.signed_enacted,
+        enacted: stageFlags.signed_enacted,
+        dead: stageFlags.dead,
+      },
     });
   } catch (err) {
     if (isProviderRateLimitError(err)) {

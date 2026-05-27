@@ -1035,6 +1035,17 @@ export const GetStateBillDetailResponse = zod.object({
   url: zod.string().optional(),
   textUrl: zod.string().optional(),
   subjects: zod.array(zod.string()).optional(),
+  stages: zod
+    .object({
+      introduced: zod.boolean().optional(),
+      committee: zod.boolean().optional(),
+      floorVote: zod.boolean().optional(),
+      passed: zod.boolean().optional(),
+      signed: zod.boolean().optional(),
+      enacted: zod.boolean().optional(),
+      dead: zod.boolean().optional(),
+    })
+    .optional(),
 });
 
 /**

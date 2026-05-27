@@ -379,6 +379,7 @@ export interface StateBillDetail {
   url?: string;
   textUrl?: string;
   subjects?: string[];
+  stages?: BillProgress;
 }
 
 export interface StateBillsListResponse {

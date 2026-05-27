@@ -9,16 +9,10 @@ import { logger } from "./logger";
 const BASE = "https://api.congress.gov/v3";
 const CONGRESS_API_KEY = process.env.CONGRESS_API_KEY;
 
-function formatName(name: string): string {
-  const parts = name.split(", ");
-  return parts.length === 2 ? `${parts[1]} ${parts[0]}` : name;
-}
-
-function normalizeTerms(member: any): any[] {
-  const raw = member?.terms?.item ?? member?.terms ?? member?.depictedTerms;
-  if (!raw) return [];
-  return Array.isArray(raw) ? raw : [raw];
-}
+import {
+  formatCongressMemberName as formatName,
+  normalizeCongressTerms as normalizeTerms,
+} from "./federalMemberHelpers";
 
 function normalizeChamber(member: any): string | null {
   const chamber = normalizeTerms(member).slice(-1)[0]?.chamber ?? "";

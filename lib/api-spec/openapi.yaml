@@ -1402,6 +1402,8 @@ components:
           type: array
           items:
             type: string
+        stages:
+          $ref: "#/components/schemas/BillProgress"
       required: [id, title]
 
     StateBillVote:

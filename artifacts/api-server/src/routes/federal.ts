@@ -33,7 +33,12 @@ import {
   SearchFederalBillsQueryParams,
 } from "@workspace/api-zod";
 import { fetchWithTimeout as fetch } from "../lib/http";
-import { sendInternalError } from "../lib/respond";
+import {
+  sendInternalError,
+  ProviderRateLimitError,
+  isProviderRateLimitError,
+  sendProviderRateLimitError,
+} from "../lib/respond";
 import { logger } from "../lib/logger";
 import {
   classifyFederalLegislationItem,
@@ -123,25 +128,24 @@ async function congressFetch(
   const res = await fetch(url.toString());
   if (!res.ok) {
     const text = await res.text();
+    if (
+      res.status === 429 ||
+      (res.status === 403 && text.toLowerCase().includes("rate"))
+    ) {
+      throw new ProviderRateLimitError({
+        provider: "Congress.gov",
+        detail: text.slice(0, 200),
+      });
+    }
     throw new Error(`Congress API error ${res.status}: ${text}`);
   }
   return res.json() as Promise<any>;
 }
 
-function formatCongressName(name: string): string {
-  const parts = name.split(", ");
-  if (parts.length === 2) return `${parts[1]} ${parts[0]}`;
-  return name;
-}
-
-function normalizeTermsItem(member: any): any[] {
-  // Congress.gov uses different structures in list vs detail endpoints:
-  // - list:   terms: { item: [...] }
-  // - detail: terms: [...]
-  const raw = member?.terms?.item ?? member?.terms ?? member?.depictedTerms;
-  if (!raw) return [];
-  return Array.isArray(raw) ? raw : [raw];
-}
+import {
+  formatCongressMemberName as formatCongressName,
+  normalizeCongressTerms as normalizeTermsItem,
+} from "../lib/federalMemberHelpers";
 
 function getLastName(name: string): string {
   // Congress.gov raw format is "Last, First"; after formatting it's "First Last"
@@ -565,6 +569,7 @@ router.get("/federal/state-members", async (req, res) => {
       representatives: mapped,
     });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error fetching federal state members");
     return sendInternalError(res);
   }
@@ -614,6 +619,7 @@ router.get("/federal/members/search", async (req, res) => {
 
     return res.json({ members, totalCount, offset });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error searching federal members");
     return sendInternalError(res);
   }
@@ -696,6 +702,7 @@ router.get("/federal/members/:bioguideId", async (req, res) => {
       },
     });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error fetching federal member");
     return sendInternalError(res);
   }
@@ -744,6 +751,7 @@ router.post("/federal/members/:bioguideId/refresh", async (req, res) => {
         },
       });
     }
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error refreshing federal member");
     return sendInternalError(res);
   }
@@ -1326,6 +1334,7 @@ router.get("/federal/members/:bioguideId/bills", async (req, res) => {
       stageCounts,
     });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error fetching member bills");
     return sendInternalError(res);
   }
@@ -1439,6 +1448,7 @@ router.post("/federal/members/:bioguideId/bills/refresh", async (req, res) => {
       refreshed: true,
     });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error refreshing member bills");
     return sendInternalError(res);
   }
@@ -1667,6 +1677,7 @@ router.get("/federal/members/:bioguideId/house-votes", async (req, res) => {
 
     return res.json({ votes: normalizedVotes, totalCount, offset });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error fetching house votes");
     return sendInternalError(res);
   }
@@ -2003,6 +2014,7 @@ router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
       offset,
     });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error fetching senate votes");
     return sendInternalError(res);
   }
@@ -2136,6 +2148,7 @@ router.get("/federal/members/:bioguideId/committees", async (req, res) => {
 
     return res.json({ committees });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error fetching member committees");
     return sendInternalError(res);
   }
@@ -2301,6 +2314,7 @@ router.get("/federal/bills", async (req, res) => {
 
     return res.json({ bills, totalCount: data.pagination?.count, offset });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error fetching federal bills");
     return sendInternalError(res);
   }
@@ -2361,6 +2375,7 @@ router.get("/federal/bills/search", async (req, res) => {
 
     return res.json({ bills, totalCount, offset });
   } catch (err) {
+    if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
     req.log.error({ err }, "Error searching federal bills");
     return sendInternalError(res);
   }
@@ -2601,6 +2616,7 @@ router.get(
         subjects: undefined,
       });
     } catch (err) {
+      if (isProviderRateLimitError(err)) return sendProviderRateLimitError(res, err);
       req.log.error({ err }, "Error fetching bill detail");
       return sendInternalError(res);
     }
