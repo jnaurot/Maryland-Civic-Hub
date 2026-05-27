@@ -2278,23 +2278,28 @@ router.get("/federal/bills", async (req, res) => {
       params,
       req.log,
     );
-    const bills = (data.bills ?? []).map((b: any) => ({
-      id: `${b.congress}-${String(b.type).toUpperCase()}-${b.number}`,
-      title: b.title ?? "Untitled",
-      number: `${String(b.type).toUpperCase()} ${b.number}`,
-      congress: String(b.congress),
-      introducedDate: b.introducedDate,
-      latestAction: b.latestAction?.text,
-      latestActionDate: b.latestAction?.actionDate,
-      sponsors: b.sponsors?.map((s: any) => s.fullName) ?? [],
-      url: b.url,
-      status: b.latestAction?.text,
-      chamber: b.originChamber,
-      policyArea: b.policyArea?.name ?? undefined,
-      subjects:
-        b.subjects?.item ??
-        (Array.isArray(b.subjects) ? b.subjects : undefined),
-    }));
+    const bills = (data.bills ?? []).map((b: any) => {
+      const billType = String(b.type ?? "").toUpperCase();
+      return {
+        id: `${b.congress}-${billType}-${b.number}`,
+        title: b.title ?? "Untitled",
+        type: billType || null,
+        number: `${billType} ${b.number}`,
+        congress: String(b.congress),
+        introducedDate: b.introducedDate,
+        latestAction: b.latestAction?.text,
+        latestActionDate: b.latestAction?.actionDate,
+        sponsors: b.sponsors?.map((s: any) => s.fullName) ?? [],
+        url: b.url,
+        status: b.latestAction?.text,
+        chamber: b.originChamber,
+        policyArea: b.policyArea?.name ?? undefined,
+        subjects:
+          b.subjects?.item ??
+          (Array.isArray(b.subjects) ? b.subjects : undefined),
+        category: classifyFederalLegislationItem(b),
+      };
+    });
 
     // Ensure most current first by latest action date
     bills.sort((a: any, b: any) => {
@@ -2322,10 +2327,12 @@ router.get("/federal/bills", async (req, res) => {
         .values({
           id: bill.id,
           title: bill.title,
+          type: bill.type ?? null,
           number: bill.number ?? null,
           congress: bill.congress ?? null,
           introducedDate: bill.introducedDate ?? null,
           summary: null,
+          category: bill.category ?? null,
           policyArea: bill.policyArea ?? null,
           subjects: bill.subjects ?? [],
           url: bill.url ?? null,
@@ -2336,7 +2343,9 @@ router.get("/federal/bills", async (req, res) => {
           target: federalBillsTable.id,
           set: {
             title: bill.title,
+            type: bill.type ?? null,
             number: bill.number ?? null,
+            category: bill.category ?? null,
             policyArea: bill.policyArea ?? null,
             subjects: bill.subjects ?? [],
             url: bill.url ?? null,
@@ -2595,12 +2604,15 @@ router.get(
       const now = new Date();
       const newSummaryFetchedAt = needsSummaryFetch ? now : (cached?.summaryFetchedAt ?? null);
       const newTextUrlFetchedAt = needsTextFetch ? now : (cached?.textUrlFetchedAt ?? null);
+      const billCategory = classifyFederalLegislationItem({ type: billTypeUpper, number: billNumber });
       await db
         .insert(federalBillsTable)
         .values({
           id: billId,
           title: bill.title ?? "Untitled",
+          type: billTypeUpper,
           number: `${billTypeUpper} ${billNumber}`,
+          category: billCategory,
           congress: Number(congress),
           introducedDate: bill.introducedDate ?? null,
           latestAction: bill.latestAction?.text ?? null,
@@ -2626,7 +2638,9 @@ router.get(
           target: federalBillsTable.id,
           set: {
             title: bill.title ?? "Untitled",
+            type: billTypeUpper,
             number: `${billTypeUpper} ${billNumber}`,
+            category: billCategory,
             congress: Number(congress),
             introducedDate: bill.introducedDate ?? null,
             latestAction: bill.latestAction?.text ?? null,
