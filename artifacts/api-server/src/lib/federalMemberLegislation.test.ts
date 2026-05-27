@@ -27,15 +27,15 @@ describe("federal member legislation helpers", () => {
       getFederalLegislationItemId({
         url: "https://api.congress.gov/v3/amendment/119/samdt/4954?format=json",
       }),
-    ).toBe("119-samdt-4954");
+    ).toBe("119-SAMDT-4954");
     expect(
       getFederalLegislationItemId({ congress: 119, type: "HR", number: "1234" }),
-    ).toBe("119-hr-1234");
+    ).toBe("119-HR-1234");
     expect(
       getFederalLegislationItemId({
         url: "https://api.congress.gov/v3/bill/119/hr/1234?format=json",
       }),
-    ).toBe("119-hr-1234");
+    ).toBe("119-HR-1234");
   });
 
   it("builds useful display numbers and titles for amendment records", () => {

@@ -7,8 +7,8 @@ import {
   logRefreshEvent,
 } from "./lib/ingestFederalMembers";
 import {
-  checkAndIngestCongressBillsIfStale,
-  ingestAllCurrentCongressBills,
+  checkAndIngestOnStartup,
+  runWeeklyDeltaIngest,
 } from "./lib/ingestCurrentCongressBills";
 
 const rawPort = process.env["PORT"];
@@ -37,31 +37,17 @@ function getMsUntilNextSundayMidnight(): number {
 async function runWeeklyRefresh(): Promise<void> {
   logger.info("Running scheduled weekly federal data refresh");
   logRefreshEvent({ event: "weekly_refresh_start" });
-  try {
-    const [membersResult, billsResult] = await Promise.allSettled([
-      ingestAllFederalMembers(),
-      ingestAllCurrentCongressBills(),
-    ]);
-    const memberCount = membersResult.status === "fulfilled" ? membersResult.value.count : null;
-    const billCount = billsResult.status === "fulfilled" ? billsResult.value.count : null;
-    if (membersResult.status === "rejected")
-      logger.warn({ err: membersResult.reason }, "Weekly member refresh failed");
-    if (billsResult.status === "rejected")
-      logger.warn({ err: billsResult.reason }, "Weekly congress bills refresh failed");
-    logRefreshEvent({ event: "weekly_refresh_complete", memberCount, billCount });
-  } catch (err) {
-    logger.warn({ err }, "Weekly federal refresh failed, retrying in 1 hour");
-    logRefreshEvent({ event: "weekly_refresh_failed_retrying", error: String(err) });
-    setTimeout(async () => {
-      try {
-        await Promise.all([ingestAllFederalMembers(), ingestAllCurrentCongressBills()]);
-        logRefreshEvent({ event: "weekly_refresh_retry_complete" });
-      } catch (retryErr) {
-        logger.error({ err: retryErr }, "Weekly federal refresh retry failed, giving up until next week");
-        logRefreshEvent({ event: "weekly_refresh_retry_failed", error: String(retryErr) });
-      }
-    }, 60 * 60 * 1000);
-  }
+  const [membersResult, billsResult] = await Promise.allSettled([
+    ingestAllFederalMembers(),
+    runWeeklyDeltaIngest(),
+  ]);
+  const memberCount = membersResult.status === "fulfilled" ? membersResult.value.count : null;
+  const billCount = billsResult.status === "fulfilled" ? billsResult.value.count : null;
+  if (membersResult.status === "rejected")
+    logger.warn({ err: membersResult.reason }, "Weekly member refresh failed");
+  if (billsResult.status === "rejected")
+    logger.warn({ err: billsResult.reason }, "Weekly delta bill ingest failed");
+  logRefreshEvent({ event: "weekly_refresh_complete", memberCount, billCount });
 }
 
 function scheduleWeeklyRefresh(): void {
@@ -86,7 +72,7 @@ async function start() {
   checkAndIngestIfStale().catch((err) =>
     logger.error({ err }, "Federal member ingestion failed at startup"),
   );
-  checkAndIngestCongressBillsIfStale().catch((err) =>
+  checkAndIngestOnStartup().catch((err) =>
     logger.error({ err }, "Congress bill ingestion failed at startup"),
   );
 
