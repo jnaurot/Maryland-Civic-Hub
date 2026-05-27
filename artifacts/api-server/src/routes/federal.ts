@@ -1995,12 +1995,7 @@ router.get("/federal/members/:bioguideId/senate-votes", async (req, res) => {
       .where(and(...filterConditions));
 
     const totalCount = Number(totalCountResult[0]?.count ?? 0);
-    console.log(
-      "[senate-votes] returning",
-      normalized.length,
-      "votes, totalCount:",
-      totalCount,
-    );
+    req.log.info({ count: normalized.length, totalCount }, "Senate votes query returning");
 
     return res.json({
       votes: normalized,

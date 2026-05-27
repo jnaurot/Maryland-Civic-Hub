@@ -50,23 +50,7 @@ import { FilterBar } from "@/components/layout/FilterBar";
 import { StatusFilterControls, StatusStagePills } from "@/components/layout/StatusFilterControls";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useDebounce } from "@/hooks/useDebounce";
-
-function getApiErrorStatus(error: unknown) {
-  return typeof error === "object" && error !== null && "status" in error
-    ? Number((error as { status?: unknown }).status)
-    : undefined;
-}
-
-function getApiErrorMessage(error: unknown) {
-  if (typeof error === "object" && error !== null && "data" in error) {
-    const data = (error as { data?: unknown }).data;
-    if (typeof data === "object" && data !== null && "error" in data) {
-      const message = (data as { error?: unknown }).error;
-      if (typeof message === "string" && message.trim()) return message;
-    }
-  }
-  return error instanceof Error ? error.message : "Request failed. Please try again later.";
-}
+import { getApiErrorStatus, getApiErrorMessage } from "@/lib/apiError";
 
 function StateBillsList({ memberId, jurisdiction, memberName, onRefresh, refreshPending, billType, onBillTypeChange }: { memberId: string; jurisdiction?: string; memberName?: string; onRefresh?: () => void; refreshPending?: boolean; billType: "sponsored" | "cosponsored"; onBillTypeChange: (t: "sponsored" | "cosponsored") => void }) {
   const isMobile = useIsMobile();

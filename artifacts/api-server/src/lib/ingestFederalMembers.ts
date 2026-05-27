@@ -3,6 +3,7 @@ import path from "node:path";
 import { max, sql, eq } from "drizzle-orm";
 import { db, federalMembersTable } from "@workspace/db";
 import { stateNameToCode } from "../routes/representativesUtils";
+import { fetchWithTimeout as fetch } from "./http";
 import { logger } from "./logger";
 
 const BASE = "https://api.congress.gov/v3";

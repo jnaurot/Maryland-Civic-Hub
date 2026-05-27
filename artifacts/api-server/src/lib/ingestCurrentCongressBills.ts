@@ -12,6 +12,7 @@ import {
 import { computeLegislationStageFlags } from "./legislationStages";
 import { upsertFederalBill } from "./upsertFederalBill";
 import { getCurrentCongressNumber } from "./federalBillProgress";
+import { fetchWithTimeout as fetch } from "./http";
 import { logger } from "./logger";
 import { logRefreshEvent } from "./ingestFederalMembers";
 

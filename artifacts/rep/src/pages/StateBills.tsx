@@ -12,21 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, ChevronRight, AlertTriangle } from "lucide-react";
 
-function getApiErrorStatus(error: unknown) {
-  return typeof error === "object" && error !== null && "status" in error
-    ? Number((error as { status?: unknown }).status)
-    : undefined;
-}
-
-function getApiErrorMessage(error: unknown) {
-  if (typeof error === "object" && error !== null && "data" in error) {
-    const data = (error as { data?: unknown }).data;
-    if (typeof data === "object" && data !== null && "error" in data) {
-      return String((data as { error?: unknown }).error);
-    }
-  }
-  return "Search is temporarily unavailable. Please try again later.";
-}
+import { getApiErrorStatus, getApiErrorMessage } from "@/lib/apiError";
 import { useAppState } from "@/lib/app-state";
 import { US_STATES, getStateName } from "@/lib/states";
 import { PageShell } from "@/components/layout/PageShell";
