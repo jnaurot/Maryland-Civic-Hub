@@ -1,4 +1,4 @@
-import { max, sql, eq } from "drizzle-orm";
+import { max, eq } from "drizzle-orm";
 import {
   db,
   federalBillsTable,
@@ -10,6 +10,7 @@ import {
   getFederalLegislationTitle,
 } from "./federalMemberLegislation";
 import { computeLegislationStageFlags } from "./legislationStages";
+import { upsertFederalBill } from "./upsertFederalBill";
 import { getCurrentCongressNumber } from "./federalBillProgress";
 import { logger } from "./logger";
 import { logRefreshEvent } from "./ingestFederalMembers";
@@ -72,7 +73,6 @@ async function ingestCongressBillsPage(
         b.subjects?.legislativeSubjects?.item?.map((s: any) => s.name ?? s) ??
         b.subjects?.item ??
         (Array.isArray(b.subjects) ? b.subjects : []);
-      const subjectsText = subjects.join(" ");
       const stageFlags = computeLegislationStageFlags({
         latestAction: latestActionText,
         introducedDate: b.introducedDate ?? null,
@@ -81,71 +81,28 @@ async function ingestCongressBillsPage(
         stageFlags.dead = true;
       }
 
-      const category = classifyFederalLegislationItem(b);
-
-      // Upsert the bill with full metadata including stage flags and category
-      await db
-        .insert(federalBillsTable)
-        .values({
-          id: billId,
-          title,
-          number: displayNumber,
-          type: b.type ?? null,
-          congress: b.congress != null ? Number(b.congress) : null,
-          introducedDate: b.introducedDate ?? null,
-          latestActionDate,
-          summary: null,
-          latestAction: latestActionText,
-          chamber: b.originChamber ?? null,
-          category,
-          policyArea: b.policyArea?.name ?? null,
-          subjects,
-          url: b.url ?? null,
-          updateDate: b.updateDate ?? null,
-          stageIntroduced: stageFlags.introduced,
-          stageCommittee: stageFlags.committee,
-          stageFloorVote: stageFlags.floor_vote,
-          stagePassed: stageFlags.passed,
-          stageSignedEnacted: stageFlags.signed_enacted,
-          stageDead: stageFlags.dead,
-          raw: null,
-          searchVector: sql`
-            setweight(to_tsvector('english', coalesce(${title}, '')), 'A') ||
-            setweight(to_tsvector('english', coalesce(${displayNumber}, '')), 'B') ||
-            setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')
-          `,
-          fetchedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: federalBillsTable.id,
-          set: {
-            title,
-            number: displayNumber,
-            type: b.type ?? null,
-            congress: b.congress != null ? Number(b.congress) : null,
-            introducedDate: b.introducedDate ?? null,
-            latestActionDate,
-            latestAction: latestActionText,
-            chamber: b.originChamber ?? null,
-            category,
-            policyArea: b.policyArea?.name ?? null,
-            subjects,
-            url: b.url ?? null,
-            updateDate: b.updateDate ?? null,
-            stageIntroduced: stageFlags.introduced,
-            stageCommittee: stageFlags.committee,
-            stageFloorVote: stageFlags.floor_vote,
-            stagePassed: stageFlags.passed,
-            stageSignedEnacted: stageFlags.signed_enacted,
-            stageDead: stageFlags.dead,
-            fetchedAt: new Date(),
-            searchVector: sql`
-              setweight(to_tsvector('english', coalesce(${title}, '')), 'A') ||
-              setweight(to_tsvector('english', coalesce(${displayNumber}, '')), 'B') ||
-              setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')
-            `,
-          },
-        });
+      await upsertFederalBill({
+        id: billId,
+        title,
+        type: b.type ?? null,
+        number: displayNumber,
+        congress: b.congress != null ? Number(b.congress) : null,
+        introducedDate: b.introducedDate ?? null,
+        latestAction: latestActionText,
+        latestActionDate,
+        chamber: b.originChamber ?? null,
+        category: classifyFederalLegislationItem(b),
+        policyArea: b.policyArea?.name ?? null,
+        subjects,
+        url: b.url ?? null,
+        updateDate: b.updateDate ?? null,
+        stageIntroduced: stageFlags.introduced,
+        stageCommittee: stageFlags.committee,
+        stageFloorVote: stageFlags.floor_vote,
+        stagePassed: stageFlags.passed,
+        stageSignedEnacted: stageFlags.signed_enacted,
+        stageDead: stageFlags.dead,
+      });
 
       // Insert sponsor into the member-bill roles join table
       const sponsorId: string | undefined = b.sponsors?.[0]?.bioguideId;

@@ -44,6 +44,7 @@ import {
   shouldResumeMemberLegislationIngestion,
   type FederalLegislationCategory,
 } from "../lib/federalMemberLegislation";
+import { upsertFederalBill } from "../lib/upsertFederalBill";
 import {
   computeLegislationStageFlags,
   LEGISLATION_STAGE_KEYS,
@@ -817,7 +818,6 @@ async function ingestFederalMemberBillsPage(
   await Promise.all(
     allItems.map(async (b) => {
       const billId = getFederalLegislationItemId(b);
-      const category = classifyFederalLegislationItem(b);
       const displayNumber = getFederalLegislationDisplayNumber(b);
       const title = getFederalLegislationTitle(b);
       const latestActionText = b.latestAction?.text ?? null;
@@ -832,7 +832,6 @@ async function ingestFederalMemberBillsPage(
       }
       const subjects =
         b.subjects?.item ?? (Array.isArray(b.subjects) ? b.subjects : []);
-      const subjectsText = Array.isArray(subjects) ? subjects.join(" ") : "";
 
       if (deadPreviousCongressIds.has(billId)) {
         // Bill is already correctly marked dead from a finished congress — immutable, skip upsert.
@@ -850,61 +849,29 @@ async function ingestFederalMemberBillsPage(
         return;
       }
 
-      await db
-        .insert(federalBillsTable)
-        .values({
-          id: billId,
-          title,
-          number: displayNumber ?? null,
-          type: b.type ?? null,
-          amendmentNumber: b.amendmentNumber != null ? String(b.amendmentNumber) : null,
-          congress: billCongress,
-          introducedDate: b.introducedDate ?? null,
-          latestAction: latestActionText,
-          latestActionDate,
-          summary: null,
-          chamber: b.originChamber ?? null,
-          category,
-          policyArea: b.policyArea?.name ?? null,
-          subjects: subjects ?? [],
-          url: b.url ?? null,
-          updateDate: b.updateDate ?? null,
-          stageIntroduced: stageFlags.introduced,
-          stageCommittee: stageFlags.committee,
-          stageFloorVote: stageFlags.floor_vote,
-          stagePassed: stageFlags.passed,
-          stageSignedEnacted: stageFlags.signed_enacted,
-          stageDead: stageFlags.dead,
-          raw: null,
-          searchVector: sql`setweight(to_tsvector('english', coalesce(${title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${displayNumber ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')`,
-        })
-        .onConflictDoUpdate({
-          target: federalBillsTable.id,
-          set: {
-            title,
-            number: displayNumber ?? null,
-            type: b.type ?? null,
-            amendmentNumber: b.amendmentNumber != null ? String(b.amendmentNumber) : null,
-            congress: billCongress,
-            introducedDate: b.introducedDate ?? null,
-            latestAction: latestActionText,
-            latestActionDate,
-            chamber: b.originChamber ?? null,
-            category,
-            policyArea: b.policyArea?.name ?? null,
-            subjects: subjects ?? [],
-            url: b.url ?? null,
-            updateDate: b.updateDate ?? null,
-            stageIntroduced: stageFlags.introduced,
-            stageCommittee: stageFlags.committee,
-            stageFloorVote: stageFlags.floor_vote,
-            stagePassed: stageFlags.passed,
-            stageSignedEnacted: stageFlags.signed_enacted,
-            stageDead: stageFlags.dead,
-            fetchedAt: new Date(),
-            searchVector: sql`setweight(to_tsvector('english', coalesce(${title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${displayNumber ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')`,
-          },
-        });
+      await upsertFederalBill({
+        id: billId,
+        title,
+        type: b.type ?? null,
+        number: displayNumber ?? null,
+        amendmentNumber: b.amendmentNumber != null ? String(b.amendmentNumber) : null,
+        congress: billCongress,
+        introducedDate: b.introducedDate ?? null,
+        latestAction: latestActionText,
+        latestActionDate,
+        chamber: b.originChamber ?? null,
+        category: classifyFederalLegislationItem(b),
+        policyArea: b.policyArea?.name ?? null,
+        subjects,
+        url: b.url ?? null,
+        updateDate: b.updateDate ?? null,
+        stageIntroduced: stageFlags.introduced,
+        stageCommittee: stageFlags.committee,
+        stageFloorVote: stageFlags.floor_vote,
+        stagePassed: stageFlags.passed,
+        stageSignedEnacted: stageFlags.signed_enacted,
+        stageDead: stageFlags.dead,
+      });
 
       await db
         .insert(federalMemberBillRolesTable)
@@ -2319,41 +2286,22 @@ router.get("/federal/bills", async (req, res) => {
 
     // Upsert into cache for search
     for (const bill of bills) {
-      const subjectsText = Array.isArray(bill.subjects)
-        ? bill.subjects.join(" ")
-        : "";
-      await db
-        .insert(federalBillsTable)
-        .values({
-          id: bill.id,
-          title: bill.title,
-          type: bill.type ?? null,
-          number: bill.number ?? null,
-          congress: bill.congress ?? null,
-          introducedDate: bill.introducedDate ?? null,
-          summary: null,
-          category: bill.category ?? null,
-          policyArea: bill.policyArea ?? null,
-          subjects: bill.subjects ?? [],
-          url: bill.url ?? null,
-          raw: bill,
-          searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.number}, '') || ' ' || coalesce(${subjectsText}, ''))`,
-        })
-        .onConflictDoUpdate({
-          target: federalBillsTable.id,
-          set: {
-            title: bill.title,
-            type: bill.type ?? null,
-            number: bill.number ?? null,
-            category: bill.category ?? null,
-            policyArea: bill.policyArea ?? null,
-            subjects: bill.subjects ?? [],
-            url: bill.url ?? null,
-            raw: bill,
-            fetchedAt: new Date(),
-            searchVector: sql`to_tsvector('english', coalesce(${bill.title}, '') || ' ' || coalesce(${bill.number}, '') || ' ' || coalesce(${subjectsText}, ''))`,
-          },
-        });
+      await upsertFederalBill({
+        id: bill.id,
+        title: bill.title,
+        type: bill.type ?? null,
+        number: bill.number ?? null,
+        congress: bill.congress != null ? Number(bill.congress) : null,
+        introducedDate: bill.introducedDate ?? null,
+        latestAction: bill.latestAction ?? null,
+        latestActionDate: bill.latestActionDate ?? null,
+        chamber: bill.chamber ?? null,
+        category: bill.category ?? null,
+        policyArea: bill.policyArea ?? null,
+        subjects: bill.subjects ?? [],
+        url: bill.url ?? null,
+        raw: bill,
+      });
     }
 
     return res.json({ bills, totalCount: data.pagination?.count, offset });
@@ -2600,70 +2548,35 @@ router.get(
       const billSubjects =
         bill.subjects?.item ??
         (Array.isArray(bill.subjects) ? bill.subjects : []);
-      const subjectsText = billSubjects.join(" ");
       const now = new Date();
       const newSummaryFetchedAt = needsSummaryFetch ? now : (cached?.summaryFetchedAt ?? null);
       const newTextUrlFetchedAt = needsTextFetch ? now : (cached?.textUrlFetchedAt ?? null);
-      const billCategory = classifyFederalLegislationItem({ type: billTypeUpper, number: billNumber });
-      await db
-        .insert(federalBillsTable)
-        .values({
-          id: billId,
-          title: bill.title ?? "Untitled",
-          type: billTypeUpper,
-          number: `${billTypeUpper} ${billNumber}`,
-          category: billCategory,
-          congress: Number(congress),
-          introducedDate: bill.introducedDate ?? null,
-          latestAction: bill.latestAction?.text ?? null,
-          latestActionDate: bill.latestAction?.actionDate ?? null,
-          summary,
-          updateDate: billUpdateDate,
-          summaryFetchedAt: newSummaryFetchedAt,
-          textUrlFetchedAt: newTextUrlFetchedAt,
-          policyArea: bill.policyArea?.name ?? null,
-          subjects: billSubjects,
-          url: bill.url ?? null,
-          textUrl: textUrl ?? null,
-          stageIntroduced: stageFlags.introduced,
-          stageCommittee: stageFlags.committee,
-          stageFloorVote: stageFlags.floor_vote,
-          stagePassed: stageFlags.passed,
-          stageSignedEnacted: stageFlags.signed_enacted,
-          stageDead: stageFlags.dead,
-          raw: bill,
-          searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billTypeUpper + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
-        })
-        .onConflictDoUpdate({
-          target: federalBillsTable.id,
-          set: {
-            title: bill.title ?? "Untitled",
-            type: billTypeUpper,
-            number: `${billTypeUpper} ${billNumber}`,
-            category: billCategory,
-            congress: Number(congress),
-            introducedDate: bill.introducedDate ?? null,
-            latestAction: bill.latestAction?.text ?? null,
-            latestActionDate: bill.latestAction?.actionDate ?? null,
-            summary,
-            updateDate: billUpdateDate,
-            summaryFetchedAt: newSummaryFetchedAt,
-            textUrlFetchedAt: newTextUrlFetchedAt,
-            policyArea: bill.policyArea?.name ?? null,
-            subjects: billSubjects,
-            url: bill.url ?? null,
-            textUrl: textUrl ?? null,
-            stageIntroduced: stageFlags.introduced,
-            stageCommittee: stageFlags.committee,
-            stageFloorVote: stageFlags.floor_vote,
-            stagePassed: stageFlags.passed,
-            stageSignedEnacted: stageFlags.signed_enacted,
-            stageDead: stageFlags.dead,
-            raw: bill,
-            fetchedAt: now,
-            searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${billTypeUpper + " " + billNumber}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${summary ?? ""}, '')), 'C')`,
-          },
-        });
+      await upsertFederalBill({
+        id: billId,
+        title: bill.title ?? "Untitled",
+        type: billTypeUpper,
+        number: `${billTypeUpper} ${billNumber}`,
+        category: classifyFederalLegislationItem({ type: billTypeUpper, number: billNumber }),
+        congress: Number(congress),
+        introducedDate: bill.introducedDate ?? null,
+        latestAction: bill.latestAction?.text ?? null,
+        latestActionDate: bill.latestAction?.actionDate ?? null,
+        summary,
+        updateDate: billUpdateDate,
+        summaryFetchedAt: newSummaryFetchedAt,
+        textUrlFetchedAt: newTextUrlFetchedAt,
+        policyArea: bill.policyArea?.name ?? null,
+        subjects: billSubjects,
+        url: bill.url ?? null,
+        textUrl: textUrl ?? null,
+        stageIntroduced: stageFlags.introduced,
+        stageCommittee: stageFlags.committee,
+        stageFloorVote: stageFlags.floor_vote,
+        stagePassed: stageFlags.passed,
+        stageSignedEnacted: stageFlags.signed_enacted,
+        stageDead: stageFlags.dead,
+        raw: bill,
+      });
 
       return res.json({
         id: `${congress}-${billTypeUpper}-${billNumber}`,
