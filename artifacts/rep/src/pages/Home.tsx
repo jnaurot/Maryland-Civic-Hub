@@ -413,7 +413,7 @@ export function Home() {
         <div data-testid="home-hero-background" className="absolute inset-0 overflow-hidden pointer-events-none">
           {flagUrl && (
             <div
-              className="absolute inset-0 opacity-10 bg-cover bg-center"
+              className="absolute inset-0 opacity-20 bg-cover bg-center"
               style={{ backgroundImage: `url('${flagUrl}')` }}
             />
           )}

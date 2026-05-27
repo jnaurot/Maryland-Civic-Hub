@@ -156,6 +156,10 @@ function getLastName(name: string): string {
   return parts[parts.length - 1]?.toLowerCase() ?? "";
 }
 
+function memberPhotoUrl(bioguideId: string, hasPhoto: boolean): string | undefined {
+  return hasPhoto ? `/api/federal/member-photo/${bioguideId}` : undefined;
+}
+
 function normalizeMemberFromRaw(m: any) {
   return {
     bioguideId: m.bioguideId ?? "",
@@ -166,7 +170,7 @@ function normalizeMemberFromRaw(m: any) {
     district: m.district != null ? String(m.district) : undefined,
     phone: m.officeAddress,
     website: m.officialWebsiteUrl,
-    photoUrl: m.depiction?.imageUrl,
+    photoUrl: memberPhotoUrl(m.bioguideId ?? "", !!m.depiction?.imageUrl),
     terms: normalizeTermsItem(m).length,
     inOffice: m.currentMember,
     nextElection: m.nextElection,
@@ -184,7 +188,7 @@ function mapDbRowToMember(row: typeof federalMembersTable.$inferSelect) {
     district: row.district ?? undefined,
     phone: row.phone ?? undefined,
     website: row.website ?? undefined,
-    photoUrl: row.photoUrl ?? undefined,
+    photoUrl: memberPhotoUrl(row.bioguideId, !!row.photoUrl),
     terms: raw.terms != null ? Number(raw.terms) : undefined,
     inOffice: row.inOffice ?? undefined,
     nextElection: row.nextElection ?? undefined,
@@ -483,6 +487,34 @@ async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
   return mapped;
 }
 
+// Proxy congress.gov member photos with a 1-year immutable cache so the
+// browser caches them indefinitely instead of re-fetching every 2 days.
+router.get("/federal/member-photo/:bioguideId", async (req, res) => {
+  const { bioguideId } = req.params;
+  try {
+    const [row] = await db
+      .select({ photoUrl: federalMembersTable.photoUrl })
+      .from(federalMembersTable)
+      .where(eq(federalMembersTable.bioguideId, bioguideId));
+
+    if (!row?.photoUrl) { res.status(404).end(); return; }
+
+    const upstream = await fetch(row.photoUrl);
+    if (!upstream.ok) { res.status(502).end(); return; }
+
+    const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+
+    res
+      .set("Content-Type", contentType)
+      .set("Cache-Control", "public, max-age=31536000, immutable")
+      .set("Content-Length", String(buffer.length))
+      .send(buffer);
+  } catch (err) {
+    sendInternalError(res, "Photo unavailable");
+  }
+});
+
 router.get("/federal/state-members", async (req, res) => {
   const parsed = GetFederalStateMembersQueryParams.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: "Invalid params" });
@@ -513,7 +545,7 @@ router.get("/federal/state-members", async (req, res) => {
             ? `U.S. Senator for ${stateUpper}`
             : `U.S. Representative, ${stateUpper}-${row.district ?? ""}`,
           party: row.party ?? undefined,
-          photoUrl: row.photoUrl ?? undefined,
+          photoUrl: memberPhotoUrl(row.bioguideId, !!row.photoUrl),
           level: "federal" as const,
           chamber: row.chamber ?? undefined,
           bioguideId: row.bioguideId,
@@ -546,7 +578,7 @@ router.get("/federal/state-members", async (req, res) => {
               ? `U.S. Senator for ${stateUpper}`
               : `U.S. Representative, ${stateUpper}-${m.district ?? ""}`,
             party: m.partyName,
-            photoUrl: m.depiction?.imageUrl,
+            photoUrl: memberPhotoUrl(m.bioguideId, !!m.depiction?.imageUrl),
             level: "federal" as const,
             chamber: isSenate ? "Senate" : "House",
             bioguideId: m.bioguideId,

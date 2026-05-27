@@ -57,11 +57,6 @@ export const US_STATES: StateInfo[] = [
   { code: "DC", name: "District of Columbia" },
 ];
 
-const STATE_FLAG_OVERRIDES: Record<string, string> = {
-  US: "https://upload.wikimedia.org/wikipedia/commons/a/a4/Flag_of_the_United_States.svg",
-  MD: "https://upload.wikimedia.org/wikipedia/commons/a/a0/Flag_of_Maryland.svg",
-};
-
 export function getStateName(code?: string | null): string | undefined {
   if (!code) return undefined;
   return US_STATES.find((s) => s.code === code.toUpperCase())?.name;
@@ -77,10 +72,8 @@ export function getStateCode(nameOrCode?: string | null): string | undefined {
 export function getStateFlagUrl(code?: string | null): string | undefined {
   if (!code) return undefined;
   const upper = code.toUpperCase();
-  const override = STATE_FLAG_OVERRIDES[upper];
-  if (override) return override;
+  if (upper === "US") return "/flags/Flag_of_the_United_States.svg";
   const name = getStateName(upper);
   if (!name) return undefined;
-  const fileName = `Flag_of_${name.replace(/ /g, "_")}.svg`;
-  return `https://commons.wikimedia.org/wiki/Special:Redirect/file/${fileName}`;
+  return `/flags/Flag_of_${name.replace(/ /g, "_")}.svg`;
 }
