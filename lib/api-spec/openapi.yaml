@@ -992,6 +992,35 @@ components:
           type: boolean
         dead:
           type: boolean
+        completedStages:
+          type: array
+          items:
+            type: string
+            enum:
+              - introduced
+              - committee
+              - floorVote
+              - passed
+              - signed
+              - dead
+        currentStage:
+          type: string
+          enum:
+            - introduced
+            - committee
+            - floorVote
+            - passed
+            - signed
+            - dead
+          nullable: true
+        currentChamber:
+          type: string
+          enum:
+            - lower
+            - upper
+            - executive
+            - both
+          nullable: true
 
     SponsorInfo:
       type: object

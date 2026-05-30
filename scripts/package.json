@@ -9,7 +9,13 @@
   "scripts": {
     "backfill:legislation-stages": "tsx ./src/backfillLegislationStages.ts",
     "backfill:not-agreed-to": "tsx ./src/backfillNotAgreedTo.ts",
+    "backfill:state-bill-sponsorships": "tsx ./src/backfillStateBillSponsorshipsAndActions.ts",
+    "backfill:state-bill-text": "tsx ./src/backfillStateBillSummariesAndText.ts",
+    "backfill:state-bill-votes": "tsx ./src/backfillStateBillVotesAndCommittees.ts",
+    "cache:state-legislator-photos": "tsx ./src/cacheStateLegislatorPhotos.ts",
     "hello": "tsx ./src/hello.ts",
+    "ingest:openstates": "tsx ./src/ingestOpenStatesDump.ts",
+    "ingest:openstates:all": "tsx ./src/ingestOpenStatesAll.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

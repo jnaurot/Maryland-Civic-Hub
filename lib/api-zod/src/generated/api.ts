@@ -632,6 +632,13 @@ export const GetFederalBillDetailResponse = zod.object({
       signed: zod.boolean().optional(),
       enacted: zod.boolean().optional(),
       dead: zod.boolean().optional(),
+      completedStages: zod
+        .array(zod.enum(["introduced", "committee", "floorVote", "passed", "signed", "dead"]))
+        .optional(),
+      currentStage: zod
+        .enum(["introduced", "committee", "floorVote", "passed", "signed", "dead"])
+        .nullish(),
+      currentChamber: zod.enum(["lower", "upper", "executive", "both"]).nullish(),
     })
     .optional(),
   url: zod.string().optional(),
@@ -1044,6 +1051,13 @@ export const GetStateBillDetailResponse = zod.object({
       signed: zod.boolean().optional(),
       enacted: zod.boolean().optional(),
       dead: zod.boolean().optional(),
+      completedStages: zod
+        .array(zod.enum(["introduced", "committee", "floorVote", "passed", "signed", "dead"]))
+        .optional(),
+      currentStage: zod
+        .enum(["introduced", "committee", "floorVote", "passed", "signed", "dead"])
+        .nullish(),
+      currentChamber: zod.enum(["lower", "upper", "executive", "both"]).nullish(),
     })
     .optional(),
 });

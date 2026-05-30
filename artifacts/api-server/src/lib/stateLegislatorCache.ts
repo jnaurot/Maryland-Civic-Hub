@@ -1,7 +1,7 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { db, stateLegislatorsTable, providerStatusTable } from "@workspace/db";
-import { fetchWithTimeout as fetch } from "./http";
-import { ProviderRateLimitError } from "./respond";
+import { fetchWithTimeout as fetch, withRetry } from "./http";
+import { ProviderRateLimitError, isProviderRateLimitError } from "./respond";
 
 const OPENSTATES_API_KEY = process.env.OPENSTATES_API_KEY;
 const OPENSTATES_BASE = "https://v3.openstates.org";
@@ -63,7 +63,7 @@ export async function recordRateLimit(statusCode: number, reason?: string) {
   }
 }
 
-async function resetRateLimit() {
+export async function resetRateLimit() {
   try {
     await db
       .insert(providerStatusTable)
@@ -88,7 +88,7 @@ async function resetRateLimit() {
   }
 }
 
-async function openStatesFetch(
+export async function openStatesFetch(
   path: string,
   params: Record<string, string | number> = {},
 ) {
@@ -102,32 +102,39 @@ async function openStatesFetch(
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, String(v));
   }
-  const res = await fetch(url.toString(), {
-    headers: { "X-API-KEY": OPENSTATES_API_KEY },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    if (
-      res.status === 429 ||
-      (res.status === 403 && text.toLowerCase().includes("rate"))
-    ) {
-      await recordRateLimit(res.status, text);
-      let detail = text.trim() || undefined;
-      try {
-        const parsed = JSON.parse(text) as { detail?: unknown };
-        if (typeof parsed.detail === "string") detail = parsed.detail;
-      } catch {
-        // Keep the raw response text as the detail.
-      }
-      throw new ProviderRateLimitError({
-        provider: "OpenStates",
-        detail,
+  return withRetry(
+    async () => {
+      const res = await fetch(url.toString(), {
+        headers: { "X-API-KEY": OPENSTATES_API_KEY },
       });
-    }
-    throw new Error(`OpenStates API error ${res.status}: ${text}`);
-  }
-  await resetRateLimit();
-  return res.json() as Promise<any>;
+      if (!res.ok) {
+        const text = await res.text();
+        if (
+          res.status === 429 ||
+          (res.status === 403 && text.toLowerCase().includes("rate"))
+        ) {
+          await recordRateLimit(res.status, text);
+          let detail = text.trim() || undefined;
+          try {
+            const parsed = JSON.parse(text) as { detail?: unknown };
+            if (typeof parsed.detail === "string") detail = parsed.detail;
+          } catch {
+            // Keep the raw response text as the detail.
+          }
+          throw new ProviderRateLimitError({
+            provider: "OpenStates",
+            detail,
+          });
+        }
+        throw new Error(`OpenStates API error ${res.status}: ${text}`);
+      }
+      await resetRateLimit();
+      return res.json() as Promise<any>;
+    },
+    3,
+    2000,
+    (err) => !isProviderRateLimitError(err),
+  );
 }
 
 function mapOpenStatesPerson(person: any) {
@@ -152,6 +159,27 @@ function mapOpenStatesPerson(person: any) {
     openstatesUrl: person.openstates_url ?? null,
     state: person.jurisdiction?.name ?? null,
     raw: person,
+  };
+}
+
+function mapDbStateLegislator(row: typeof stateLegislatorsTable.$inferSelect) {
+  const raw = (row.raw ?? {}) as any;
+  const role = raw.current_role ?? {};
+  // The ingestion script stores only { ...extras, current_role } in raw,
+  // so fall back to DB columns for fields missing from raw.
+  return {
+    id: row.id,
+    name: row.name ?? raw.name ?? "",
+    party: row.party ?? raw.primary_party ?? null,
+    chamber: row.chamber ?? (role.org_classification === "upper" ? "Senate" : "House of Delegates"),
+    district: row.district ?? (role.district ? String(role.district) : null),
+    jurisdiction: row.jurisdiction ?? "",
+    photoUrl: row.photoUrl ?? raw.image ?? null,
+    email: row.email ?? raw.email ?? null,
+    phone: row.phone ?? raw.links?.[0]?.url ?? null,
+    openstatesUrl: row.openstatesUrl ?? raw.openstates_url ?? null,
+    state: row.state ?? raw.jurisdiction?.name ?? null,
+    raw: row.raw,
   };
 }
 
@@ -196,7 +224,7 @@ export async function getStateLegislator(
         "Serving legislator from cache",
       );
       return {
-        legislator: mapOpenStatesPerson(cached.raw ?? cached),
+        legislator: mapDbStateLegislator(cached),
         cache: {
           source: "db",
           stale: false,
@@ -226,7 +254,7 @@ export async function getStateLegislator(
           "Failed to refresh stale legislator; returning cached data",
         );
         return {
-          legislator: mapOpenStatesPerson(cached.raw ?? cached),
+          legislator: mapDbStateLegislator(cached),
           cache: {
             source: "db",
             stale: true,
@@ -242,7 +270,7 @@ export async function getStateLegislator(
       "Rate limited; returning stale legislator cache",
     );
     return {
-      legislator: mapOpenStatesPerson(cached.raw ?? cached),
+      legislator: mapDbStateLegislator(cached),
       cache: {
         source: "db",
         stale: true,
@@ -293,7 +321,7 @@ export async function refreshStateLegislator(
     const cached = rows[0];
     if (cached) {
       return {
-        legislator: mapOpenStatesPerson(cached.raw ?? cached),
+        legislator: mapDbStateLegislator(cached),
         cache: {
           source: "db",
           stale: isStale(cached),
@@ -324,7 +352,7 @@ export async function refreshStateLegislator(
     const cached = rows[0];
     if (cached) {
       return {
-        legislator: mapOpenStatesPerson(cached.raw ?? cached),
+        legislator: mapDbStateLegislator(cached),
         cache: {
           source: "db",
           stale: isStale(cached),
@@ -515,7 +543,7 @@ export async function getDistrictLegislators(
       "Serving district legislators from cache",
     );
     return {
-      legislators: cachedRows.map((r) => mapOpenStatesPerson(r.raw ?? r)),
+      legislators: cachedRows.map((r) => mapDbStateLegislator(r)),
       cache: {
         source: "db",
         stale: anyStale,

@@ -130,6 +130,42 @@ export interface FederalVote {
   sourceUrl?: string;
 }
 
+export type BillProgressCompletedStagesItem =
+  (typeof BillProgressCompletedStagesItem)[keyof typeof BillProgressCompletedStagesItem];
+
+export const BillProgressCompletedStagesItem = {
+  introduced: "introduced",
+  committee: "committee",
+  floorVote: "floorVote",
+  passed: "passed",
+  signed: "signed",
+  dead: "dead",
+} as const;
+
+export type BillProgressCurrentStage =
+  | (typeof BillProgressCurrentStage)[keyof typeof BillProgressCurrentStage]
+  | null;
+
+export const BillProgressCurrentStage = {
+  introduced: "introduced",
+  committee: "committee",
+  floorVote: "floorVote",
+  passed: "passed",
+  signed: "signed",
+  dead: "dead",
+} as const;
+
+export type BillProgressCurrentChamber =
+  | (typeof BillProgressCurrentChamber)[keyof typeof BillProgressCurrentChamber]
+  | null;
+
+export const BillProgressCurrentChamber = {
+  lower: "lower",
+  upper: "upper",
+  executive: "executive",
+  both: "both",
+} as const;
+
 export interface BillProgress {
   introduced?: boolean;
   committee?: boolean;
@@ -138,6 +174,9 @@ export interface BillProgress {
   signed?: boolean;
   enacted?: boolean;
   dead?: boolean;
+  completedStages?: BillProgressCompletedStagesItem[];
+  currentStage?: BillProgressCurrentStage;
+  currentChamber?: BillProgressCurrentChamber;
 }
 
 export interface BillDetail {

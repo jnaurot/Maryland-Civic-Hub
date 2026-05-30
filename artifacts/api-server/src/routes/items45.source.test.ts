@@ -2,7 +2,9 @@
  * Source guard tests for items 4 and 5.
  *
  * Item 4 — Retry logic for state API calls:
- *   state.ts should import withRetry and use it inside openStatesFetch.
+ *   openStatesFetch should live in stateLegislatorCache.ts, import withRetry from ../lib/http,
+ *   and wrap the fetch call inside withRetry. state.ts should import the shared openStatesFetch
+ *   rather than defining its own.
  *
  * Item 5 — Rate limit handling for federal routes:
  *   congressFetch in federal.ts should detect 429 and throw ProviderRateLimitError.
@@ -13,23 +15,39 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const stateSrc = readFileSync(resolve(import.meta.dirname, "./state.ts"), "utf8");
+const cacheSrc = readFileSync(
+  resolve(import.meta.dirname, "../lib/stateLegislatorCache.ts"),
+  "utf8",
+);
 const federalSrc = readFileSync(resolve(import.meta.dirname, "./federal.ts"), "utf8");
 
-// ── Item 4: state.ts retry ────────────────────────────────────────────────────
+// ── Item 4: openStatesFetch unified in stateLegislatorCache.ts ────────────────
 
 describe("state.ts source guards — item 4 retry", () => {
-  it("imports withRetry from ../lib/http", () => {
-    expect(stateSrc).toMatch(/withRetry.*from\s+["']\.\.\/lib\/http["']/);
+  it("imports openStatesFetch from ../lib/stateLegislatorCache instead of defining its own", () => {
+    expect(stateSrc).toContain('from "../lib/stateLegislatorCache"');
+    expect(stateSrc).toContain("openStatesFetch");
+    // state.ts should no longer define its own openStatesFetch function
+    const stateMatches = stateSrc.match(/function openStatesFetch\(/g);
+    expect(stateMatches).toBeNull();
   });
 
-  it("calls withRetry somewhere in the module (used in openStatesFetch)", () => {
-    expect(stateSrc).toContain("withRetry(");
+  it("state.ts no longer imports withRetry from ../lib/http", () => {
+    expect(stateSrc).not.toMatch(/withRetry.*from\s+["']\.\.\/lib\/http["']/);
+  });
+});
+
+describe("stateLegislatorCache.ts source guards — item 4 retry", () => {
+  it("imports withRetry from ./http", () => {
+    expect(cacheSrc).toMatch(/withRetry.*from\s+["']\.\/http["']/);
+  });
+
+  it("calls withRetry somewhere in the module", () => {
+    expect(cacheSrc).toContain("withRetry(");
   });
 
   it("openStatesFetch body contains a withRetry call that wraps the fetch", () => {
-    // The fetch call now lives inside a withRetry callback, not at the top level of
-    // openStatesFetch. We verify both withRetry and the inner fetch coexist in the function body.
-    expect(stateSrc).toMatch(/withRetry\([\s\S]{0,100}async \(\)/);
+    expect(cacheSrc).toMatch(/withRetry\([\s\S]{0,100}async \(\)/);
   });
 });
 

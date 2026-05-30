@@ -26,6 +26,7 @@ export const stateBillsTable = pgTable("state_bills", {
   subjects: text("subjects").array(),
   url: text("url"),
   textUrl: text("text_url"),
+  text: text("text"),
   jurisdiction: text("jurisdiction").notNull(),
   raw: jsonb("raw"),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),

@@ -49,6 +49,14 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+# Claude Code session files
+.claude/
+
+# Photo cache directories
+.member-photo-cache/
 
 .cache/
 .local/
+
+# Photo cache directories
+.member-photo-cache/

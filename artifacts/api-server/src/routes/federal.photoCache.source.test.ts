@@ -46,12 +46,12 @@ describe("federal.ts photo caching source guards", () => {
     );
   });
 
-  it("has a server-side file cache for member photos", () => {
+  it("imports photo cache helpers from the shared lib", () => {
     const src = getFederalSource();
 
+    expect(src).toContain('from "../lib/photoCache"');
     expect(src).toContain("getCachedPhoto");
     expect(src).toContain("setCachedPhoto");
-    expect(src).toContain("PHOTO_CACHE_DIR");
   });
 
   it("member-photo endpoint checks getCachedPhoto before hitting upstream", () => {

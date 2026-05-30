@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, or, desc, sql } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
 import {
   db,
   normalizeStateVotePosition,
@@ -17,12 +17,14 @@ import {
 import {
   getStateLegislator,
   refreshStateLegislator,
-  isRateLimited,
-  recordRateLimit,
+  openStatesFetch,
 } from "../lib/stateLegislatorCache";
-import { fetchWithTimeout as fetch, withRetry } from "../lib/http";
 import {
-  ProviderRateLimitError,
+  getCachedPhoto,
+  setCachedPhoto,
+} from "../lib/photoCache";
+import { fetchWithTimeout as fetch } from "../lib/http";
+import {
   isProviderRateLimitError,
   sendInternalError,
   sendProviderRateLimitError,
@@ -32,35 +34,40 @@ import {
   parseStageQuery,
   type LegislationStageKey,
 } from "../lib/legislationStages";
+import {
+  computeChamberAwareStages,
+} from "../lib/chamberAwareStages";
 
-async function checkRateLimited() {
-  if (await isRateLimited()) {
-    throw new ProviderRateLimitError({
-      provider: "OpenStates",
-      detail: "Temporary API request limit is active.",
-    });
-  }
+function stateMemberPhotoUrl(memberId: string, hasPhoto: boolean): string | undefined {
+  return hasPhoto ? `/api/state/member-photo/${encodeURIComponent(memberId)}` : undefined;
+}
+
+const PLACEHOLDER_SVG = Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+    <rect width="200" height="200" fill="#e5e7eb"/>
+    <circle cx="100" cy="80" r="35" fill="#9ca3af"/>
+    <path d="M30 180 Q100 110 170 180" fill="#9ca3af"/>
+  </svg>`,
+  "utf-8",
+);
+
+function sendPlaceholderPhoto(res: any) {
+  res
+    .set("Content-Type", "image/svg+xml")
+    .set("Cache-Control", "public, max-age=86400")
+    .set("Content-Length", String(PLACEHOLDER_SVG.length))
+    .send(PLACEHOLDER_SVG);
 }
 
 const router = Router();
 
 const OPENSTATES_API_KEY = process.env.OPENSTATES_API_KEY;
-const BASE = "https://v3.openstates.org";
 const STATE_MEMBER_BILLS_CACHE_TTL_MS = 5 * 60 * 1000;
 const stateMemberBillsCache = new Map<
   string,
   { fetchedAt: number; bills: ReturnType<typeof mapStateBill>[]; totalCount: number }
 >();
 
-function getOpenStatesRateLimitDetail(text: string) {
-  try {
-    const parsed = JSON.parse(text) as { detail?: unknown };
-    if (typeof parsed.detail === "string") return parsed.detail;
-  } catch {
-    // Fall back to the raw response text below.
-  }
-  return text.trim() || undefined;
-}
 
 function stateStageColumn(stage: LegislationStageKey) {
   switch (stage) {
@@ -77,43 +84,6 @@ function stateStageColumn(stage: LegislationStageKey) {
     case "dead":
       return stateBillsTable.stageDead;
   }
-}
-
-async function openStatesFetch(
-  path: string,
-  params: Record<string, string | number> = {},
-) {
-  if (!OPENSTATES_API_KEY) throw new Error("OPENSTATES_API_KEY not configured");
-  await checkRateLimited();
-  const url = new URL(`${BASE}${path}`);
-  for (const [k, v] of Object.entries(params)) {
-    url.searchParams.set(k, String(v));
-  }
-  return withRetry(
-    async () => {
-      const res = await fetch(url.toString(), {
-        headers: { "X-API-KEY": OPENSTATES_API_KEY },
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        if (
-          res.status === 429 ||
-          (res.status === 403 && text.toLowerCase().includes("rate"))
-        ) {
-          await recordRateLimit(res.status, text);
-          throw new ProviderRateLimitError({
-            provider: "OpenStates",
-            detail: getOpenStatesRateLimitDetail(text),
-          });
-        }
-        throw new Error(`OpenStates API error ${res.status}: ${text}`);
-      }
-      return res.json() as Promise<any>;
-    },
-    3,
-    2000,
-    (err) => !isProviderRateLimitError(err),
-  );
 }
 
 function mapStateBill(b: any) {
@@ -209,7 +179,7 @@ async function upsertStateBill({
         stageDead: stageFlags.dead,
         subjects: bill.subjects ?? [],
         url: bill.url ?? null,
-        raw: sourceBill,
+        raw: sql`COALESCE(state_bills.raw, '{}'::jsonb) || ${JSON.stringify(sourceBill)}::jsonb`,
         fetchedAt: new Date(),
         searchVector: sql`setweight(to_tsvector('english', coalesce(${bill.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${bill.identifier ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C')`,
       },
@@ -241,6 +211,117 @@ function mapDbStateBillRow(row: typeof stateBillsTable.$inferSelect) {
       : [],
     url: row.url ?? undefined,
     subjects: row.subjects ?? undefined,
+  };
+}
+
+function mapDbStateBillDetail(
+  row: typeof stateBillsTable.$inferSelect,
+  legislatorMap?: Map<string, { party?: string | null }>,
+) {
+  const raw = (row.raw ?? {}) as any;
+  const actions: any[] = Array.isArray(raw.actions) ? raw.actions : [];
+  const latestAction = actions[actions.length - 1];
+  const introducedDate =
+    row.introducedDate ?? raw.first_action_date ?? raw.created_at?.split("T")[0] ?? null;
+  const actionHistoryText = actions.map((a: any) => a?.description).filter(Boolean).join(" ");
+  const stageFlags = computeLegislationStageFlags({
+    latestAction: latestAction?.description,
+    status: actionHistoryText,
+    introducedDate,
+  });
+
+  const mappedActions = actions.map((a: any) => ({
+    date: a.date ?? "",
+    text: a.description ?? "",
+    type: a.classification?.[0],
+    organizationName: a.organization?.name,
+    organizationClassification: a.organization?.classification,
+  }));
+  const chamberAware = computeChamberAwareStages(mappedActions);
+  const subjects = Array.isArray(raw.subject)
+    ? raw.subject
+    : raw.subject
+      ? [raw.subject]
+      : [];
+  const sponsorships = Array.isArray(raw.sponsorships) ? raw.sponsorships : [];
+  // Prefer real committee names from backfilled raw.committees (from billactionrelatedentity)
+  const committees = Array.isArray(raw.committees)
+    ? raw.committees.map((c: any) => ({
+        name: c.name ?? "",
+        chamber: c.chamber ?? undefined,
+      }))
+    : actions
+        .filter((a: any) => a.organization)
+        .map((a: any) => ({
+          name: a.organization.name ?? "",
+          chamber: a.organization.classification,
+        }))
+        .filter(
+          (c: any, i: number, arr: any[]) =>
+            arr.findIndex((x) => x.name === c.name) === i,
+        );
+  const votes = Array.isArray(raw.votes)
+    ? raw.votes.map((v: any) => ({
+        date: v.date ?? v.start_date ?? "",
+        startDate: v.start_date,
+        chamber: v.chamber ?? v.organization?.classification,
+        organizationName: v.organization?.name,
+        organizationClassification: v.organization?.classification,
+        motionText: v.motion_text,
+        motionClassification: v.motion_classification,
+        sourceUrl: v.sources?.[0]?.url,
+        result: v.result,
+        yesCount: v.counts?.find((c: any) => c.option === "yes")?.value,
+        noCount: v.counts?.find((c: any) => c.option === "no")?.value,
+        absentCount: v.counts?.find((c: any) => c.option === "absent")?.value,
+      }))
+    : [];
+
+  const buildSponsor = (s: any) => {
+    const personId = s.person?.id ?? s.id ?? undefined;
+    const legislator = personId ? legislatorMap?.get(personId) : undefined;
+    return {
+      name: s.name ?? "",
+      party: legislator?.party ?? s.party ?? undefined,
+      state: raw.jurisdiction?.name ?? row.jurisdiction ?? undefined,
+      openstatesId: personId,
+    };
+  };
+
+  return {
+    id: row.id,
+    identifier: raw.identifier ?? row.identifier,
+    title: row.title ?? "Untitled",
+    session: raw.legislative_session ?? row.session,
+    chamber: raw.from_organization?.classification ?? row.chamber,
+    status: latestAction?.description ?? row.status,
+    introducedDate,
+    summary: raw.abstract ?? row.summary ?? null,
+    text: row.text ?? undefined,
+    sponsors: sponsorships
+      .filter((s: any) => s.primary)
+      .map(buildSponsor),
+    cosponsors: sponsorships
+      .filter((s: any) => !s.primary)
+      .map(buildSponsor),
+    committees,
+    actions: mappedActions,
+    votes,
+    url: raw.openstates_url ?? row.url,
+    textUrl: raw.openstates_url ?? row.url,
+    subjects,
+    stages: {
+      introduced: stageFlags.introduced,
+      committee: stageFlags.committee,
+      floorVote: stageFlags.floor_vote,
+      passed: stageFlags.passed,
+      signed: stageFlags.signed_enacted,
+      enacted: stageFlags.signed_enacted,
+      dead: stageFlags.dead,
+      completedStages: chamberAware.completed,
+      currentStage: chamberAware.current,
+      currentChamber: chamberAware.currentChamber,
+    },
   };
 }
 
@@ -292,7 +373,7 @@ router.get("/state/members/search", async (req, res) => {
       chamber: r.chamber,
       district: r.district,
       jurisdiction: r.jurisdiction,
-      photoUrl: r.photoUrl,
+      photoUrl: stateMemberPhotoUrl(r.id, !!r.photoUrl),
       state: r.state,
     }));
 
@@ -313,7 +394,13 @@ router.get("/state/members/:memberId", async (req, res) => {
       { memberId, source: result.cache.source },
       "State member request served",
     );
-    return res.json(result);
+    return res.json({
+      ...result,
+      legislator: {
+        ...result.legislator,
+        photoUrl: stateMemberPhotoUrl(memberId, !!result.legislator.photoUrl),
+      },
+    });
   } catch (err) {
     if (isProviderRateLimitError(err)) {
       req.log.warn({ err }, "State member request blocked by provider rate limit");
@@ -330,7 +417,13 @@ router.post("/state/members/:memberId/refresh", async (req, res) => {
 
   try {
     const result = await refreshStateLegislator(memberId, req.log);
-    return res.json(result);
+    return res.json({
+      ...result,
+      legislator: {
+        ...result.legislator,
+        photoUrl: stateMemberPhotoUrl(memberId, !!result.legislator.photoUrl),
+      },
+    });
   } catch (err) {
     if (isProviderRateLimitError(err)) {
       req.log.warn({ err }, "State member refresh blocked by provider rate limit");
@@ -354,7 +447,6 @@ router.post("/state/members/:memberId/bills/refresh", async (req, res) => {
       if (key.includes(`|${memberId}|`)) stateMemberBillsCache.delete(key);
     }
 
-    await checkRateLimited();
     req.log.info({ memberId, type, source: "openstates" }, "Force refreshing state member bills");
 
     const data = await openStatesFetch("/bills", {
@@ -545,40 +637,44 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
       return res.json({ bills: rows.map(mapDbStateBillRow), totalCount, offset });
     }
 
-    const perPage = Math.min(limit, 20);
-    const page = Math.floor(offset / perPage) + 1;
-    const cacheKey = [
-      jurisdiction,
-      memberId,
-      sponsorClassification,
-      page,
-      perPage,
-    ].join("|");
-    const cached = stateMemberBillsCache.get(cacheKey);
-    let bills: ReturnType<typeof mapStateBill>[] | undefined =
-      cached && Date.now() - cached.fetchedAt < STATE_MEMBER_BILLS_CACHE_TTL_MS
-        ? [...cached.bills]
-        : undefined;
-    let totalCount =
-      cached && Date.now() - cached.fetchedAt < STATE_MEMBER_BILLS_CACHE_TTL_MS
-        ? cached.totalCount
-        : 0;
+    // No-filter path: serve from DB. Seed from OpenStates only on empty cache.
+    const primaryContainment = [
+      sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, classification: "primary" }])}::jsonb`,
+      sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, primary: true }])}::jsonb`,
+    ];
+    const cosponsorContainment = [
+      sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, classification: "cosponsor" }])}::jsonb`,
+      sql`${stateBillsTable.raw}->'sponsorships' @> ${JSON.stringify([{ person: { id: memberId }, classification: "cosponsor-primary" }])}::jsonb`,
+    ];
+    const sponsorCondition =
+      sponsorClassification === "primary"
+        ? or(...primaryContainment)
+        : or(...cosponsorContainment);
+    const dbConditions = [
+      eq(stateBillsTable.jurisdiction, jurisdiction),
+      sponsorCondition,
+    ];
 
-    if (!bills) {
-      const params: Record<string, string | number> = {
+    const [memberCountRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stateBillsTable)
+      .where(and(...dbConditions));
+
+    if (Number(memberCountRow?.count ?? 0) === 0) {
+      req.log.info(
+        { memberId, jurisdiction, type, source: "openstates" },
+        "Seeding state member bills from OpenStates (no cached bills)",
+      );
+      const data = await openStatesFetch("/bills", {
         jurisdiction,
-        per_page: perPage,
-        page,
+        per_page: 20,
+        page: 1,
         sponsor: memberId,
         include: "sponsorships",
         sponsor_classification: sponsorClassification,
         sort: "first_action_desc",
-      };
-
-      const data = await openStatesFetch("/bills", params);
-      totalCount = Number(data.pagination?.total_items ?? 0);
+      });
       const sourceBills = data.results ?? [];
-      bills = sortBillsNewestFirst(sourceBills.map(mapStateBill));
       for (const sourceBill of sourceBills) {
         await upsertStateBill({
           bill: mapStateBill(sourceBill),
@@ -586,24 +682,19 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
           jurisdiction,
         });
       }
-      stateMemberBillsCache.set(cacheKey, {
-        fetchedAt: Date.now(),
-        bills,
-        totalCount,
-      });
     }
 
-    // OpenStates does not support per-member text search, so search within the
-    // current sponsored/cosponsored page after fetching it from the provider.
-    if (q) {
-      const query = q.toLowerCase();
-      bills = bills.filter(
-        (b: any) =>
-          (b.title ?? "").toLowerCase().includes(query) ||
-          (b.identifier ?? "").toLowerCase().includes(query),
-      );
-      totalCount = bills.length;
-    }
+    const [countResult, rows] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(stateBillsTable).where(and(...dbConditions)),
+      db
+        .select()
+        .from(stateBillsTable)
+        .where(and(...dbConditions))
+        .orderBy(desc(stateBillsTable.introducedDate))
+        .limit(limit)
+        .offset(offset),
+    ]);
+    const totalCount = Number(countResult[0]?.count ?? 0);
 
     req.log.info(
       {
@@ -613,13 +704,13 @@ router.get("/state/members/:memberId/bills", async (req, res) => {
         offset,
         limit,
         totalCount,
-        source: "openstates",
+        source: "db",
       },
-      "Serving state member bills from OpenStates sponsor index",
+      "Serving state member bills from DB",
     );
 
     return res.json({
-      bills,
+      bills: rows.map(mapDbStateBillRow),
       totalCount,
       offset,
     });
@@ -1045,54 +1136,69 @@ router.get("/state/bills/search", async (req, res) => {
 });
 
 // Bill IDs are "ocd-bill/<uuid>" — frontend URL-encodes them
-router.get("/state/bills/:billId", async (req, res) => {
-  const billId = decodeURIComponent(req.params.billId);
-  if (!billId) return res.status(400).json({ error: "billId required" });
+async function fetchStateBillFromOpenStates(billId: string) {
+  const url = new URL(`https://v3.openstates.org/bills/${billId}`);
+  url.searchParams.set("include", "votes");
+  url.searchParams.append("include", "sponsorships");
+  url.searchParams.append("include", "actions");
+  const res = await fetch(url.toString(), {
+    headers: { "X-API-KEY": OPENSTATES_API_KEY! },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OpenStates API error ${res.status}: ${text}`);
+  }
+  return res.json() as Promise<any>;
+}
 
-  try {
-    req.log.info(
-      { billId, source: "openstates" },
-      "Fetching state bill detail from OpenStates",
-    );
-    const url = new URL(`${BASE}/bills/${billId}`);
-    url.searchParams.set("include", "votes");
-    url.searchParams.append("include", "sponsorships");
-    url.searchParams.append("include", "actions");
-    const res2 = await fetch(url.toString(), {
-      headers: { "X-API-KEY": OPENSTATES_API_KEY! },
-    });
-    if (!res2.ok) {
-      const text = await res2.text();
-      throw new Error(`OpenStates API error ${res2.status}: ${text}`);
-    }
-    const data = (await res2.json()) as any;
-    const latestAction = data.actions?.[data.actions.length - 1];
-    const introducedDate =
-      data.first_action_date ?? data.created_at?.split("T")[0] ?? null;
-    const actionHistoryText = Array.isArray(data.actions)
-      ? data.actions.map((action: any) => action?.description).filter(Boolean).join(" ")
-      : "";
-    const stageFlags = computeLegislationStageFlags({
-      latestAction: latestAction?.description,
-      status: actionHistoryText,
+async function upsertStateBillFromApi(data: any) {
+  const latestAction = data.actions?.[data.actions.length - 1];
+  const introducedDate =
+    data.first_action_date ?? data.created_at?.split("T")[0] ?? null;
+  const actionHistoryText = Array.isArray(data.actions)
+    ? data.actions.map((action: any) => action?.description).filter(Boolean).join(" ")
+    : "";
+  const stageFlags = computeLegislationStageFlags({
+    latestAction: latestAction?.description,
+    status: actionHistoryText,
+    introducedDate,
+  });
+  const subjects = Array.isArray(data.subject)
+    ? data.subject
+    : data.subject
+      ? [data.subject]
+      : [];
+  const subjectsText = subjects.join(" ");
+
+  await db
+    .insert(stateBillsTable)
+    .values({
+      id: data.id,
+      identifier: data.identifier ?? null,
+      title: data.title ?? "Untitled",
+      session: data.legislative_session ?? null,
+      chamber: data.from_organization?.classification ?? null,
+      status: latestAction?.description ?? null,
       introducedDate,
-    });
-    const subjects = Array.isArray(data.subject)
-      ? data.subject
-      : data.subject
-        ? [data.subject]
-        : [];
-    const subjectsText = subjects.join(" ");
-
-    // Cache for search
-    await db
-      .insert(stateBillsTable)
-      .values({
-        id: data.id ?? billId,
-        identifier: data.identifier ?? null,
+      stageIntroduced: stageFlags.introduced,
+      stageCommittee: stageFlags.committee,
+      stageFloorVote: stageFlags.floor_vote,
+      stagePassed: stageFlags.passed,
+      stageSignedEnacted: stageFlags.signed_enacted,
+      stageDead: stageFlags.dead,
+      summary: data.abstract ?? null,
+      subjects,
+      url: data.openstates_url ?? null,
+      textUrl: data.openstates_url ?? null,
+      jurisdiction: data.jurisdiction?.name ?? data.jurisdiction ?? "",
+      raw: data,
+      searchVector: sql`setweight(to_tsvector('english', coalesce(${data.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${data.identifier ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${data.abstract ?? ""}, '')), 'C')`,
+    })
+    .onConflictDoUpdate({
+      target: stateBillsTable.id,
+      set: {
         title: data.title ?? "Untitled",
-        session: data.legislative_session ?? null,
-        chamber: data.from_organization?.classification ?? null,
+        identifier: data.identifier ?? null,
         status: latestAction?.description ?? null,
         introducedDate,
         stageIntroduced: stageFlags.introduced,
@@ -1106,107 +1212,78 @@ router.get("/state/bills/:billId", async (req, res) => {
         url: data.openstates_url ?? null,
         textUrl: data.openstates_url ?? null,
         jurisdiction: data.jurisdiction?.name ?? data.jurisdiction ?? "",
-        raw: data,
+        raw: sql`COALESCE(state_bills.raw, '{}'::jsonb) || ${JSON.stringify(data)}::jsonb`,
+        fetchedAt: new Date(),
         searchVector: sql`setweight(to_tsvector('english', coalesce(${data.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${data.identifier ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${data.abstract ?? ""}, '')), 'C')`,
-      })
-      .onConflictDoUpdate({
-        target: stateBillsTable.id,
-        set: {
-          title: data.title ?? "Untitled",
-          identifier: data.identifier ?? null,
-          status: latestAction?.description ?? null,
-          introducedDate,
-          stageIntroduced: stageFlags.introduced,
-          stageCommittee: stageFlags.committee,
-          stageFloorVote: stageFlags.floor_vote,
-          stagePassed: stageFlags.passed,
-          stageSignedEnacted: stageFlags.signed_enacted,
-          stageDead: stageFlags.dead,
-          summary: data.abstract ?? null,
-          subjects,
-          url: data.openstates_url ?? null,
-          textUrl: data.openstates_url ?? null,
-          jurisdiction: data.jurisdiction?.name ?? data.jurisdiction ?? "",
-          raw: data,
-          fetchedAt: new Date(),
-          searchVector: sql`setweight(to_tsvector('english', coalesce(${data.title ?? ""}, '')), 'A') || setweight(to_tsvector('english', coalesce(${data.identifier ?? ""}, '')), 'B') || setweight(to_tsvector('english', coalesce(${subjectsText}, '')), 'C') || setweight(to_tsvector('english', coalesce(${data.abstract ?? ""}, '')), 'C')`,
-        },
-      });
-
-    return res.json({
-      id: data.id ?? billId,
-      identifier: data.identifier,
-      title: data.title ?? "Untitled",
-      session: data.legislative_session,
-      chamber: data.from_organization?.classification,
-      status: latestAction?.description,
-      introducedDate,
-      summary: data.abstract,
-      sponsors:
-        data.sponsorships
-          ?.filter((s: any) => s.primary)
-          .map((s: any) => ({
-            name: s.name ?? "",
-            party: s.party,
-            state: data.jurisdiction?.name ?? undefined,
-            openstatesId: s.person?.id ?? s.id ?? undefined,
-          })) ?? [],
-      cosponsors:
-        data.sponsorships
-          ?.filter((s: any) => !s.primary)
-          .map((s: any) => ({
-            name: s.name ?? "",
-            party: s.party,
-            state: data.jurisdiction?.name ?? undefined,
-            openstatesId: s.person?.id ?? s.id ?? undefined,
-          })) ?? [],
-      committees:
-        data.actions
-          ?.filter((a: any) => a.organization)
-          .map((a: any) => ({
-            name: a.organization.name ?? "",
-            chamber: a.organization.classification,
-          }))
-          .filter(
-            (c: any, i: number, arr: any[]) =>
-              arr.findIndex((x) => x.name === c.name) === i,
-          ) ?? [],
-      actions:
-        data.actions?.map((a: any) => ({
-          date: a.date ?? "",
-          text: a.description ?? "",
-          type: a.classification?.[0],
-          organizationName: a.organization?.name,
-          organizationClassification: a.organization?.classification,
-        })) ?? [],
-      votes:
-        data.votes?.map((v: any) => ({
-          date: v.date ?? v.start_date ?? "",
-          startDate: v.start_date,
-          chamber: v.chamber ?? v.organization?.classification,
-          organizationName: v.organization?.name,
-          organizationClassification: v.organization?.classification,
-          motionText: v.motion_text,
-          motionClassification: v.motion_classification,
-          sourceUrl: v.sources?.[0]?.url,
-          result: v.result,
-          yesCount: v.counts?.find((c: any) => c.option === "yes")?.value,
-          noCount: v.counts?.find((c: any) => c.option === "no")?.value,
-          absentCount: v.counts?.find((c: any) => c.option === "absent")?.value,
-        })) ?? [],
-      url: data.openstates_url,
-      textUrl: data.openstates_url,
-      subjects,
-      stages: {
-        introduced: stageFlags.introduced,
-        committee: stageFlags.committee,
-        floorVote: stageFlags.floor_vote,
-        passed: stageFlags.passed,
-        signed: stageFlags.signed_enacted,
-        enacted: stageFlags.signed_enacted,
-        dead: stageFlags.dead,
       },
     });
+
+  return mapDbStateBillDetail({
+    ...data,
+    id: data.id,
+    title: data.title ?? "Untitled",
+    identifier: data.identifier ?? null,
+    session: data.legislative_session ?? null,
+    chamber: data.from_organization?.classification ?? null,
+    status: latestAction?.description ?? null,
+    introducedDate,
+    summary: data.abstract ?? null,
+    subjects,
+    url: data.openstates_url ?? null,
+    textUrl: data.openstates_url ?? null,
+    jurisdiction: data.jurisdiction?.name ?? data.jurisdiction ?? "",
+    raw: data,
+    stageIntroduced: stageFlags.introduced,
+    stageCommittee: stageFlags.committee,
+    stageFloorVote: stageFlags.floor_vote,
+    stagePassed: stageFlags.passed,
+    stageSignedEnacted: stageFlags.signed_enacted,
+    stageDead: stageFlags.dead,
+    searchVector: null,
+    fetchedAt: new Date(),
+  } as any);
+}
+
+router.get("/state/bills/:billId", async (req, res) => {
+  const billId = decodeURIComponent(req.params.billId);
+  if (!billId) return res.status(400).json({ error: "billId required" });
+
+  try {
+    // 1. Try DB first
+    const [row] = await db
+      .select()
+      .from(stateBillsTable)
+      .where(eq(stateBillsTable.id, billId))
+      .limit(1);
+
+    if (row) {
+      req.log.info({ billId, source: "db" }, "Serving state bill detail from DB");
+      // Build a map of sponsor person IDs → legislator info for party enrichment
+      const raw = (row.raw ?? {}) as any;
+      const sponsorships = Array.isArray(raw.sponsorships) ? raw.sponsorships : [];
+      const personIds = sponsorships
+        .map((s: any) => s.person?.id ?? s.id)
+        .filter((id: string | undefined): id is string => !!id);
+
+      let legislatorMap = new Map<string, { party?: string | null }>();
+      if (personIds.length > 0) {
+        const legislators = await db
+          .select({ id: stateLegislatorsTable.id, party: stateLegislatorsTable.party })
+          .from(stateLegislatorsTable)
+          .where(inArray(stateLegislatorsTable.id, personIds));
+        for (const l of legislators) {
+          legislatorMap.set(l.id, { party: l.party });
+        }
+      }
+
+      return res.json(mapDbStateBillDetail(row, legislatorMap));
+    }
+
+    // 2. Cache miss → fetch from OpenStates
+    req.log.info({ billId, source: "openstates" }, "Fetching state bill detail from OpenStates");
+    const data = await fetchStateBillFromOpenStates(billId);
+    const detail = await upsertStateBillFromApi(data);
+    return res.json(detail);
   } catch (err) {
     if (isProviderRateLimitError(err)) {
       req.log.warn({ err }, "State bill detail request blocked by provider rate limit");
@@ -1214,6 +1291,62 @@ router.get("/state/bills/:billId", async (req, res) => {
     }
     req.log.error({ err }, "Error fetching state bill detail");
     return sendInternalError(res);
+  }
+});
+
+// Proxy OpenStates member photos with a 1-year immutable cache.
+router.get("/state/member-photo/:memberId", async (req, res) => {
+  const memberId = decodeURIComponent(req.params.memberId);
+  try {
+    const [row] = await db
+      .select({ photoUrl: stateLegislatorsTable.photoUrl })
+      .from(stateLegislatorsTable)
+      .where(eq(stateLegislatorsTable.id, memberId));
+
+    if (!row?.photoUrl) {
+      sendPlaceholderPhoto(res);
+      return;
+    }
+
+    const cached = await getCachedPhoto(row.photoUrl, memberId);
+    if (cached) {
+      res
+        .set("Content-Type", cached.contentType)
+        .set("Cache-Control", "public, max-age=31536000, immutable")
+        .set("Content-Length", String(cached.buffer.length))
+        .send(cached.buffer);
+      return;
+    }
+
+    const upstream = await fetch(row.photoUrl);
+    if (!upstream.ok) {
+      req.log.warn({ memberId, photoUrl: row.photoUrl, status: upstream.status }, "Upstream photo unavailable; serving placeholder");
+      sendPlaceholderPhoto(res);
+      return;
+    }
+
+    const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+    if (!contentType.startsWith("image/")) {
+      sendPlaceholderPhoto(res);
+      return;
+    }
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    if (buffer.length === 0) {
+      sendPlaceholderPhoto(res);
+      return;
+    }
+
+    await setCachedPhoto(row.photoUrl, memberId, buffer, contentType);
+
+    res
+      .set("Content-Type", contentType)
+      .set("Cache-Control", "public, max-age=31536000, immutable")
+      .set("Content-Length", String(buffer.length))
+      .send(buffer);
+  } catch (err) {
+    req.log.error({ err, memberId }, "State member photo failed; serving placeholder");
+    sendPlaceholderPhoto(res);
   }
 });
 

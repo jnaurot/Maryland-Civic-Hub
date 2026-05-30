@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { eq, and, or, desc, sql, inArray, lt } from "drizzle-orm";
 import { XMLParser } from "fast-xml-parser";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import {
+  getCachedPhoto,
+  setCachedPhoto,
+} from "../lib/photoCache";
 import {
   db,
   normalizeVoteCast,
@@ -487,43 +489,6 @@ async function fetchAndCacheFederalMember(bioguideId: string, logger?: any) {
   }
 
   return mapped;
-}
-
-const PHOTO_CACHE_DIR = resolve(
-  process.env.PHOTO_CACHE_DIR || ".",
-  ".member-photo-cache",
-);
-
-async function getCachedPhoto(
-  upstreamUrl: string,
-  bioguideId: string,
-): Promise<{ buffer: Buffer; contentType: string } | null> {
-  try {
-    const metaPath = resolve(PHOTO_CACHE_DIR, `${bioguideId}.meta.json`);
-    const meta = JSON.parse(await readFile(metaPath, "utf8")) as {
-      url: string;
-      contentType: string;
-    };
-    if (meta.url !== upstreamUrl) return null;
-    const buffer = await readFile(resolve(PHOTO_CACHE_DIR, `${bioguideId}.bin`));
-    return { buffer, contentType: meta.contentType };
-  } catch {
-    return null;
-  }
-}
-
-async function setCachedPhoto(
-  upstreamUrl: string,
-  bioguideId: string,
-  buffer: Buffer,
-  contentType: string,
-): Promise<void> {
-  await mkdir(PHOTO_CACHE_DIR, { recursive: true });
-  await writeFile(resolve(PHOTO_CACHE_DIR, `${bioguideId}.bin`), buffer);
-  await writeFile(
-    resolve(PHOTO_CACHE_DIR, `${bioguideId}.meta.json`),
-    JSON.stringify({ url: upstreamUrl, contentType }),
-  );
 }
 
 // Proxy congress.gov member photos with a 1-year immutable cache so the
