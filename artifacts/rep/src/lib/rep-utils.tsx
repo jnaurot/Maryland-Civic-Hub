@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronUp, ChevronDown, X, Search } from "lucide-react";
+import { ChevronUp, ChevronDown, X, Search, GripHorizontal } from "lucide-react";
 
 export const BILL_STAGE_OPTIONS = [
   "Introduced",
@@ -80,10 +80,46 @@ export function HighlightedSummary({ text, query }: { text: string; query: strin
   );
 }
 
-export function SummarySearch({ summary }: { summary: string }) {
+export function SummarySearch({ summary, className = "", contentClassName = "", profileHeight = 300, defaultHeight = 400 }: { summary: string; className?: string; contentClassName?: string; profileHeight?: number; defaultHeight?: number }) {
   const [query, setQuery] = useState("");
   const [currentMatch, setCurrentMatch] = useState(0);
+  const [height, setHeight] = useState(defaultHeight);
+  const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState(0);
+  const startYRef = useRef(0);
+  const startHeightRef = useRef(0);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      setContentHeight(containerRef.current.scrollHeight);
+    }
+  }, [summary, query]);
+
+  const minHeight = Math.min(contentHeight, profileHeight);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    startYRef.current = e.clientY;
+    startHeightRef.current = height;
+  }, [height]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientY - startYRef.current;
+      const newHeight = Math.max(minHeight, startHeightRef.current + delta);
+      setHeight(newHeight);
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, minHeight]);
 
   const matches = useMemo(() => {
     if (!query.trim()) return 0;
@@ -107,8 +143,8 @@ export function SummarySearch({ summary }: { summary: string }) {
   }, [matches, query, scrollToMatch]);
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className={`overflow-hidden flex flex-col ${className}`}>
+      <CardHeader className="pb-3 shrink-0">
         <div className="flex items-center justify-between gap-4">
           <CardTitle className="text-base">Summary</CardTitle>
           <div className="flex items-center gap-2">
@@ -143,9 +179,15 @@ export function SummarySearch({ summary }: { summary: string }) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="pt-0" ref={containerRef}>
+      <CardContent className="pt-0 pr-3 overflow-y-auto" style={{ height }} ref={containerRef}>
         <HighlightedSummary text={summary} query={query} />
       </CardContent>
+      <div
+        className="shrink-0 h-4 flex items-center justify-center cursor-ns-resize bg-muted/30 hover:bg-muted/50 transition-colors"
+        onMouseDown={handleMouseDown}
+      >
+        <GripHorizontal className="h-3 w-3 text-muted-foreground/50" />
+      </div>
     </Card>
   );
 }

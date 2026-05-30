@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useParams, Link, useSearch } from "wouter";
 import {
   useGetStateBillDetail,
@@ -7,7 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ExternalLink, CheckCircle2, Circle, Bookmark } from "lucide-react";
+import { ChevronLeft, ExternalLink, CheckCircle2, Circle, Bookmark, GripHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RepNameLink } from "@/components/RepNameLink";
 import { partyColor, SummarySearch } from "@/lib/rep-utils";
@@ -149,6 +149,13 @@ function getVoteDisplay(vote: StateBillVoteSummary, actions?: BillActionSummary[
   };
 }
 
+function formatChamberLabel(value?: string | null) {
+  if (value === "lower") return "House";
+  if (value === "upper") return "Senate";
+  if (value === "executive") return "Governor";
+  return value;
+}
+
 function StateBillProgressBar({ stages }: {
   stages?: {
     introduced?: boolean;
@@ -156,37 +163,61 @@ function StateBillProgressBar({ stages }: {
     floorVote?: boolean;
     passed?: boolean;
     signed?: boolean;
+    enacted?: boolean;
     dead?: boolean;
+    completedStages?: string[];
+    currentStage?: string | null;
+    currentChamber?: string | null;
   };
 }) {
-  const stageNames = ["Introduced", "Committee", "Floor Vote", "Passed"];
+  const allStages = [
+    { key: "introduced", label: "Introduced" },
+    { key: "committee", label: "Committee" },
+    { key: "floorVote", label: "Floor Vote" },
+    { key: "passed", label: "Passed" },
+    { key: "signed", label: "Signed / Enacted" },
+  ] as const;
 
-  const isReached = (stage: string) => {
-    switch (stage) {
-      case "Introduced": return !!stages?.introduced;
-      case "Committee": return !!stages?.committee;
-      case "Floor Vote": return !!stages?.floorVote;
-      case "Passed": return !!stages?.passed;
-      default: return false;
-    }
-  };
+  const completed = new Set(stages?.completedStages ?? []);
+  const current = stages?.currentStage;
+  const currentChamber = stages?.currentChamber;
+
+  if (stages?.dead) {
+    return (
+      <div className="flex items-center gap-2 mt-4 mb-6 p-3 bg-red-50 rounded-lg">
+        <Circle className="h-5 w-5 text-red-600" />
+        <span className="text-sm font-medium text-red-700">Bill died or failed</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-0 mt-4 mb-6">
-      {stageNames.map((name, i) => {
-        const reached = isReached(name);
+      {allStages.map(({ key, label }, i) => {
+        const isCompleted = completed.has(key) || (key === "signed" && completed.has("signed"));
+        const isCurrent = current === key;
+        const isLast = i === allStages.length - 1;
+        const nextCompleted = completed.has(allStages[i + 1]?.key) || (allStages[i + 1]?.key === "signed" && completed.has("signed"));
+
         return (
-          <div key={name} className="flex items-center flex-1">
+          <div key={key} className="flex items-center flex-1">
             <div className="flex flex-col items-center">
-              {reached
-                ? <CheckCircle2 className="h-5 w-5 text-green-600" />
-                : <Circle className="h-5 w-5 text-muted-foreground/30" />}
-              <span className={`text-[10px] mt-1 text-center leading-tight ${reached ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                {name}
+              {isCompleted ? (
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              ) : isCurrent ? (
+                <Circle className="h-5 w-5 text-amber-500 fill-amber-500" />
+              ) : (
+                <Circle className="h-5 w-5 text-muted-foreground/30" />
+              )}
+              <span className={`text-[10px] mt-1 text-center leading-tight ${isCompleted || isCurrent ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                {label}
+                {isCurrent && currentChamber && currentChamber !== "both" ? (
+                  <span className="block text-[9px] text-amber-600">{formatChamberLabel(currentChamber)}</span>
+                ) : null}
               </span>
             </div>
-            {i < stageNames.length - 1 && (
-              <div className={`h-0.5 flex-1 mx-1 -mt-4 ${isReached(stageNames[i + 1]) ? "bg-green-600" : "bg-muted"}`} />
+            {!isLast && (
+              <div className={`h-0.5 flex-1 mx-1 -mt-4 ${nextCompleted ? "bg-green-600" : isCurrent ? "bg-amber-300" : "bg-muted"}`} />
             )}
           </div>
         );
@@ -199,21 +230,87 @@ function ResizableDetailCard({
   title,
   children,
   className = "",
-  contentClassName = "max-h-[min(65vh,28rem)]",
+  profileHeight = 300,
 }: {
   title: string;
   children: ReactNode;
   className?: string;
-  contentClassName?: string;
+  profileHeight?: number;
 }) {
+  const [height, setHeight] = useState<number | null>(null);
+  const [naturalHeight, setNaturalHeight] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const startYRef = useRef(0);
+  const startHeightRef = useRef(0);
+  const userDraggedRef = useRef(false);
+  const measuredRef = useRef(false);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    const observer = new ResizeObserver(() => {
+      if (measuredRef.current) return;
+      const h = el.offsetHeight;
+      if (h > 0) {
+        measuredRef.current = true;
+        setNaturalHeight(h);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!userDraggedRef.current && naturalHeight > 0) {
+      setHeight(Math.min(naturalHeight, profileHeight));
+    }
+  }, [naturalHeight, profileHeight]);
+
+  const minHeight = Math.min(naturalHeight, profileHeight);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    userDraggedRef.current = true;
+    setIsDragging(true);
+    startYRef.current = e.clientY;
+    startHeightRef.current = height ?? naturalHeight;
+  }, [height, naturalHeight]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientY - startYRef.current;
+      const newHeight = Math.min(naturalHeight, Math.max(minHeight, startHeightRef.current + delta));
+      setHeight(newHeight);
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, minHeight, naturalHeight]);
+
   return (
-    <Card className={`overflow-hidden ${className}`}>
-      <CardHeader className="pb-3">
+    <Card className={`overflow-hidden flex flex-col ${className}`}>
+      <CardHeader className="pb-3 shrink-0">
         <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</CardTitle>
       </CardHeader>
-      <CardContent className={`pt-0 pr-3 overflow-y-auto ${contentClassName}`}>
+      <CardContent
+        ref={scrollRef}
+        className={`pt-0 pr-3 ${height !== null && height < naturalHeight ? "overflow-y-auto" : "overflow-hidden"}`}
+        style={height !== null ? { height } : undefined}
+      >
         {children}
       </CardContent>
+      <div
+        className="shrink-0 h-4 flex items-center justify-center cursor-ns-resize bg-muted/30 hover:bg-muted/50 transition-colors"
+        onMouseDown={handleMouseDown}
+      >
+        <GripHorizontal className="h-3 w-3 text-muted-foreground/50" />
+      </div>
     </Card>
   );
 }
@@ -236,21 +333,38 @@ export function StateBillDetail() {
   const { toggle, check } = useBookmarks();
   const bookmarked = check(billId);
 
+  const profileRef = useRef<HTMLDivElement>(null);
+  const [profileHeight, setProfileHeight] = useState(300);
+
+  useEffect(() => {
+    if (!profileRef.current) return;
+    const el = profileRef.current;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setProfileHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [bill]);
+
   return (
-    <div className="h-full overflow-y-auto bg-muted/20">
-      <div className="container mx-auto max-w-4xl px-4 pt-8 pb-[calc(8rem+env(safe-area-inset-bottom))]">
-        <Link href={fromPath} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
+    <div className="h-full flex flex-col bg-muted/20">
+      <div className="shrink-0 container mx-auto max-w-4xl px-4 py-3">
+        <Link href={fromPath} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft className="h-4 w-4" /> {fromName ? `Back to ${fromName}` : "Back to State Bills"}
         </Link>
-
-        {isLoading ? (
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="container mx-auto px-4 pb-16 max-w-4xl">
+          {isLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-48 w-full rounded-xl" />
             <Skeleton className="h-64 w-full rounded-xl" />
           </div>
         ) : bill ? (
           <div className="space-y-6">
-            <Card>
+            <Card ref={profileRef}>
               <CardContent className="p-6">
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className="flex flex-wrap gap-2">
@@ -260,7 +374,7 @@ export function StateBillDetail() {
                         {bill.chamber === "upper" ? "Senate" : bill.chamber === "lower" ? "House of Delegates" : bill.chamber}
                       </Badge>
                     )}
-                    {bill.session && <Badge variant="secondary">Session {bill.session}</Badge>}
+                    {bill.session && <Badge variant="secondary">{typeof bill.session === "string" && /^\d{4}$/.test(bill.session) ? `${bill.session} Session` : `Session ${bill.session}`}</Badge>}
                     {bill.introducedDate && <span className="text-sm text-muted-foreground">Introduced {bill.introducedDate}</span>}
                   </div>
                   <Button
@@ -295,7 +409,7 @@ export function StateBillDetail() {
                 )}
 
                 <div className="flex flex-wrap gap-4 mt-3">
-                  {bill.textUrl && (
+                  {bill.textUrl && bill.textUrl !== bill.url && (
                     <a href={bill.textUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
                       Read full text <ExternalLink className="h-3 w-3" />
                     </a>
@@ -309,16 +423,25 @@ export function StateBillDetail() {
               </CardContent>
             </Card>
 
-            {bill.summary && <SummarySearch summary={bill.summary} />}
+            {bill.summary && (
+              <SummarySearch
+                summary={bill.summary}
+                className="overflow-hidden"
+                contentClassName="overflow-y-auto pr-3"
+                profileHeight={profileHeight}
+              />
+            )}
 
             <div className="grid md:grid-cols-2 gap-6">
               {bill.sponsors && bill.sponsors.length > 0 && (
-                <ResizableDetailCard title="Sponsors">
+                <ResizableDetailCard title={`Sponsor${bill.sponsors.length > 1 ? "s" : ""}`} profileHeight={profileHeight}>
                   <div className="space-y-2">
                     {bill.sponsors.map((s, i) => (
                       <div key={i} className="flex items-center justify-between">
                         <RepNameLink name={s.name} openstatesId={s.openstatesId} />
-                        {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
+                        <div className="flex gap-1">
+                          {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -326,7 +449,7 @@ export function StateBillDetail() {
               )}
 
               {bill.committees && bill.committees.length > 0 && (
-                <ResizableDetailCard title="Committees">
+                <ResizableDetailCard title="Committees" profileHeight={profileHeight}>
                   <div className="space-y-2">
                     {bill.committees.map((c, i) => (
                       <div key={i} className="text-sm">
@@ -340,12 +463,14 @@ export function StateBillDetail() {
             </div>
 
             {bill.cosponsors && bill.cosponsors.length > 0 && (
-              <ResizableDetailCard title={`Cosponsors (${bill.cosponsors.length})`} contentClassName="max-h-72">
+              <ResizableDetailCard title={`Cosponsors (${bill.cosponsors.length})`} profileHeight={profileHeight}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   {bill.cosponsors.map((s, i) => (
                     <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
                       <RepNameLink name={s.name} openstatesId={s.openstatesId} />
-                      {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
+                      <div className="flex gap-1 items-center">
+                        {s.party && <Badge className={`text-xs ${partyColor(s.party)}`}>{s.party?.charAt(0)}</Badge>}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -353,52 +478,79 @@ export function StateBillDetail() {
             )}
 
             {bill.votes && bill.votes.length > 0 && (
-              <ResizableDetailCard title="Votes">
+              <ResizableDetailCard title="Votes" profileHeight={profileHeight}>
                 <div className="space-y-3">
-                  {[...bill.votes].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((v, i) => {
-                    const voteDisplay = getVoteDisplay(v, bill.actions);
+                  {[...bill.votes]
+                    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
+                    .map((v, i) => {
+                      const voteDisplay = getVoteDisplay(v, bill.actions);
+                      const motionType = v.motionClassification?.join(", ") ?? voteDisplay.stage;
 
-                    return (
-                      <div key={i} className="flex flex-col gap-2 border-b pb-3 text-sm last:border-0 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium">{v.result}</span>
-                            {voteDisplay.body && <Badge variant="secondary">{voteDisplay.body}</Badge>}
-                            <Badge variant="outline">{voteDisplay.stage}</Badge>
+                      return (
+                        <div key={i} className="flex flex-col gap-2 border-b pb-3 text-sm last:border-0 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {voteDisplay.body && <Badge variant="secondary">{voteDisplay.body}</Badge>}
+                              {v.result && (
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    v.result.toLowerCase().includes("pass")
+                                      ? "border-green-300 text-green-700 bg-green-50"
+                                      : v.result.toLowerCase().includes("fail")
+                                        ? "border-red-300 text-red-700 bg-red-50"
+                                        : ""
+                                  }
+                                >
+                                  {v.result}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">{v.date}</p>
+                            {motionType && <p className="text-xs text-muted-foreground leading-snug">{motionType}</p>}
+                            {v.sourceUrl && (
+                              <a
+                                href={v.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                              >
+                                Roll-call source <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {voteDisplay.date ? `Legislative history date: ${voteDisplay.date}` : "Vote date: See roll-call source"}
-                          </p>
-                          {voteDisplay.actionText && voteDisplay.actionText !== voteDisplay.stage && (
-                            <p className="text-xs text-muted-foreground">Legislative action: {voteDisplay.actionText}</p>
-                          )}
-                          {v.sourceUrl && (
-                            <a href={v.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                              Roll-call source <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
+                          <div className="flex shrink-0 flex-wrap gap-3 text-xs sm:justify-end">
+                            {v.yesCount !== undefined && <span className="text-green-600 font-semibold">Yea: {v.yesCount}</span>}
+                            {v.noCount !== undefined && <span className="text-red-600 font-semibold">Nay: {v.noCount}</span>}
+                            {v.absentCount !== undefined && <span className="text-muted-foreground">Absent: {v.absentCount}</span>}
+                          </div>
                         </div>
-                        <div className="flex shrink-0 flex-wrap gap-3 text-xs sm:justify-end">
-                          {v.yesCount !== undefined && <span className="text-green-600 font-semibold">Yea: {v.yesCount}</span>}
-                          {v.noCount !== undefined && <span className="text-red-600 font-semibold">Nay: {v.noCount}</span>}
-                          {v.absentCount !== undefined && <span className="text-muted-foreground">Absent: {v.absentCount}</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               </ResizableDetailCard>
             )}
 
             {bill.actions && bill.actions.length > 0 && (
-              <ResizableDetailCard title="Legislative History" contentClassName="max-h-72">
+              <ResizableDetailCard title="Legislative History" profileHeight={profileHeight}>
                 <div className="space-y-3">
-                  {[...bill.actions].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((a, i) => (
-                    <div key={i} className="grid grid-cols-[6rem_1fr] gap-4 text-sm">
-                      <span className="text-muted-foreground">{a.date}</span>
-                      <span className="min-w-0 leading-snug">{a.text}</span>
-                    </div>
-                  ))}
+                  {(() => {
+                    const seen = new Set<string>();
+                    return [...bill.actions]
+                      .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
+                      .filter((a) => {
+                        const key = `${a.date}|${a.text}`;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                      })
+                      .map((a, i) => (
+                        <div key={i} className="grid grid-cols-[6rem_1fr] gap-4 text-sm">
+                          <span className="text-muted-foreground">{a.date}</span>
+                          <span className="min-w-0 leading-snug">{a.text}</span>
+                        </div>
+                      ));
+                  })()}
                 </div>
               </ResizableDetailCard>
             )}
@@ -408,5 +560,6 @@ export function StateBillDetail() {
         )}
       </div>
     </div>
+  </div>
   );
 }

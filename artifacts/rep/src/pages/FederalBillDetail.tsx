@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useRef, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useParams, Link, useSearch } from "wouter";
 import {
   useGetFederalBillDetail,
@@ -7,7 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ExternalLink, CheckCircle2, Circle, Bookmark } from "lucide-react";
+import { ChevronLeft, ExternalLink, CheckCircle2, Circle, Bookmark, GripHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RepNameLink } from "@/components/RepNameLink";
 import { partyColor, SummarySearch } from "@/lib/rep-utils";
@@ -17,21 +17,90 @@ function ResizableDetailCard({
   title,
   children,
   className = "",
-  contentClassName = "max-h-[min(65vh,28rem)]",
+  profileHeight = 300,
 }: {
   title: string;
   children: ReactNode;
   className?: string;
-  contentClassName?: string;
+  profileHeight?: number;
 }) {
+  const [height, setHeight] = useState<number | null>(null);
+  const [naturalHeight, setNaturalHeight] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const startYRef = useRef(0);
+  const startHeightRef = useRef(0);
+  const userDraggedRef = useRef(false);
+  const measuredRef = useRef(false);
+
+  // Measure the element's natural (unconstrained) height once on mount.
+  // scrollHeight is useless here because it equals clientHeight when content fits.
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    const observer = new ResizeObserver(() => {
+      if (measuredRef.current) return;
+      const h = el.offsetHeight;
+      if (h > 0) {
+        measuredRef.current = true;
+        setNaturalHeight(h);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Cap to profileHeight whenever either value settles, unless user has manually resized.
+  useEffect(() => {
+    if (!userDraggedRef.current && naturalHeight > 0) {
+      setHeight(Math.min(naturalHeight, profileHeight));
+    }
+  }, [naturalHeight, profileHeight]);
+
+  const minHeight = Math.min(naturalHeight, profileHeight);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    userDraggedRef.current = true;
+    setIsDragging(true);
+    startYRef.current = e.clientY;
+    startHeightRef.current = height ?? naturalHeight;
+  }, [height, naturalHeight]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientY - startYRef.current;
+      const newHeight = Math.min(naturalHeight, Math.max(minHeight, startHeightRef.current + delta));
+      setHeight(newHeight);
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, minHeight, naturalHeight]);
+
   return (
-    <Card className={`overflow-hidden ${className}`}>
-      <CardHeader className="pb-3">
+    <Card className={`overflow-hidden flex flex-col ${className}`}>
+      <CardHeader className="pb-3 shrink-0">
         <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</CardTitle>
       </CardHeader>
-      <CardContent className={`pt-0 pr-3 overflow-y-auto ${contentClassName}`}>
+      <CardContent
+        ref={scrollRef}
+        className={`pt-0 pr-3 ${height !== null && height < naturalHeight ? "overflow-y-auto" : "overflow-hidden"}`}
+        style={height !== null ? { height } : undefined}
+      >
         {children}
       </CardContent>
+      <div
+        className="shrink-0 h-4 flex items-center justify-center cursor-ns-resize bg-muted/30 hover:bg-muted/50 transition-colors"
+        onMouseDown={handleMouseDown}
+      >
+        <GripHorizontal className="h-3 w-3 text-muted-foreground/50" />
+      </div>
     </Card>
   );
 }
@@ -105,6 +174,9 @@ export function FederalBillDetail() {
   const fromPath = params.get("from") ?? "/bills/federal";
   const fromName = params.get("name");
 
+  const profileRef = useRef<HTMLDivElement>(null);
+  const [profileHeight, setProfileHeight] = useState(300);
+
   const { data: bill, isLoading } = useGetFederalBillDetail(congress, billType, billNumber, {
     query: {
       enabled: !!congress && !!billType && !!billNumber,
@@ -116,21 +188,35 @@ export function FederalBillDetail() {
   const { toggle, check } = useBookmarks();
   const bookmarked = check(billId);
 
+  useEffect(() => {
+    if (!profileRef.current) return;
+    const el = profileRef.current;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setProfileHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [bill?.title, bill?.latestAction]);
+
   return (
-    <div className="h-full overflow-y-auto bg-muted/20">
-      <div className="container mx-auto px-4 pt-8 pb-16 max-w-4xl">
-        <Link href={fromPath} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
+    <div className="h-full flex flex-col bg-muted/20">
+      <div className="shrink-0 container mx-auto px-4 py-3 max-w-4xl">
+        <Link href={fromPath} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft className="h-4 w-4" /> {fromName ? `Back to ${fromName}` : "Back to Federal Bills"}
         </Link>
-
-        {isLoading ? (
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="container mx-auto px-4 pb-16 max-w-4xl">
+          {isLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-48 w-full rounded-xl" />
             <Skeleton className="h-64 w-full rounded-xl" />
           </div>
         ) : bill ? (
           <div className="space-y-6">
-            <Card>
+            <Card ref={profileRef}>
               <CardContent className="p-6">
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className="flex flex-wrap gap-2">
@@ -175,11 +261,18 @@ export function FederalBillDetail() {
               </CardContent>
             </Card>
 
-            {bill.summary && <SummarySearch summary={bill.summary} />}
+            {bill.summary && (
+              <SummarySearch
+                summary={bill.summary}
+                className="overflow-hidden"
+                contentClassName="overflow-y-auto pr-3"
+                profileHeight={profileHeight}
+              />
+            )}
 
             <div className="grid md:grid-cols-2 gap-6">
               {bill.sponsors && bill.sponsors.length > 0 && (
-                <ResizableDetailCard title={`Sponsor${bill.sponsors.length > 1 ? "s" : ""}`}>
+                <ResizableDetailCard title={`Sponsor${bill.sponsors.length > 1 ? "s" : ""}`} profileHeight={profileHeight}>
                   <div className="space-y-2">
                     {bill.sponsors.map((s, i) => (
                       <div key={i} className="flex items-center justify-between">
@@ -195,7 +288,7 @@ export function FederalBillDetail() {
               )}
 
               {bill.committees && bill.committees.length > 0 && (
-                <ResizableDetailCard title="Committees">
+                <ResizableDetailCard title="Committees" profileHeight={profileHeight}>
                   <div className="space-y-2">
                     {bill.committees.map((c, i) => (
                       <div key={i} className="text-sm">
@@ -209,7 +302,7 @@ export function FederalBillDetail() {
             </div>
 
             {bill.cosponsors && bill.cosponsors.length > 0 && (
-              <ResizableDetailCard title={`Cosponsors (${bill.cosponsors.length})`} contentClassName="max-h-72">
+              <ResizableDetailCard title={`Cosponsors (${bill.cosponsors.length})`} profileHeight={profileHeight}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   {bill.cosponsors.map((s, i) => (
                     <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-0">
@@ -225,7 +318,7 @@ export function FederalBillDetail() {
             )}
 
             {bill.votes && bill.votes.length > 0 && (
-              <ResizableDetailCard title="Votes">
+              <ResizableDetailCard title="Votes" profileHeight={profileHeight}>
                 <div className="space-y-3">
                   {[...bill.votes].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((v, i) => (
                     <div key={i} className="flex flex-col gap-2 border-b pb-3 text-sm last:border-0 sm:flex-row sm:items-start sm:justify-between">
@@ -254,14 +347,25 @@ export function FederalBillDetail() {
             )}
 
             {bill.actions && bill.actions.length > 0 && (
-              <ResizableDetailCard title="Legislative History" contentClassName="max-h-72">
+              <ResizableDetailCard title="Legislative History" profileHeight={profileHeight}>
                 <div className="space-y-3">
-                  {[...bill.actions].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")).map((a, i) => (
-                    <div key={i} className="grid grid-cols-[6rem_1fr] gap-4 text-sm">
-                      <span className="text-muted-foreground">{a.date}</span>
-                      <span className="min-w-0 leading-snug">{a.text}</span>
-                    </div>
-                  ))}
+                  {(() => {
+                    const seen = new Set<string>();
+                    return [...bill.actions]
+                      .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
+                      .filter((a) => {
+                        const key = `${a.date}|${a.text}`;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                      })
+                      .map((a, i) => (
+                        <div key={i} className="grid grid-cols-[6rem_1fr] gap-4 text-sm">
+                          <span className="text-muted-foreground">{a.date}</span>
+                          <span className="min-w-0 leading-snug">{a.text}</span>
+                        </div>
+                      ));
+                  })()}
                 </div>
               </ResizableDetailCard>
             )}
@@ -271,5 +375,6 @@ export function FederalBillDetail() {
         )}
       </div>
     </div>
+  </div>
   );
 }

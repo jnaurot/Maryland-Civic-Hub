@@ -598,7 +598,7 @@ export function Home() {
             </div>
           )}
 
-          {!isLoading && !error && data && (
+          {!isLoading && !error && data && !activeTextQuery && (
             <div className="space-y-16">
               {(() => {
                 const { federal, state, local } = groupReps(data.representatives ?? []);
